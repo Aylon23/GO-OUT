@@ -30,8 +30,12 @@ _mem: dict[str, tuple[dt.date, pd.DataFrame]] = {}
 class NoPriceData(Exception):
     def __init__(self, ticker: str, detail: str = ""):
         self.ticker = ticker
-        msg = f"Yahoo didn't return prices for {ticker}. Check the ticker or try again."
-        super().__init__(msg + (f" ({detail})" if detail else ""))
+        self.detail = detail
+        if detail:  # the request itself failed (network, rate limit)
+            msg = f"Couldn't reach Yahoo Finance for {ticker} prices. Check your internet connection and try again."
+        else:
+            msg = f"Yahoo didn't return prices for {ticker}. Check the ticker or try again."
+        super().__init__(msg)
 
 
 def is_agorot(ticker: str) -> bool:

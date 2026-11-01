@@ -87,28 +87,36 @@ class Context:
         self.base = self.settings.base_currency
         self.txs = all_txs(session)
         self.warnings: list[str] = []
-        self.fx = fx_series(session)
         self.bench_md: dict[str, MarketData] = {}
+        self.series: PortfolioSeries | None = None
+        self.fx: pd.Series | None = None
+        if not self.txs:
+            return  # empty portfolio: no market data needed
+        self.load_market()
+        key = (_rev, self.base, self.settings.auto_dividends, tuple(self.bench_md), dt.date.today())
+        hit = _built.get(key)
+        if hit:
+            self.series, self.market = hit
+        else:
+            self.market = {}
+            for t in sorted({t.ticker for t in self.txs if t.ticker}):
+                self.market[t] = market_data(session, t)
+            self.series = build_series(
+                self.txs, self.market, self.fx, self.base, self.settings.auto_dividends,
+                extra_frames=[m.frame for m in self.bench_md.values()],
+            )
+            _built[key] = (self.series, self.market)
+
+    def load_market(self) -> None:
+        """FX and benchmark history. Benchmarks that fail become warnings, not errors."""
+        if self.fx is not None:
+            return
+        self.fx = fx_series(self.session)
         for b in self.settings.benchmark_list():
             try:
-                self.bench_md[b] = market_data(session, b)
+                self.bench_md[b] = market_data(self.session, b)
             except NoPriceData as exc:
                 self.warnings.append(str(exc))
-        self.series: PortfolioSeries | None = None
-        if self.txs:
-            key = (_rev, self.base, self.settings.auto_dividends, tuple(self.bench_md), dt.date.today())
-            hit = _built.get(key)
-            if hit:
-                self.series, self.market = hit
-            else:
-                self.market = {}
-                for t in sorted({t.ticker for t in self.txs if t.ticker}):
-                    self.market[t] = market_data(session, t)
-                self.series = build_series(
-                    self.txs, self.market, self.fx, self.base, self.settings.auto_dividends,
-                    extra_frames=[m.frame for m in self.bench_md.values()],
-                )
-                _built[key] = (self.series, self.market)
 
     def bench_prices(self) -> dict[str, pd.Series]:
         cal = self.series.dates
@@ -444,6 +452,7 @@ def _tr_market(md: MarketData) -> MarketData:
 
 def custom_payload(session: Session, holdings: list[dict], start: str, initial: float, monthly: float, rebalance: str) -> dict:
     ctx = Context(session)
+    ctx.load_market()
     start_d = dt.date.fromisoformat(start)
     weights = {h["symbol"].upper(): float(h["weight"]) for h in holdings if float(h.get("weight") or 0) > 0}
     total_w = sum(weights.values())
