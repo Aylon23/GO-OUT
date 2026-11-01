@@ -15,18 +15,18 @@ from .provider import HISTORY_COLUMNS
 
 CATALOG = {
     # symbol: (name, exchange, quoteType, start_price, drift, vol, first_date, div_yield)
-    "AAPL": ("Apple Inc.", "NMS", "EQUITY", 40, 0.22, 0.28, "1990-01-02", 0.006),
-    "MSFT": ("Microsoft Corporation", "NMS", "EQUITY", 60, 0.20, 0.25, "1990-01-02", 0.009),
-    "NVDA": ("NVIDIA Corporation", "NMS", "EQUITY", 5, 0.45, 0.50, "1999-01-22", 0.001),
-    "INTC": ("Intel Corporation", "NMS", "EQUITY", 45, 0.00, 0.32, "1990-01-02", 0.02),
+    "AAPL": ("Apple Inc.", "NMS", "EQUITY", 27, 0.17, 0.27, "1990-01-02", 0.006),
+    "MSFT": ("Microsoft Corporation", "NMS", "EQUITY", 46, 0.17, 0.25, "1990-01-02", 0.009),
+    "NVDA": ("NVIDIA Corporation", "NMS", "EQUITY", 0.5, 0.42, 0.48, "1999-01-22", 0.001),
+    "INTC": ("Intel Corporation", "NMS", "EQUITY", 34, 0.01, 0.32, "1990-01-02", 0.02),
     "GOOGL": ("Alphabet Inc.", "NMS", "EQUITY", 60, 0.18, 0.28, "2004-08-19", 0.0),
     "AMZN": ("Amazon.com, Inc.", "NMS", "EQUITY", 80, 0.17, 0.32, "1997-05-15", 0.0),
     "TSLA": ("Tesla, Inc.", "NMS", "EQUITY", 20, 0.30, 0.60, "2010-06-29", 0.0),
-    "VOO": ("Vanguard S&P 500 ETF", "PCX", "ETF", 200, 0.11, 0.17, "2010-09-09", 0.014),
-    "SPY": ("SPDR S&P 500 ETF Trust", "PCX", "ETF", 220, 0.11, 0.17, "1993-01-29", 0.014),
-    "QQQ": ("Invesco QQQ Trust", "NMS", "ETF", 120, 0.16, 0.22, "1999-03-10", 0.006),
-    "TEVA": ("Teva Pharmaceutical Industries", "NYQ", "EQUITY", 15, 0.03, 0.40, "1990-01-02", 0.0),
-    "TEVA.TA": ("Teva Pharmaceutical Industries", "TLV", "EQUITY", 5000, 0.03, 0.40, "1990-01-02", 0.0),
+    "VOO": ("Vanguard S&P 500 ETF", "PCX", "ETF", 190, 0.11, 0.17, "2010-09-09", 0.014),
+    "SPY": ("SPDR S&P 500 ETF Trust", "PCX", "ETF", 205, 0.11, 0.17, "1993-01-29", 0.014),
+    "QQQ": ("Invesco QQQ Trust", "NMS", "ETF", 100, 0.15, 0.22, "1999-03-10", 0.006),
+    "TEVA": ("Teva Pharmaceutical Industries", "NYQ", "EQUITY", 60, -0.06, 0.40, "1990-01-02", 0.0),
+    "TEVA.TA": ("Teva Pharmaceutical Industries", "TLV", "EQUITY", 22000, -0.06, 0.40, "1990-01-02", 0.0),
     "^GSPC": ("S&P 500", "SNP", "INDEX", 2500, 0.09, 0.17, "1990-01-02", 0.0),
     "^TA125.TA": ("TA-125", "TLV", "INDEX", 150000, 0.07, 0.16, "1992-01-02", 0.0),
     "VFIAX": ("Vanguard 500 Index Fund Admiral", "NAS", "MUTUALFUND", 250, 0.11, 0.17, "2000-11-13", 0.014),
@@ -52,7 +52,7 @@ class SyntheticProvider:
         start = max(dt.date.fromisoformat(first), DISPLAY_START)
         end = dt.date.today()
         if ticker.endswith(".TA"):
-            days = pd.bdate_range(start, end, weekmask="Sun Mon Tue Wed Thu")
+            days = pd.bdate_range(start, end, freq="C", weekmask="Sun Mon Tue Wed Thu")
         else:
             days = pd.bdate_range(start, end)
         rng = np.random.default_rng(_seed(ticker))
