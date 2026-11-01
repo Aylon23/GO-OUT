@@ -115,12 +115,14 @@ def monthly_returns(index: pd.Series) -> dict[str, float]:
         return out
     s = index.copy()
     s.index = pd.to_datetime(s.index)
-    month_end = s.groupby([s.index.year, s.index.month]).last()
+    grouped = s.groupby([s.index.year, s.index.month])
+    month_end, counts = grouped.last(), grouped.size()
     prev = None
     first_val = s.iloc[0]
     for (y, m), v in month_end.items():
         start = prev if prev is not None else first_val
-        if start > 0:
+        # skip a first month that only holds the range's base day (nothing happened in it yet)
+        if start > 0 and not (prev is None and counts[(y, m)] == 1):
             out[f"{y:04d}-{m:02d}"] = float(v / start - 1.0)
         prev = v
     return out

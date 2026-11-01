@@ -274,8 +274,8 @@ def holdings_payload(session: Session, code: str = "1Y", start: str | None = Non
         "total": _f(total),
         "cash": _f(s.cash.iloc[e]),
         "rows": sorted(rows, key=lambda r: -(r["value"] or 0)),
-        "best": [r["ticker"] for r in reversed(ranked[-3:])],
-        "worst": [r["ticker"] for r in ranked[:3]],
+        "best": [r["ticker"] for r in reversed(ranked[-3:]) if (r["range_return"] or 0) > 0],
+        "worst": [r["ticker"] for r in ranked[:3] if (r["range_return"] or 0) < 0],
         "sectors": [{"sector": k, "weight": _f(v)} for k, v in sorted(sectors.items(), key=lambda kv: -kv[1])],
         "concentrated": [r["ticker"] for r in open_rows if (r["weight"] or 0) > 0.25],
     }

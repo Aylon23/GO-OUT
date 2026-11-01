@@ -7,7 +7,7 @@ import math
 
 from sqlmodel import Session
 
-from .market.cache import price_on
+from .market.cache import load_splits, price_on, split_factor_after
 from .market.search import remember_selection
 from .models import Transaction, TxType
 
@@ -53,12 +53,14 @@ def load_demo(session: Session) -> int:
             session.add(Transaction(type=TxType.DEPOSIT, date=date, price=amount, currency=cur, note="Demo"))
         else:
             date = dt.date.fromisoformat(p["date"])
+            # track holdings on today's split basis so a later sale respects splits in between
+            factor = split_factor_after(load_splits(session, ticker), date)
             if typ == "BUY":
                 qty = max(math.floor(amount / p["close"]), 1)
-                held[ticker] = held.get(ticker, 0) + qty
+                held[ticker] = held.get(ticker, 0) + qty * factor
             else:
-                qty = math.floor(held[ticker] * amount)
-                held[ticker] -= qty
+                qty = math.floor(held[ticker] * amount / factor)
+                held[ticker] -= qty * factor
             session.add(Transaction(ticker=ticker, type=TxType(typ), date=date, quantity=qty,
                                     price=round(p["close"], 2), currency=p["currency"], fees=0, note="Demo"))
         n += 1

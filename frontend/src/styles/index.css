@@ -1,0 +1,42 @@
+@import "./tokens.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { background: var(--bg); color: var(--text); -webkit-text-size-adjust: 100%; }
+  body { font-family: Geist, ui-sans-serif, system-ui, sans-serif; font-size: 15px; line-height: 24px;
+         -webkit-font-smoothing: antialiased; font-feature-settings: "ss01"; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  input, select, textarea, button { font: inherit; color: inherit; }
+  ::selection { background: var(--accent-soft); }
+}
+
+@layer components {
+  .num { font-variant-numeric: tabular-nums; }
+  .press { transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
+  .press:active { transform: scale(0.98); }
+  .btn { @apply press inline-flex h-9 items-center justify-center gap-2 rounded-sm px-4 text-sm font-medium; }
+  .btn-primary { @apply btn bg-accent text-accent-text hover:opacity-90; }
+  .btn-secondary { @apply btn border border-line-strong bg-surface text-text hover:bg-hover; }
+  .btn-ghost { @apply btn px-2 text-muted hover:bg-hover hover:text-text; }
+  .link { @apply press text-text underline decoration-line-strong underline-offset-4 hover:decoration-text; }
+  .field { @apply h-9 w-full rounded-sm border border-line-strong bg-surface px-3 text-base outline-none transition-colors duration-fast placeholder:text-faint focus:border-accent; }
+  .label { @apply mb-1.5 block text-sm font-medium text-text; }
+  .helper { @apply mt-1.5 text-xs text-muted; }
+  .error-text { @apply mt-1.5 text-xs text-loss; }
+  .skeleton { @apply rounded-sm bg-sunken; }
+  .hairline { @apply border-t border-line; }
+  .fade-in { animation: fade-in var(--dur) var(--ease-out) both; }
+  .panel-in { animation: panel-in var(--dur-slow) var(--ease-out) both; }
+  .sheet-in { animation: sheet-in var(--dur-slow) var(--ease-out) both; }
+  .pop-in { animation: pop-in var(--dur) var(--ease-out) both; }
+}
+
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes panel-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: none; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.99); } to { opacity: 1; transform: none; } }
+
+.recharts-wrapper, .recharts-surface { outline: none; }
+.recharts-text { font-variant-numeric: tabular-nums; }
