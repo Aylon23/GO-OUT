@@ -113,7 +113,7 @@ class RecentSymbol(SQLModel, table=True):
 
 class Settings(SQLModel, table=True):
     id: int = Field(default=1, primary_key=True)
-    base_currency: str = "ILS"
+    base_currency: str = "USD"
     benchmarks: str = "SPY,QQQ"  # comma separated
     risk_free: float = 0.04
     theme: str = "system"

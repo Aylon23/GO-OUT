@@ -132,6 +132,10 @@ class Context:
         else:
             s = range_start(code if code.upper() != "CUSTOM" else "MAX", cal[e], cal[0])
         b = base_index(cal, s)
+        # Never start before the first trade: the portfolio and the benchmarks are measured over
+        # exactly the same days (from the close of the first trading day).
+        first_trade = min(t.date for t in self.txs)
+        b = max(b, base_index(cal, first_trade))
         return min(b, e), e
 
 
@@ -215,7 +219,8 @@ def portfolio_payload(session: Session, code: str = "1Y", start: str | None = No
             "today_change": _f(today_change),
             "today_pct": _f(today_pct),
             "twr": _f(port_twr),
-            "xirr": _f(range_xirr(s.value, s.flow, b, e)),
+            # an annual rate from a few days of history is noise; wait for a month
+            "xirr": _f(range_xirr(s.value, s.flow, b, e)) if (cal[e] - cal[b]).days >= 30 else None,
             "benchmarks": [{"symbol": k, "twr": _f(perf[k].iloc[-1] / 100 - 1)} for k in bench],
             "start_value": _f(s.value.iloc[b]),
         },
@@ -306,7 +311,7 @@ def holdings_payload(session: Session, code: str = "1Y", start: str | None = Non
     first_trade = min(t.date for t in ctx.txs)
     req = dt.date.fromisoformat(start) if code.upper() == "CUSTOM" and start else range_start(
         code if code.upper() != "CUSTOM" else "MAX", s.dates[e], first_trade)
-    lookback_basis = req < first_trade
+    lookback_basis = False  # real numbers only: no simulated per-holding returns
     if lookback_basis:
         ctx.load_market()
         held = [r for r in rows if not r["closed"]]

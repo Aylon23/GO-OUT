@@ -6,7 +6,7 @@ import { PortfolioChart } from "../components/PortfolioChart";
 import { RangeSelector } from "../components/RangeSelector";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { ErrorLine, InfoTip, Signed, Skel } from "../components/ui";
-import { api, ApiError, type Lookback, type Portfolio } from "../lib/api";
+import { api, ApiError, type Portfolio } from "../lib/api";
 import { compactMoney, dateLong, fullMonthYear, money, pct } from "../lib/format";
 import { invalidate, useData } from "../lib/hooks";
 import { useApp } from "../state";
@@ -27,15 +27,16 @@ export function rangePhrase(code: string, start: string) {
 function Headline({ p }: { p: Portfolio }) {
   const s = p.summary;
   const up = s.twr >= 0;
-  const start = p.range.code === "MAX" ? p.range.first_date : p.range.start;
-  const comps = s.benchmarks.filter((b) => b.twr !== null).map((b) => {
+  const short = p.range.short_history;
+  const start = short ? p.range.tracking_since : p.range.code === "MAX" ? p.range.first_date : p.range.start;
+  const comps = s.benchmarks.filter((b) => b.twr !== null).map((b, i) => {
     const diff = (s.twr - (b.twr as number)) * 100;
-    if (Math.abs(diff) < 0.05) return <span key={b.symbol}>level with {b.symbol}</span>;
+    if (Math.abs(diff) < 0.05) return <span key={b.symbol}>{i === 0 ? "Level" : "level"} with {b.symbol}</span>;
     return <span key={b.symbol}><b className="font-semibold">{Math.abs(diff).toFixed(1)} points</b> {diff > 0 ? "ahead of" : "behind"} {b.symbol}</span>;
   });
   return (
     <h1 className="max-w-[30ch] text-2xl font-medium md:text-3xl">
-      {up ? "Up" : "Down"} <b className="font-semibold">{Math.abs(s.twr * 100).toFixed(1)}%</b> {rangePhrase(p.range.code, start)}.
+      {up ? "Up" : "Down"} <b className="font-semibold">{Math.abs(s.twr * 100).toFixed(1)}%</b> {rangePhrase(short ? "CUSTOM" : p.range.code, start)}.
       {comps.length > 0 && <span className="text-muted"> {comps.reduce<React.ReactNode[]>((acc, c, i) => (i === 0 ? [c] : [...acc, ", ", c]), [])}.</span>}
     </h1>
   );
@@ -67,6 +68,8 @@ function ShadowRows({ p }: { p: Portfolio }) {
   const actual = p.shadow.actual;
   const best = p.shadow.rows.length ? p.shadow.rows.reduce((m, r) => (r.value > m.value ? r : m)) : null;
   const beatAll = p.shadow.rows.every((r) => r.diff >= 0);
+  const noDiff = p.shadow.rows.every((r) => Math.abs(r.diff) < 0.5);
+  const since = p.range.short_history ? rangePhrase("CUSTOM", p.range.tracking_since) : rangePhrase(p.range.code, p.range.code === "MAX" ? p.range.first_date : p.range.start);
   return (
     <section aria-labelledby="shadow-h" className="mt-16">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -76,9 +79,10 @@ function ShadowRows({ p }: { p: Portfolio }) {
         </InfoTip>
       </div>
       <p className="mt-1 text-sm text-muted">
-        {best && (beatAll
-          ? <>Your picks are ahead of every index {rangePhrase(p.range.code, p.range.code === "MAX" ? p.range.first_date : p.range.start)}.</>
-          : <>{best.symbol} would have left you <span className="num font-medium text-text">{compactMoney(best.value - actual, b)}</span> richer {rangePhrase(p.range.code, p.range.code === "MAX" ? p.range.first_date : p.range.start)}.</>)}
+        {noDiff ? <>No difference yet. Real tracking started on {dateLong(p.range.tracking_since)}.</>
+          : best && (beatAll
+          ? <>Your picks are ahead of every index {since}.</>
+          : <>{best.symbol} would have left you <span className="num font-medium text-text">{compactMoney(best.value - actual, b)}</span> richer {since}.</>)}
       </p>
       <dl className="mt-5 text-sm">
         <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-6 border-t border-line py-3 md:grid-cols-[1fr_160px_200px]">
@@ -91,7 +95,8 @@ function ShadowRows({ p }: { p: Portfolio }) {
             <dt className="text-muted">Same deposits in <span className="font-mono font-semibold text-text">{r.symbol}</span></dt>
             <dd className="num text-right">{money(r.value, b, { decimals: 0 })}</dd>
             <dd className="col-span-2 text-right md:col-span-1">
-              <Signed value={r.diff}>{r.diff >= 0 ? "You're ahead " : "You're behind "}{money(Math.abs(r.diff), b, { decimals: 0 })} ({pct(r.diff_pct, 1)})</Signed>
+              {Math.abs(r.diff) < 0.5 ? <span className="text-muted">Same</span>
+                : <Signed value={r.diff}>{r.diff >= 0 ? "You're ahead " : "You're behind "}{money(Math.abs(r.diff), b, { decimals: 0 })} ({pct(r.diff_pct, 1)})</Signed>}
             </dd>
           </div>
         ))}
@@ -143,12 +148,16 @@ export default function Dashboard() {
   if (q.error && !p) return <Page><ErrorLine message={q.error.message} onRetry={q.reload} /></Page>;
   if (!p) return <Page><DashSkeleton /></Page>;
   if (p.empty) return <Page><Empty /></Page>;
-  if (p.range.short_history) return <Page><LookbackView p={p} /></Page>;
   return (
     <Page>
       <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
         <Headline p={p} />
         <SecondaryLine p={p} />
+        {p.range.short_history && (
+          <p className="mt-3 max-w-[72ch] text-xs text-faint">
+            Real results start on {dateLong(p.range.tracking_since)}, when these holdings were added. Import your transaction history (dates of each buy and sell) to compare the earlier years with the S&P 500 too.
+          </p>
+        )}
         {p.warnings.map((w) => <p key={w} className="mt-3 text-sm text-loss">{w}</p>)}
         <section className="mt-12" aria-label="Chart">
           <PortfolioChart series={p.series} base={p.base} animateKey={key} rangeControl={<RangeSelector />} />
@@ -161,47 +170,4 @@ export default function Dashboard() {
 
 function Page({ children }: { children: React.ReactNode }) {
   return <div className="mx-auto max-w-content px-4 pb-24 pt-10 md:px-8 md:pt-16">{children}</div>;
-}
-
-/** The selected range is longer than this portfolio's real history (for example holdings imported
- * today). Show how today's holdings would have done, labeled as a simulation. */
-function LookbackView({ p }: { p: Portfolio }) {
-  const { range } = useApp();
-  const key = JSON.stringify(range);
-  const q = useData(() => api.lookback(range), `lb-${key}`);
-  const d = q.data;
-  if (q.error && !d) return <ErrorLine message={q.error.message} onRetry={q.reload} />;
-  if (!d) return <DashSkeleton />;
-  if (d.empty) return <SecondaryLine p={p} />;
-  return (
-    <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
-      <LookbackHeadline d={d} />
-      <SecondaryLine p={p} />
-      <p className="mt-3 max-w-[70ch] text-xs text-faint">
-        A simulation: today's {d.holdings} holding{d.holdings === 1 ? "" : "s"}, same number of shares the whole time, dividends reinvested.
-        Real results are tracked from {dateLong(p.range.tracking_since)}.
-        {d.clipped && <> One of the holdings only has prices from {dateLong(d.first_common)}, so the range starts there.</>}
-      </p>
-      <section className="mt-12" aria-label="Chart">
-        <PortfolioChart series={d.series} base={d.base} animateKey={`lb-${key}`} rangeControl={<RangeSelector />}
-          labels={{ portfolio: "These holdings" }} valueLabel="Value of today's holdings" hideInvested
-          note="Simulated from today's holdings. Benchmarks include dividends." />
-      </section>
-    </div>
-  );
-}
-
-export function LookbackHeadline({ d }: { d: Lookback }) {
-  const r = d.summary.return;
-  const comps = d.summary.benchmarks.filter((b) => b.twr !== null).map((b) => {
-    const diff = (r - (b.twr as number)) * 100;
-    if (Math.abs(diff) < 0.05) return <span key={b.symbol}>level with {b.symbol}</span>;
-    return <span key={b.symbol}><b className="font-semibold">{Math.abs(diff).toFixed(1)} points</b> {diff > 0 ? "ahead of" : "behind"} {b.symbol}</span>;
-  });
-  return (
-    <h1 className="max-w-[32ch] text-2xl font-medium md:text-3xl">
-      Held as they are today, these holdings would be {r >= 0 ? "up" : "down"} <b className="font-semibold">{Math.abs(r * 100).toFixed(1)}%</b> {rangePhrase(d.range.code, d.range.start)}.
-      {comps.length > 0 && <span className="text-muted"> {comps.reduce<React.ReactNode[]>((acc, c, i) => (i === 0 ? [c] : [...acc, ", ", c]), [])}.</span>}
-    </h1>
-  );
 }

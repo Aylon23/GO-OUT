@@ -67,11 +67,11 @@ export interface Lookback {
 }
 export interface OverviewRow {
   id: number; name: string; note: string; empty: boolean; value?: number; cash?: number; cost_gain?: number; cost_gain_pct?: number | null;
-  today_pct?: number | null; tracking_since?: string; tracking_return?: number; holdings?: number;
-  lookback_return?: number; lookback_start?: string; lookback_clipped?: boolean;
+  today_pct?: number | null; tracking_since?: string; holdings?: number;
+  period_start?: string; short_history?: boolean; return?: number | null; bench?: Record<string, number | null>;
 }
 export interface Overview {
-  base: Ccy; range: string; total_value: number; rows: OverviewRow[]; benchmarks: { symbol: string; twr: number | null }[];
+  base: Ccy; range: string; since: string | null; total_value: number; rows: OverviewRow[]; benchmarks: { symbol: string; twr: number | null }[];
   chart: { dates: string[]; perf: Record<string, (number | null)[]>; labels: Record<string, string> };
 }
 export interface HoldingImportRow {

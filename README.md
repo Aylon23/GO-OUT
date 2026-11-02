@@ -68,10 +68,10 @@ Every page (Overview, Holdings, Risk, Compare, Transactions, What-if) shows the 
   instead of adding them twice.
 
 There are no purchase dates in a holdings list, so:
-- **Gain vs cost** uses your average price.
-- **Real performance** (time-weighted, vs SPY/QQQ) is tracked from the import date onward.
-- For longer ranges the app shows a clearly labeled **look-back**: today's holdings, same shares
-  the whole time, dividends reinvested. It answers "how has this mix done?", not "how did I do?".
+- **Gain vs cost** uses your average price (real money, but no timeline).
+- **Performance vs the S&P 500** is real and starts on the import day: the portfolio and SPY/QQQ are
+  measured over exactly the same days. To compare earlier years, import the transaction history
+  (date, ticker, buy/sell, quantity, price) instead; then every number covers the full period.
 
 ## Compare: beta and P/E
 

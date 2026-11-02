@@ -128,11 +128,16 @@ def lookback_payload(session: Session, code: str, start: str | None, end: str | 
 
 
 def overview_payload(session: Session, code: str = "1Y") -> dict:
+    """Every portfolio's REAL time-weighted return over the range (or since it was added, if
+    later), next to SPY/QQQ over exactly the same days. No simulation."""
+    from .engine.returns import base_index, range_start, rebased, twr
+    from .services import Context
+
     rows = []
-    chart_series: dict[str, pd.Series] = {}
-    bench_series: dict[str, pd.Series] = {}
-    bench_ret: dict[str, float | None] = {}
+    chart: dict[str, pd.Series] = {}
     base = None
+    earliest = None
+    ctx_any = None
     for p in list_portfolios(session):
         ctx = Context(session, p.id)
         base = ctx.base
@@ -140,51 +145,55 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
         if ctx.series is None:
             rows.append(row)
             continue
+        ctx_any = ctx
         s = ctx.series
         e = len(s.dates) - 1
-        cost = cost_summary(ctx)
+        start = range_start(code, s.dates[e], s.dates[0])
         first_trade = min(t.date for t in ctx.txs)
+        b = max(base_index(s.dates, start), base_index(s.dates, first_trade))  # same days for portfolio and S&P
+        cost = cost_summary(ctx)
+        idx = s.index()
+        ret = twr(s.ret, b, e)
+        bench = {k: float(v.iloc[e] / v.iloc[b] - 1) if v.iloc[b] > 0 else None for k, v in ctx.bench_prices().items()}
         row.update({
             "value": _f(s.value.iloc[e]),
-            "cash": _f(s.cash.iloc[e]),
             "cost_gain": _f(cost["gain"]),
             "cost_gain_pct": _f(cost["gain_pct"]),
             "today_pct": _f(s.ret.iloc[e]) if e > 0 else None,
             "tracking_since": first_trade.isoformat(),
-            "tracking_return": _f(s.index().iloc[e] / s.index().iloc[0] - 1),
+            "period_start": s.dates[b].isoformat(),
+            "short_history": start < first_trade,
+            "return": _f(ret),
+            "bench": {k: _f(v) for k, v in bench.items()},
             "holdings": len(open_positions(ctx)),
         })
-        try:
-            lb = lookback(session, ctx, code)
-        except (ValueError, NoPriceData) as exc:
-            lb = {"empty": True, "error": str(exc)}
-        if not lb.get("empty"):
-            row["lookback_return"] = lb["summary"]["return"]
-            row["lookback_start"] = lb["range"]["start"]
-            row["lookback_clipped"] = lb["clipped"]
-            dates = [dt.date.fromisoformat(d) for d in lb["series"]["dates"]]
-            chart_series[f"p{p.id}"] = pd.Series(lb["series"]["perf"]["portfolio"], index=dates)
-            for bm in lb["summary"]["benchmarks"]:
-                bench_ret.setdefault(bm["symbol"], bm["twr"])
-            if not bench_series:
-                for k in ctx.bench_md:
-                    bench_series[k] = pd.Series(lb["series"]["perf"][k], index=dates)
+        chart[f"p{p.id}"] = rebased(idx, b, e)
+        earliest = s.dates[b] if earliest is None else min(earliest, s.dates[b])
         rows.append(row)
-    # chart on the union calendar; each portfolio is rebased to 100 at its own start
-    all_dates = sorted({d for s in list(chart_series.values()) + list(bench_series.values()) for d in s.index})
-    perf = {}
-    for k, ser in {**chart_series, **bench_series}.items():
-        aligned = ser.reindex(all_dates).ffill()
-        perf[k] = [_f(v) for v in aligned]
+    perf: dict[str, list] = {}
+    dates: list = []
+    bench_total = []
+    if ctx_any is not None:
+        cal = [d for d in ctx_any.series.dates if d >= earliest] if earliest else []
+        all_dates = sorted({d for ser in chart.values() for d in ser.index} | set(cal))
+        for k, ser in chart.items():
+            perf[k] = [_f(v) for v in ser.reindex(all_dates).ffill()]
+        for k, v in ctx_any.bench_prices().items():
+            ser = v.reindex(all_dates).ffill()
+            ser = ser[ser.index >= earliest]
+            ser = ser / ser.iloc[0] * 100 if len(ser) and ser.iloc[0] > 0 else ser
+            perf[k] = [_f(x) for x in ser.reindex(all_dates)]
+            bench_total.append({"symbol": k, "twr": _f(ser.iloc[-1] / 100 - 1) if len(ser) else None})
+        dates = [d.isoformat() for d in all_dates]
     total = sum(r.get("value") or 0 for r in rows)
     return {
-        "base": base or "ILS",
+        "base": base or "USD",
         "range": code.upper(),
+        "since": earliest.isoformat() if earliest else None,
         "total_value": _f(total),
         "rows": rows,
-        "benchmarks": [{"symbol": k, "twr": v} for k, v in bench_ret.items()],
-        "chart": {"dates": [d.isoformat() for d in all_dates], "perf": perf,
-                  "labels": {f"p{r['id']}": r["name"] for r in rows}},
+        "benchmarks": bench_total,
+        "chart": {"dates": dates, "perf": perf, "labels": {f"p{r['id']}": r["name"] for r in rows}},
     }
 
 

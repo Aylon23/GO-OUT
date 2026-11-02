@@ -26,7 +26,9 @@ def client(session, fake):
     fake.frames["QQQ"] = frame([(d.isoformat(), 100) for d in ds])
     fake.frames["AAPL"] = frame([(d.isoformat(), 50 * (1 + 2 * i / (n - 1))) for i, d in enumerate(ds)])
     fake.frames["TEVA.TA"] = frame([(d.isoformat(), 5000) for d in ds])
-    return TestClient(app)
+    c = TestClient(app)
+    c.put("/api/settings", json={"base_currency": "ILS"})  # these cases are written in shekels
+    return c
 
 
 def test_portfolios_are_separate(client):
@@ -80,9 +82,25 @@ def test_overview_lists_every_portfolio(client):
     o = client.get("/api/overview?range=1Y").json()
     rows = {r["name"]: r for r in o["rows"]}
     assert rows["Mom"]["empty"] and not rows["My portfolio"]["empty"]
-    assert abs(rows["My portfolio"]["cost_gain_pct"] - 0.5) < 1e-9
+    mine = rows["My portfolio"]
+    assert abs(mine["cost_gain_pct"] - 0.5) < 1e-9
+    # real results only: imported today, so the period starts today and nothing has moved yet
+    assert mine["short_history"] and abs(mine["return"]) < 1e-9
     assert "p1" in o["chart"]["perf"] and "SPY" in o["chart"]["perf"]
     assert abs(o["total_value"] - 6000) < 1e-6
+
+
+def test_overview_real_return_vs_spy_same_days(client):
+    n = 399
+    aapl = lambda i: 50 * (1 + 2 * i / n)
+    spy = lambda i: 100 * (1 + i / n)
+    start = days(400)[100].isoformat()
+    client.post("/api/transactions?portfolio=1", json={"ticker": "AAPL", "type": "BUY", "date": start, "quantity": 1, "price": aapl(100), "currency": "USD"})
+    o = client.get("/api/overview?range=MAX").json()
+    row = o["rows"][0]
+    # the day bought counts at the close, so the return runs from that close to today
+    assert abs(row["return"] - (aapl(n) / aapl(100) - 1)) < 1e-9
+    assert abs(row["bench"]["SPY"] - (spy(n) / spy(100) - 1)) < 1e-9  # same days: from the close of the buy day
 
 
 def test_routes_exist(client):

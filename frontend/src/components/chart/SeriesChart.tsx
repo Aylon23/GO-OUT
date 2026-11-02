@@ -66,6 +66,9 @@ export function SeriesChart({ dates, series, format, short, end, height = 320, b
   }, [dates, spanDays]);
 
   const axis = useMemo(() => niceAxis(series.flatMap((s) => s.values), baseline), [series, baseline]);
+  // on small ranges the short format can repeat a label ("0%", "0%"); use the precise one then
+  const shortLabels = axis.ticks.map((t) => fmtShort(t));
+  const tickFmtY = new Set(shortLabels).size < shortLabels.length ? (end ?? format) : fmtShort;
   const ordered = [...series].sort((a, b) => (a.key === "portfolio" ? 1 : b.key === "portfolio" ? -1 : 0)); // portfolio drawn on top
 
   return (
@@ -76,7 +79,7 @@ export function SeriesChart({ dates, series, format, short, end, height = 320, b
           <XAxis dataKey="date" ticks={ticks} tickFormatter={tickFmt} tickLine={false} axisLine={false}
             tick={{ fill: "var(--muted)", fontSize: 12 }} minTickGap={24} dy={6} />
           <YAxis orientation="left" width={64} tickLine={false} axisLine={false} tick={{ fill: "var(--muted)", fontSize: 12 }}
-            tickFormatter={(v) => fmtShort(v)} domain={axis.domain} ticks={axis.ticks} interval={0} />
+            tickFormatter={(v) => tickFmtY(v)} domain={axis.domain} ticks={axis.ticks} interval={0} />
           {baseline !== undefined && <ReferenceLine y={baseline} stroke="var(--line-strong)" strokeDasharray="2 3" />}
           <Tooltip
             cursor={{ stroke: "var(--line-strong)", strokeWidth: 1 }}

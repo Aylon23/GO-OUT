@@ -45,8 +45,8 @@ export default function AllPortfolios() {
                     animateKey={code} height={340} format={(v) => `${v.toFixed(1)}  (${pct(v / 100 - 1, 1)})`} short={(v) => pct(v / 100 - 1, 0)} end={(v) => pct(v / 100 - 1, 1)} />
                 </div>
                 <p className="mt-2 max-w-[80ch] text-xs text-faint">
-                  Simulation: each portfolio's current holdings, held unchanged over the range with dividends reinvested, in {d.base === "USD" ? "dollars" : "shekels"}.
-                  Real results are tracked from the day each portfolio was added.
+                  Real results, time-weighted, in {d.base === "USD" ? "dollars" : "shekels"}. A portfolio added recently starts on the day it was added;
+                  import its transaction history to include earlier years.
                 </p>
               </section>
               <PortfolioTable d={d} code={code} onOpen={open} />
@@ -84,32 +84,27 @@ function chartSeries(d: Overview): SeriesDef[] {
 }
 
 function Headline({ d, code }: { d: Overview; code: string }) {
-  const live = d.rows.filter((r) => !r.empty && r.lookback_return !== undefined);
-  const spy = d.benchmarks.find((b) => b.symbol === "SPY") ?? d.benchmarks[0];
-  const beat = spy?.twr != null ? live.filter((r) => (r.lookback_return ?? 0) > (spy.twr as number)).length : null;
+  const live = d.rows.filter((r) => !r.empty && r.return != null && r.bench?.SPY != null);
+  const beat = live.filter((r) => (r.return as number) > (r.bench!.SPY as number)).length;
   const n = d.rows.length;
   const gain = d.rows.reduce((s, r) => s + (r.cost_gain ?? 0), 0);
-  const startDate = live[0]?.lookback_start ?? "";
+  const allShort = live.length > 0 && live.every((r) => r.short_history);
   return (
     <>
       <h1 className="max-w-[32ch] text-2xl font-medium md:text-3xl">
         {n} portfolio{n === 1 ? "" : "s"}, <b className="font-semibold">{compactMoney(d.total_value ?? 0, d.base)}</b> in total.
-        {beat !== null && live.length > 0 && spy && (
-          <span className="text-muted"> {beat === live.length ? (live.length === 1 ? "It" : "All of them") : beat === 0 ? "None" : `${beat} of ${live.length}`} beat {spy.symbol} {rangePhrase(code, startDate)}.</span>
+        {live.length > 0 && (
+          <span className="text-muted"> {beat === live.length ? (live.length === 1 ? "It is" : "All are") : beat === 0 ? "None are" : `${beat} of ${live.length} are`} ahead of the S&P 500 {allShort && d.since ? `since ${dateLong(d.since)}` : rangePhrase(code, d.since ?? "")}.</span>
         )}
       </h1>
       <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
         <span>Gain vs average cost <Signed value={gain} className="font-medium">{money(gain, d.base, { signed: true, decimals: 0 })}</Signed></span>
-        {d.benchmarks.map((b) => (
-          <span key={b.symbol} className="inline-flex items-center gap-2"><span aria-hidden className="text-faint">·</span>{b.symbol} <Signed value={b.twr} className="font-medium">{pct(b.twr, 1)}</Signed></span>
-        ))}
       </p>
     </>
   );
 }
 
 function PortfolioTable({ d, code, onOpen }: { d: Overview; code: string; onOpen: (r: OverviewRow, page?: "dashboard" | "transactions") => void }) {
-  const spy = d.benchmarks.find((b) => b.symbol === "SPY")?.twr ?? null;
   const cols = "grid-cols-[minmax(160px,1.6fr)_120px_150px_110px_110px_90px_120px]";
   return (
     <section className="mt-14 text-sm" aria-label="Portfolios">
@@ -117,8 +112,8 @@ function PortfolioTable({ d, code, onOpen }: { d: Overview; code: string; onOpen
         <span role="columnheader">Portfolio</span>
         <span role="columnheader" className="text-right">Value</span>
         <span role="columnheader" className="flex justify-end"><InfoTip text="Market value of open positions minus what they cost, using the average price you entered.">Gain vs cost</InfoTip></span>
-        <span role="columnheader" className="flex justify-end"><InfoTip text={`Today's holdings, held unchanged ${rangePhrase(code, "")}. A simulation, not your real result.`}>{code} return</InfoTip></span>
-        <span role="columnheader" className="text-right">vs SPY</span>
+        <span role="columnheader" className="flex justify-end"><InfoTip text={`Real time-weighted return ${rangePhrase(code, "")}, or since the portfolio was added if that is later.`}>Return</InfoTip></span>
+        <span role="columnheader" className="flex justify-end"><InfoTip text="Return minus the S&P 500 (SPY, dividends included) over exactly the same days.">vs S&P 500</InfoTip></span>
         <span role="columnheader" className="text-right">Today</span>
         <span role="columnheader" className="text-right">Tracked since</span>
       </div>
@@ -140,8 +135,8 @@ function PortfolioTable({ d, code, onOpen }: { d: Overview; code: string; onOpen
               <span className="num ml-auto font-medium">{money(r.value, d.base, { decimals: 0 })}</span>
             </span>
             <Kv k="Gain vs cost" v={<Signed value={r.cost_gain}>{money(r.cost_gain, d.base, { signed: true, decimals: 0 })} ({pct(r.cost_gain_pct, 1)})</Signed>} />
-            <Kv k={`${code} return`} v={<Signed value={r.lookback_return}>{pct(r.lookback_return, 1)}</Signed>} />
-            <Kv k="vs SPY" v={<Signed value={diff(r, spy)}>{pp(diff(r, spy), 1)}</Signed>} />
+            <Kv k="Return" v={<Signed value={r.return}>{pct(r.return, 1)}</Signed>} />
+            <Kv k="vs S&P 500" v={<Signed value={diff(r)}>{pp(diff(r), 1)}</Signed>} />
             <Kv k="Today" v={<Signed value={r.today_pct}>{pct(r.today_pct, 2)}</Signed>} />
           </div>
           <div className={clsx("hidden items-center gap-3 py-3 lg:grid", cols)}>
@@ -157,8 +152,11 @@ function PortfolioTable({ d, code, onOpen }: { d: Overview; code: string; onOpen
               <Signed value={r.cost_gain} className="block">{money(r.cost_gain, d.base, { signed: true, decimals: 0 })}</Signed>
               <Signed value={r.cost_gain_pct} className="block text-xs">{pct(r.cost_gain_pct, 1)}</Signed>
             </span>
-            <Signed value={r.lookback_return} className="text-right">{pct(r.lookback_return, 1)}</Signed>
-            <Signed value={diff(r, spy)} className="text-right">{pp(diff(r, spy), 1)}</Signed>
+            <span className="text-right leading-5">
+              <Signed value={r.return} className="block">{pct(r.return, 1)}</Signed>
+              {r.short_history && r.period_start && <span className="block text-xs text-faint">since {dateLong(r.period_start)}</span>}
+            </span>
+            <Signed value={diff(r)} className="text-right">{pp(diff(r), 1)}</Signed>
             <Signed value={r.today_pct} className="text-right">{pct(r.today_pct, 2)}</Signed>
             <span className="num text-right text-muted">{r.tracking_since ? dateLong(r.tracking_since) : "–"}</span>
           </div>
@@ -168,7 +166,7 @@ function PortfolioTable({ d, code, onOpen }: { d: Overview; code: string; onOpen
   );
 }
 
-const diff = (r: OverviewRow, spy: number | null) => (r.lookback_return != null && spy != null ? r.lookback_return - spy : null);
+const diff = (r: OverviewRow) => (r.return != null && r.bench?.SPY != null ? r.return - r.bench.SPY : null);
 
 const Kv = ({ k, v }: { k: string; v: React.ReactNode }) => (
   <div className="flex justify-between gap-2 text-xs"><span className="text-faint">{k}</span><span className="num text-text">{v}</span></div>

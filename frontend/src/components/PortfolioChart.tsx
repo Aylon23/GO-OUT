@@ -62,7 +62,11 @@ export function PortfolioChart({ series, base, labels = {}, animateKey, rangeCon
       </div>
       <div className="mt-5 min-h-[24px]"><InlineLegend items={legend} /></div>
       <div className="mt-3">
-        <SeriesChart ariaLabel={desc} dates={series.dates} series={defs} format={format} short={short} end={end} baseline={baseline} animateKey={`${animateKey}-${view}`} height={340} />
+        {series.dates.length < 2 ? (
+          <div className="flex h-[200px] items-center justify-center rounded-md border border-dashed border-line text-sm text-muted">
+            The chart fills in as trading days pass.
+          </div>
+        ) : <SeriesChart ariaLabel={desc} dates={series.dates} series={defs} format={format} short={short} end={end} baseline={baseline} animateKey={`${animateKey}-${view}`} height={340} />}
       </div>
       <p className="mt-2 text-xs text-faint">
         {note ?? (view === "performance" ? `Time-weighted, so deposits and withdrawals don't move the line. Benchmarks include dividends. All in ${base === "USD" ? "dollars" : "shekels"}.`

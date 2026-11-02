@@ -22,7 +22,9 @@ def client(session, fake):
     fake.frames["QQQ"] = frame([(d.isoformat(), 100 + 2 * i, 100 + 2 * i) for i, d in enumerate(ds)])
     fake.frames["AAPL"] = frame([(d.isoformat(), 50 + i) for i, d in enumerate(ds)])
     fake.frames["TEVA.TA"] = frame([(d.isoformat(), 4000) for d in ds])
-    return TestClient(app)
+    c = TestClient(app)
+    c.put("/api/settings", json={"base_currency": "ILS"})  # these cases are written in shekels
+    return c
 
 
 def test_validation_messages(client):
