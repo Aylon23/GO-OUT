@@ -7,8 +7,8 @@ import { Segmented } from "./ui";
 export type ChartView = "value" | "performance" | "drawdown";
 
 /** Value / Performance / Drawdown chart. Shared by Overview and What-if. */
-export function PortfolioChart({ series, base, labels = {}, animateKey, rangeControl, valueLabel = "Portfolio value", valueColor = "var(--accent)" }: {
-  series: Series; base: string; labels?: Record<string, string>; animateKey: string; rangeControl?: React.ReactNode; valueLabel?: string; valueColor?: string;
+export function PortfolioChart({ series, base, labels = {}, animateKey, rangeControl, valueLabel = "Portfolio value", valueColor = "var(--accent)", hideInvested = false, note }: {
+  series: Series; base: string; labels?: Record<string, string>; animateKey: string; rangeControl?: React.ReactNode; valueLabel?: string; valueColor?: string; hideInvested?: boolean; note?: string;
 }) {
   const [view, setView] = useState<ChartView>("performance");
   const label = (k: string) => labels[k] ?? (k === "portfolio" ? "You" : k);
@@ -24,19 +24,15 @@ export function PortfolioChart({ series, base, labels = {}, animateKey, rangeCon
   let baseline: number | undefined;
 
   if (view === "value") {
-    defs = [
-      { key: "portfolio", label: valueLabel, color: valueColor, width: 2, values: series.value },
-      { key: "invested", label: "Net deposits", color: "var(--series-spy)", width: 1.5, dash: "4 3", step: true, values: series.invested },
-    ];
+    defs = [{ key: "portfolio", label: valueLabel, color: valueColor, width: 2, values: series.value }];
+    if (!hideInvested) defs.push({ key: "invested", label: "Net deposits", color: "var(--series-spy)", width: 1.5, dash: "4 3", step: true, values: series.invested });
     format = (v) => money(v, base, { decimals: 0 });
     short = (v) => compactMoney(v, base);
     end = short;
     const lv = series.value[series.value.length - 1];
     const li = series.invested[series.invested.length - 1];
-    legend = [
-      { key: "v", label: valueLabel, color: valueColor, width: 2, value: lv != null ? money(lv, base, { decimals: 0 }) : undefined },
-      { key: "i", label: "Net deposits", color: "var(--series-spy)", dash: true, value: li != null ? money(li, base, { decimals: 0 }) : undefined },
-    ];
+    legend = [{ key: "v", label: valueLabel, color: valueColor, width: 2, value: lv != null ? money(lv, base, { decimals: 0 }) : undefined }];
+    if (!hideInvested) legend.push({ key: "i", label: "Net deposits", color: "var(--series-spy)", dash: true, value: li != null ? money(li, base, { decimals: 0 }) : undefined });
   } else if (view === "performance") {
     defs = keys.map((k, i) => ({ key: k, label: label(k), color: color(k, i), width: width(k), values: series.perf[k] }));
     format = (v) => `${v.toFixed(1)}  (${pct(v / 100 - 1, 1)})`;
@@ -69,9 +65,9 @@ export function PortfolioChart({ series, base, labels = {}, animateKey, rangeCon
         <SeriesChart ariaLabel={desc} dates={series.dates} series={defs} format={format} short={short} end={end} baseline={baseline} animateKey={`${animateKey}-${view}`} height={340} />
       </div>
       <p className="mt-2 text-xs text-faint">
-        {view === "performance" ? `Time-weighted, so deposits and withdrawals don't move the line. Benchmarks include dividends. All in ${base === "USD" ? "dollars" : "shekels"}.`
+        {note ?? (view === "performance" ? `Time-weighted, so deposits and withdrawals don't move the line. Benchmarks include dividends. All in ${base === "USD" ? "dollars" : "shekels"}.`
           : view === "drawdown" ? "How far each line sat below its previous high."
-          : "Net deposits step up when money goes in and down when it comes out."}
+          : "Net deposits step up when money goes in and down when it comes out.")}
       </p>
     </div>
   );

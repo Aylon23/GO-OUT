@@ -37,7 +37,7 @@ META = {
 }
 
 
-def load_demo(session: Session) -> int:
+def load_demo(session: Session, pid: int = 1) -> int:
     for sym, (name, exch, typ, cur) in META.items():
         remember_selection(session, {"symbol": sym, "name": name, "exchange": exch, "type": typ, "currency": cur})
     # Fetch every price first: the price cache commits, so nothing is added until all lookups succeed.
@@ -50,7 +50,7 @@ def load_demo(session: Session) -> int:
     n = 0
     for date, typ, ticker, amount, cur, p in priced:
         if typ == "DEPOSIT":
-            session.add(Transaction(type=TxType.DEPOSIT, date=date, price=amount, currency=cur, note="Demo"))
+            session.add(Transaction(portfolio_id=pid, type=TxType.DEPOSIT, date=date, price=amount, currency=cur, note="Demo"))
         else:
             date = dt.date.fromisoformat(p["date"])
             # track holdings on today's split basis so a later sale respects splits in between
@@ -61,7 +61,7 @@ def load_demo(session: Session) -> int:
             else:
                 qty = math.floor(held[ticker] * amount / factor)
                 held[ticker] -= qty * factor
-            session.add(Transaction(ticker=ticker, type=TxType(typ), date=date, quantity=qty,
+            session.add(Transaction(portfolio_id=pid, ticker=ticker, type=TxType(typ), date=date, quantity=qty,
                                     price=round(p["close"], 2), currency=p["currency"], fees=0, note="Demo"))
         n += 1
     session.commit()

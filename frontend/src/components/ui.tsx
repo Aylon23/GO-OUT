@@ -125,6 +125,6 @@ export function SectionTitle({ children, aside }: { children: ReactNode; aside?:
 }
 
 export function Signed({ value, children, className }: { value: number | null | undefined; children: ReactNode; className?: string }) {
-  const c = value === null || value === undefined || !isFinite(value) || Math.abs(value) < 1e-9 ? "text-text" : value > 0 ? "text-gain" : "text-loss";
+  const c = value === null || value === undefined || !isFinite(value) || Math.abs(value) < 5e-5 ? "text-text" : value > 0 ? "text-gain" : "text-loss";
   return <span className={clsx("num", c, className)}>{children}</span>;
 }

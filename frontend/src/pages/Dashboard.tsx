@@ -6,7 +6,7 @@ import { PortfolioChart } from "../components/PortfolioChart";
 import { RangeSelector } from "../components/RangeSelector";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { ErrorLine, InfoTip, Signed, Skel } from "../components/ui";
-import { api, ApiError, type Portfolio } from "../lib/api";
+import { api, ApiError, type Lookback, type Portfolio } from "../lib/api";
 import { compactMoney, dateLong, fullMonthYear, money, pct } from "../lib/format";
 import { invalidate, useData } from "../lib/hooks";
 import { useApp } from "../state";
@@ -46,7 +46,9 @@ function SecondaryLine({ p }: { p: Portfolio }) {
   const b = p.base;
   const items: React.ReactNode[] = [
     <span key="v">Value <span className="num font-medium text-text">{money(s.value, b, { decimals: 0 })}</span></span>,
-    <span key="g">Total gain <Signed value={s.total_gain} className="font-medium">{money(s.total_gain, b, { signed: true, decimals: 0 })}</Signed></span>,
+    s.has_cost_basis
+      ? <span key="g" className="inline-flex items-center gap-1"><InfoTip text="Market value of open positions minus what they cost, using the average price you entered.">Gain vs cost</InfoTip> <Signed value={s.cost_gain} className="font-medium">{money(s.cost_gain, b, { signed: true, decimals: 0 })} ({pct(s.cost_gain_pct, 1)})</Signed></span>
+      : <span key="g">Total gain <Signed value={s.total_gain} className="font-medium">{money(s.total_gain, b, { signed: true, decimals: 0 })}</Signed></span>,
     <span key="t">Today <Signed value={s.today_change} className="font-medium">{money(s.today_change, b, { signed: true, decimals: 0 })} ({pct(s.today_pct)})</Signed></span>,
     <span key="x" className="inline-flex items-center gap-1">
       <InfoTip text="XIRR: your personal annual return, counting when you added or took out money.">XIRR</InfoTip>
@@ -141,6 +143,7 @@ export default function Dashboard() {
   if (q.error && !p) return <Page><ErrorLine message={q.error.message} onRetry={q.reload} /></Page>;
   if (!p) return <Page><DashSkeleton /></Page>;
   if (p.empty) return <Page><Empty /></Page>;
+  if (p.range.short_history) return <Page><LookbackView p={p} /></Page>;
   return (
     <Page>
       <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
@@ -158,4 +161,47 @@ export default function Dashboard() {
 
 function Page({ children }: { children: React.ReactNode }) {
   return <div className="mx-auto max-w-content px-4 pb-24 pt-10 md:px-8 md:pt-16">{children}</div>;
+}
+
+/** The selected range is longer than this portfolio's real history (for example holdings imported
+ * today). Show how today's holdings would have done, labeled as a simulation. */
+function LookbackView({ p }: { p: Portfolio }) {
+  const { range } = useApp();
+  const key = JSON.stringify(range);
+  const q = useData(() => api.lookback(range), `lb-${key}`);
+  const d = q.data;
+  if (q.error && !d) return <ErrorLine message={q.error.message} onRetry={q.reload} />;
+  if (!d) return <DashSkeleton />;
+  if (d.empty) return <SecondaryLine p={p} />;
+  return (
+    <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
+      <LookbackHeadline d={d} />
+      <SecondaryLine p={p} />
+      <p className="mt-3 max-w-[70ch] text-xs text-faint">
+        A simulation: today's {d.holdings} holding{d.holdings === 1 ? "" : "s"}, same number of shares the whole time, dividends reinvested.
+        Real results are tracked from {dateLong(p.range.tracking_since)}.
+        {d.clipped && <> One of the holdings only has prices from {dateLong(d.first_common)}, so the range starts there.</>}
+      </p>
+      <section className="mt-12" aria-label="Chart">
+        <PortfolioChart series={d.series} base={d.base} animateKey={`lb-${key}`} rangeControl={<RangeSelector />}
+          labels={{ portfolio: "These holdings" }} valueLabel="Value of today's holdings" hideInvested
+          note="Simulated from today's holdings. Benchmarks include dividends." />
+      </section>
+    </div>
+  );
+}
+
+export function LookbackHeadline({ d }: { d: Lookback }) {
+  const r = d.summary.return;
+  const comps = d.summary.benchmarks.filter((b) => b.twr !== null).map((b) => {
+    const diff = (r - (b.twr as number)) * 100;
+    if (Math.abs(diff) < 0.05) return <span key={b.symbol}>level with {b.symbol}</span>;
+    return <span key={b.symbol}><b className="font-semibold">{Math.abs(diff).toFixed(1)} points</b> {diff > 0 ? "ahead of" : "behind"} {b.symbol}</span>;
+  });
+  return (
+    <h1 className="max-w-[32ch] text-2xl font-medium md:text-3xl">
+      Held as they are today, these holdings would be {r >= 0 ? "up" : "down"} <b className="font-semibold">{Math.abs(r * 100).toFixed(1)}%</b> {rangePhrase(d.range.code, d.range.start)}.
+      {comps.length > 0 && <span className="text-muted"> {comps.reduce<React.ReactNode[]>((acc, c, i) => (i === 0 ? [c] : [...acc, ", ", c]), [])}.</span>}
+    </h1>
+  );
 }

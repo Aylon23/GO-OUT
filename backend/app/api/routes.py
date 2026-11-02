@@ -13,10 +13,14 @@ from ..demo import load_demo
 from ..market import search as search_mod
 from ..market.cache import NoPriceData, ensure_history, price_on
 from ..market.provider import ProviderError
-from ..models import PriceCache, PriceCoverage, RecentSymbol, SplitEvent, SymbolMeta, Transaction
+from .. import portfolios as pf
+from ..models import Portfolio, Transaction
 from ..transactions import TxError, TxIn, export_csv, parse_csv, rows_to_tx, validate
 
 router = APIRouter(prefix="/api")
+
+# Which portfolio a request is about. Every portfolio-scoped endpoint takes ?portfolio=<id>.
+PID = Query(1, alias="portfolio", ge=1)
 
 
 def _bad(msg: str, status: int = 400, **extra):
@@ -100,18 +104,20 @@ def symbol_chart(symbol: str, range: str = "1Y", session: Session = Depends(get_
 # ---------------------------------------------------------------- transactions
 
 @router.get("/transactions")
-def list_tx(session: Session = Depends(get_session)):
-    rows = session.exec(select(Transaction).order_by(Transaction.date.desc(), Transaction.id.desc())).all()
+def list_tx(pid: int = PID, session: Session = Depends(get_session)):
+    rows = session.exec(select(Transaction).where(Transaction.portfolio_id == pid).order_by(Transaction.date.desc(), Transaction.id.desc())).all()
     return [services.tx_dict(t) for t in rows]
 
 
-def _save(session: Session, data: TxIn, tx: Transaction | None = None):
-    existing = list(session.exec(select(Transaction)).all())
+def _save(session: Session, data: TxIn, pid: int, tx: Transaction | None = None):
+    if not session.get(Portfolio, pid):
+        _bad("Portfolio not found.", 404)
+    existing = list(session.exec(select(Transaction).where(Transaction.portfolio_id == pid)).all())
     try:
         data = validate(session, data, existing, exclude_id=tx.id if tx else None)
     except TxError as exc:
         raise HTTPException(status_code=422, detail={"message": "Check the highlighted fields.", "fields": exc.errors})
-    tx = tx or Transaction(type=data.type, date=data.date)
+    tx = tx or Transaction(type=data.type, date=data.date, portfolio_id=pid)
     for k, v in data.model_dump().items():
         setattr(tx, k, v)
     session.add(tx)
@@ -122,8 +128,8 @@ def _save(session: Session, data: TxIn, tx: Transaction | None = None):
 
 
 @router.post("/transactions")
-def create_tx(data: TxIn, session: Session = Depends(get_session)):
-    return _save(session, data)
+def create_tx(data: TxIn, pid: int = PID, session: Session = Depends(get_session)):
+    return _save(session, data, pid)
 
 
 @router.put("/transactions/{tx_id}")
@@ -131,7 +137,7 @@ def update_tx(tx_id: int, data: TxIn, session: Session = Depends(get_session)):
     tx = session.get(Transaction, tx_id)
     if not tx:
         _bad("Transaction not found.", 404)
-    return _save(session, data, tx)
+    return _save(session, data, tx.portfolio_id, tx)
 
 
 @router.delete("/transactions/{tx_id}")
@@ -146,26 +152,26 @@ def delete_tx(tx_id: int, session: Session = Depends(get_session)):
 
 
 @router.post("/transactions/import")
-async def import_csv(file: UploadFile = File(...), commit: bool = False, session: Session = Depends(get_session)):
+async def import_csv(file: UploadFile = File(...), commit: bool = False, pid: int = PID, session: Session = Depends(get_session)):
     text = (await file.read()).decode("utf-8-sig", errors="replace")
     rows = parse_csv(text)
     if not rows:
         _bad("The file is empty or has no header row. See the CSV format in the README.")
-    results = rows_to_tx(session, rows)
+    results = rows_to_tx(session, rows, pid)
     ok = [r for r in results if not r["errors"]]
     if commit:
         for r in ok:
             t = dict(r["tx"])
             t["date"] = dt.date.fromisoformat(t["date"])
-            session.add(Transaction(**t))
+            session.add(Transaction(**t, portfolio_id=pid))
         session.commit()
         services.bump_revision()
     return {"rows": results, "valid": len(ok), "invalid": len(results) - len(ok), "committed": commit}
 
 
 @router.get("/transactions/export", response_class=PlainTextResponse)
-def export(session: Session = Depends(get_session)):
-    return PlainTextResponse(export_csv(session), headers={"Content-Disposition": "attachment; filename=transactions.csv"})
+def export(pid: int = PID, session: Session = Depends(get_session)):
+    return PlainTextResponse(export_csv(session, pid), headers={"Content-Disposition": "attachment; filename=transactions.csv"})
 
 
 # ---------------------------------------------------------------- analytics
@@ -180,23 +186,23 @@ def _wrap(fn, *args):
 
 
 @router.get("/portfolio")
-def portfolio(range: str = "1Y", start: str | None = None, end: str | None = None, session: Session = Depends(get_session)):
-    return _wrap(services.portfolio_payload, session, range, start, end)
+def portfolio(range: str = "1Y", start: str | None = None, end: str | None = None, pid: int = PID, session: Session = Depends(get_session)):
+    return _wrap(services.portfolio_payload, session, range, start, end, pid)
 
 
 @router.get("/holdings")
-def holdings(range: str = "1Y", start: str | None = None, end: str | None = None, session: Session = Depends(get_session)):
-    return _wrap(services.holdings_payload, session, range, start, end)
+def holdings(range: str = "1Y", start: str | None = None, end: str | None = None, pid: int = PID, session: Session = Depends(get_session)):
+    return _wrap(services.holdings_payload, session, range, start, end, pid)
 
 
 @router.get("/holdings/{ticker}")
-def holding(ticker: str, range: str = "1Y", session: Session = Depends(get_session)):
-    return _wrap(services.holding_detail, session, ticker, range)
+def holding(ticker: str, range: str = "1Y", pid: int = PID, session: Session = Depends(get_session)):
+    return _wrap(services.holding_detail, session, ticker, range, pid)
 
 
 @router.get("/risk")
-def risk(range: str = "MAX", start: str | None = None, end: str | None = None, session: Session = Depends(get_session)):
-    return _wrap(services.risk_payload, session, range, start, end)
+def risk(range: str = "MAX", start: str | None = None, end: str | None = None, pid: int = PID, session: Session = Depends(get_session)):
+    return _wrap(services.risk_payload, session, range, start, end, pid)
 
 
 class SwapIn(BaseModel):
@@ -205,8 +211,8 @@ class SwapIn(BaseModel):
 
 
 @router.post("/whatif/swap")
-def swap(body: SwapIn, session: Session = Depends(get_session)):
-    return _wrap(services.swap_payload, session, body.ticker, body.replacement)
+def swap(body: SwapIn, pid: int = PID, session: Session = Depends(get_session)):
+    return _wrap(services.swap_payload, session, body.ticker, body.replacement, pid)
 
 
 class CustomHolding(BaseModel):
@@ -223,9 +229,9 @@ class CustomIn(BaseModel):
 
 
 @router.post("/whatif/custom")
-def custom(body: CustomIn, session: Session = Depends(get_session)):
+def custom(body: CustomIn, pid: int = PID, session: Session = Depends(get_session)):
     return _wrap(services.custom_payload, session, [h.model_dump() for h in body.holdings], body.start,
-                 body.initial, body.monthly, body.rebalance)
+                 body.initial, body.monthly, body.rebalance, pid)
 
 
 # ---------------------------------------------------------------- settings & data
@@ -278,11 +284,11 @@ def put_settings(body: SettingsIn, session: Session = Depends(get_session)):
 
 
 @router.post("/demo")
-def demo(session: Session = Depends(get_session)):
-    if session.exec(select(Transaction)).first():
+def demo(pid: int = PID, session: Session = Depends(get_session)):
+    if session.exec(select(Transaction).where(Transaction.portfolio_id == pid)).first():
         _bad("Demo data can only be loaded into an empty portfolio.")
     try:
-        n = load_demo(session)
+        n = load_demo(session, pid)
     except (NoPriceData, ValueError) as exc:
         session.rollback()
         _bad(str(exc), 502)
@@ -291,11 +297,97 @@ def demo(session: Session = Depends(get_session)):
 
 
 @router.delete("/transactions")
-def delete_all(session: Session = Depends(get_session)):
-    session.exec(delete(Transaction))
+def delete_all(pid: int = PID, session: Session = Depends(get_session)):
+    session.exec(delete(Transaction).where(Transaction.portfolio_id == pid))
     session.commit()
     services.bump_revision()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- portfolios
+
+class PortfolioIn(BaseModel):
+    name: str
+    note: str = ""
+
+
+def _clean_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        _bad("Give the portfolio a name.")
+    if len(name) > 60:
+        _bad("Keep the name under 60 characters.")
+    return name
+
+
+@router.get("/portfolios")
+def list_portfolios(session: Session = Depends(get_session)):
+    from sqlalchemy import func
+
+    counts = dict(session.exec(select(Transaction.portfolio_id, func.count()).group_by(Transaction.portfolio_id)).all())
+    return [pf.portfolio_dict(p, counts.get(p.id, 0)) for p in pf.list_portfolios(session)]
+
+
+@router.post("/portfolios")
+def create_portfolio(body: PortfolioIn, session: Session = Depends(get_session)):
+    p = Portfolio(name=_clean_name(body.name), note=body.note.strip())
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return pf.portfolio_dict(p)
+
+
+@router.put("/portfolios/{pid}")
+def update_portfolio(pid: int, body: PortfolioIn, session: Session = Depends(get_session)):
+    p = session.get(Portfolio, pid)
+    if not p:
+        _bad("Portfolio not found.", 404)
+    p.name, p.note = _clean_name(body.name), body.note.strip()
+    session.add(p)
+    session.commit()
+    return pf.portfolio_dict(p)
+
+
+@router.delete("/portfolios/{pid}")
+def delete_portfolio(pid: int, session: Session = Depends(get_session)):
+    if len(pf.list_portfolios(session)) <= 1:
+        _bad("You need at least one portfolio.")
+    pf.delete_portfolio(session, pid)
+    services.bump_revision()
+    return {"ok": True}
+
+
+@router.get("/overview")
+def overview(range: str = "1Y", session: Session = Depends(get_session)):
+    return _wrap(pf.overview_payload, session, range)
+
+
+@router.get("/lookback")
+def lookback(range: str = "1Y", start: str | None = None, end: str | None = None, pid: int = PID, session: Session = Depends(get_session)):
+    return _wrap(pf.lookback_payload, session, range, start, end, pid)
+
+
+@router.post("/holdings/import")
+async def import_holdings(file: UploadFile = File(...), commit: bool = False, as_of: dt.date | None = None,
+                          pid: int = PID, session: Session = Depends(get_session)):
+    if not session.get(Portfolio, pid):
+        _bad("Portfolio not found.", 404)
+    day = as_of or dt.date.today()
+    try:
+        table = pf.read_table(file.filename or "", await file.read())
+        rows = pf.parse_holdings(session, table, day)
+    except ValueError as exc:
+        _bad(str(exc))
+    except Exception:
+        _bad("Couldn't read that file. Save it as .xlsx or .csv and try again.")
+    if not rows:
+        _bad("The file has no rows. The first row should be the column names.")
+    valid = [r for r in rows if not r["errors"]]
+    n = 0
+    if commit:
+        n = pf.import_holdings(session, pid, rows, day)
+        services.bump_revision()
+    return {"rows": rows, "valid": len(valid), "invalid": len(rows) - len(valid), "committed": commit, "imported": n}
 
 
 @router.get("/health")

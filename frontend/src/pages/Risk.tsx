@@ -3,7 +3,7 @@ import { RangeSelector } from "../components/RangeSelector";
 import { StatsTable } from "../components/StatsTable";
 import { EmptyState, ErrorLine, InfoTip, Signed, Skel } from "../components/ui";
 import { api, type Risk as R } from "../lib/api";
-import { monthName, pct } from "../lib/format";
+import { dateLong, monthName, pct } from "../lib/format";
 import { useData } from "../lib/hooks";
 import { useApp } from "../state";
 
@@ -11,20 +11,32 @@ export default function Risk() {
   const { range } = useApp();
   const key = JSON.stringify(range);
   const q = useData(() => api.risk(range), `r-${key}`);
-  const d = q.data;
+  const real = q.data;
+  const short = !!real && !real.empty && !!real.range.short_history;
+  const lb = useData(() => api.lookback(range), `rlb-${key}`, short);
+  // With little real history, show the same tables for today's holdings, held over the range.
+  const d: R | null = !short ? real : lb.data && !lb.data.empty ? {
+    empty: false, range: lb.data.range, risk_free: real!.risk_free, beta_reference: "SPY",
+    columns: lb.data.columns, stats: lb.data.stats, years: lb.data.years, monthly: lb.data.monthly,
+  } : lb.data?.empty ? real : null;
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-8 md:px-8 md:pt-12">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="text-xl font-semibold">Risk and stats</h1>
         <RangeSelector />
       </div>
-      {q.error && !d ? <ErrorLine message={q.error.message} onRetry={q.reload} /> : !d ? <RiskSkeleton /> : d.empty ? (
+      {q.error && !real ? <ErrorLine message={q.error.message} onRetry={q.reload} /> : lb.error && short ? <ErrorLine message={lb.error.message} onRetry={lb.reload} /> : !d ? <RiskSkeleton /> : d.empty ? (
         <EmptyState title="Nothing to measure yet." body="Once you add transactions, this page compares your risk with SPY and QQQ: drawdowns, volatility, beta and yearly returns." />
       ) : (
-        <div className={clsx("fade-in transition-opacity duration", q.loading && "opacity-60")} key={key}>
+        <div className={clsx("fade-in transition-opacity duration", (q.loading || lb.loading) && "opacity-60")} key={key}>
           <Verdict d={d} />
+          {short && (
+            <p className="mt-3 max-w-[70ch] text-xs text-faint">
+              A simulation: today's holdings, held unchanged over the range. Real results are tracked from {dateLong(real!.range.tracking_since!)}.
+            </p>
+          )}
           <section className="mt-10" aria-label="Statistics">
-            <StatsTable columns={d.columns} stats={d.stats} />
+            <StatsTable columns={d.columns} stats={d.stats} labels={short ? { portfolio: "These holdings" } : {}} />
             <p className="mt-2 text-xs text-faint">Risk-free rate {pct(d.risk_free, 1, false)} (change it in Settings). Daily data in your base currency.</p>
           </section>
           <div className="mt-16 grid gap-16 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">

@@ -53,7 +53,12 @@ export default function Holdings() {
       ) : (
         <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
           <Summary d={d} onOpen={setOpen} />
-          <div className="mt-12 text-sm" role="table" aria-label="Holdings">
+          {d.lookback_basis && (
+            <p className="mt-10 max-w-[75ch] text-xs text-faint">
+              Return and contribution are simulated: today's shares held over the range, dividends reinvested. This portfolio's real history is shorter than the range.
+            </p>
+          )}
+          <div className={clsx("text-sm", d.lookback_basis ? "mt-4" : "mt-12")} role="table" aria-label="Holdings">
             <div role="row" className="sticky top-14 z-10 hidden gap-3 border-b border-line bg-bg py-2 text-xs font-medium text-muted lg:grid" style={{ gridTemplateColumns: COLS.map((c) => c.w).join(" ") }}>
               {COLS.map((c) => (
                 <span role="columnheader" key={c.key} aria-sort={sort.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : "none"} className={clsx("flex items-center gap-1", c.right && "justify-end")}>

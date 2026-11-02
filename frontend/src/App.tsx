@@ -1,6 +1,7 @@
 import { CommandPalette } from "./components/CommandPalette";
 import { QuickView } from "./components/QuickView";
 import { TopBar } from "./components/TopBar";
+import AllPortfolios from "./pages/AllPortfolios";
 import Dashboard from "./pages/Dashboard";
 import Holdings from "./pages/Holdings";
 import Risk from "./pages/Risk";
@@ -12,6 +13,7 @@ import { AppProvider, useApp } from "./state";
 function Routes() {
   const { route } = useApp();
   switch (route) {
+    case "all": return <AllPortfolios />;
     case "holdings": return <Holdings />;
     case "risk": return <Risk />;
     case "transactions": return <Transactions />;

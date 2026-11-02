@@ -7,3 +7,4 @@ numpy>=1.26
 python-multipart>=0.0.9
 pytest>=8
 httpx>=0.27
+openpyxl>=3.1

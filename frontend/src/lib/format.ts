@@ -45,7 +45,7 @@ export function ratio(v: number | null | undefined): string {
 }
 
 export const signClass = (v: number | null | undefined) =>
-  v === null || v === undefined || !isFinite(v) || Math.abs(v) < 1e-9 ? "text-text" : v > 0 ? "text-gain" : "text-loss";
+  v === null || v === undefined || !isFinite(v) || Math.abs(v) < 5e-5 ? "text-text" : v > 0 ? "text-gain" : "text-loss";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const parse = (d: string) => { const [y, m, dd] = d.split("-").map(Number); return { y, m, d: dd }; };

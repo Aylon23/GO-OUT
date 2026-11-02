@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Avatar } from "../components/Avatar";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { ErrorLine, Segmented } from "../components/ui";
-import { api, ApiError, type Settings as S } from "../lib/api";
+import { api, ApiError, type PortfolioInfo, type Settings as S } from "../lib/api";
 import { invalidate } from "../lib/hooks";
 import { useApp } from "../state";
 
@@ -20,6 +20,9 @@ export default function Settings() {
       <h1 className="text-xl font-semibold">Settings</h1>
       {err && <ErrorLine message={err} />}
       <dl className="mt-8">
+        <Item title="Portfolios" help="Each portfolio has its own holdings and results. Deleting one removes its transactions.">
+          <PortfolioList />
+        </Item>
         <Item title="Base currency" help="Everything is converted into this currency using each day's exchange rate.">
           <Segmented label="Base currency" value={settings.base_currency} onChange={(v) => save({ base_currency: v })} options={[{ value: "ILS", label: "₪ Shekel" }, { value: "USD", label: "$ Dollar" }]} />
         </Item>
@@ -67,5 +70,58 @@ function Item({ title, help, children }: { title: string; help: string; children
       <dt><div className="text-sm font-medium">{title}</div><p className="mt-1 text-xs text-muted">{help}</p></dt>
       <dd>{children}</dd>
     </div>
+  );
+}
+
+function PortfolioList() {
+  const { portfolios, reloadPortfolios } = useApp();
+  return (
+    <div>
+      <ul>{portfolios.map((p) => <PortfolioRow key={p.id} p={p} canDelete={portfolios.length > 1} onChange={() => { reloadPortfolios(); invalidate(); }} />)}</ul>
+      <NewPortfolioRow onCreated={() => reloadPortfolios()} />
+    </div>
+  );
+}
+
+function PortfolioRow({ p, canDelete, onChange }: { p: PortfolioInfo; canDelete: boolean; onChange: () => void }) {
+  const [name, setName] = useState(p.name);
+  const [note, setNote] = useState(p.note);
+  const [confirm, setConfirm] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const dirty = name !== p.name || note !== p.note;
+  const save = async () => { setErr(null); try { await api.updatePortfolio(p.id, name, note); onChange(); } catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't save."); } };
+  return (
+    <li className="border-b border-line py-3 first:pt-0">
+      <div className="grid gap-2 sm:grid-cols-[1fr_1.3fr_auto] sm:items-center">
+        <input aria-label="Portfolio name" className="field h-8 text-sm font-medium" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+        <input aria-label="Note" className="field h-8 text-sm" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+        <div className="flex justify-end gap-1">
+          {dirty && <button type="button" className="btn-secondary h-8" onClick={save}>Save</button>}
+          {canDelete && (confirm ? (
+            <>
+              <button type="button" className="btn-ghost h-8" onClick={() => setConfirm(false)}>Keep</button>
+              <button type="button" className="btn-secondary h-8 text-loss" onClick={async () => { await api.deletePortfolio(p.id); onChange(); }}>Delete</button>
+            </>
+          ) : <button type="button" aria-label={`Delete ${p.name}`} className="btn-ghost h-8 w-8 px-0" onClick={() => setConfirm(true)}><X size={14} /></button>)}
+        </div>
+      </div>
+      <p className="mt-1 text-xs text-faint">{p.transactions} transaction{p.transactions === 1 ? "" : "s"}{confirm && ". Deleting removes them all."}</p>
+      {err && <p className="error-text">{err}</p>}
+    </li>
+  );
+}
+
+function NewPortfolioRow({ onCreated }: { onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <form className="mt-3 flex gap-2" onSubmit={async (e) => {
+      e.preventDefault(); setErr(null);
+      try { await api.createPortfolio(name); setName(""); onCreated(); } catch (x) { setErr(x instanceof ApiError ? x.message : "Couldn't create it."); }
+    }}>
+      <input aria-label="New portfolio name" className="field h-8 text-sm" placeholder="New portfolio name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+      <button type="submit" className="btn-secondary h-8 shrink-0" disabled={!name.trim()}>Add</button>
+      {err && <p className="error-text">{err}</p>}
+    </form>
   );
 }

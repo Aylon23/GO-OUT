@@ -21,13 +21,16 @@ export interface Series {
   perf: Record<string, (number | null)[]>;
   drawdown: Record<string, (number | null)[]>;
 }
+export interface PortfolioInfo { id: number; name: string; note: string; transactions: number }
+
 export interface Portfolio {
   empty: boolean;
   base: Ccy;
   benchmarks: string[];
   warnings: string[];
-  range: { code: string; start: string; end: string; first_date: string };
+  range: { code: string; start: string; end: string; first_date: string; tracking_since: string; short_history: boolean };
   summary: {
+    cost_gain: number; cost_gain_pct: number | null; has_cost_basis: boolean;
     value: number; invested: number; total_gain: number; range_gain: number; today_change: number; today_pct: number;
     twr: number; xirr: number | null; benchmarks: { symbol: string; twr: number | null }[]; start_value: number;
   };
@@ -39,7 +42,7 @@ export interface HoldingRow {
   value: number; weight: number; unrealized: number; unrealized_pct: number | null; range_return: number | null; contribution: number; closed: boolean;
 }
 export interface Holdings {
-  empty: boolean; base: Ccy; range: { code: string; start: string; end: string }; total: number; cash: number;
+  empty: boolean; base: Ccy; range: { code: string; start: string; end: string }; lookback_basis?: boolean; total: number; cash: number;
   rows: HoldingRow[]; best: string[]; worst: string[]; sectors: { sector: string; weight: number }[]; concentrated: string[];
 }
 export interface HoldingDetail {
@@ -52,9 +55,31 @@ export interface Stat {
   best_year: { year: number; value: number } | null; worst_year: { year: number; value: number } | null; total_return: number | null;
 }
 export interface Risk {
-  empty: boolean; range: { code: string; start: string; end: string }; risk_free: number; beta_reference: string | null;
+  empty: boolean; range: { code: string; start: string; end: string; tracking_since?: string; short_history?: boolean }; risk_free: number; beta_reference: string | null;
   columns: string[]; stats: Record<string, Stat>; years: ({ year: number } & Record<string, number | null>)[]; monthly: Record<string, number | null>;
 }
+export interface Lookback {
+  empty: boolean; base: Ccy; range: { code: string; start: string; end: string }; clipped: boolean; first_common: string; holdings: number;
+  summary: { return: number; benchmarks: { symbol: string; twr: number | null }[]; start_value: number; end_value: number };
+  cost: { positions_value: number; cost: number; gain: number; gain_pct: number | null };
+  columns: string[]; stats: Record<string, Stat>; years: ({ year: number } & Record<string, number | null>)[]; monthly: Record<string, number | null>;
+  series: Series;
+}
+export interface OverviewRow {
+  id: number; name: string; note: string; empty: boolean; value?: number; cash?: number; cost_gain?: number; cost_gain_pct?: number | null;
+  today_pct?: number | null; tracking_since?: string; tracking_return?: number; holdings?: number;
+  lookback_return?: number; lookback_start?: string; lookback_clipped?: boolean;
+}
+export interface Overview {
+  base: Ccy; range: string; total_value: number; rows: OverviewRow[]; benchmarks: { symbol: string; twr: number | null }[];
+  chart: { dates: string[]; perf: Record<string, (number | null)[]>; labels: Record<string, string> };
+}
+export interface HoldingImportRow {
+  line: number; ticker: string; errors: Record<string, string>; notes: string[]; quantity?: number; avg_price?: number; currency?: Ccy;
+  price?: number; price_date?: string; gain_pct?: number;
+}
+export interface HoldingImport { rows: HoldingImportRow[]; valid: number; invalid: number; committed: boolean; imported: number }
+
 export interface Settings { base_currency: Ccy; benchmarks: string[]; risk_free: number; theme: "light" | "dark" | "system"; auto_dividends: boolean }
 export interface Swap {
   base: Ccy; ticker: string; replacement: string; real_value: number; hypo_value: number; diff: number; diff_pct: number | null; since: string; trades: number;
@@ -77,7 +102,13 @@ export class ApiError extends Error {
   }
 }
 
+/** The portfolio every request is about. Set by the app state when the user switches. */
+let currentPortfolio = 1;
+export const setApiPortfolio = (id: number) => { currentPortfolio = id; };
+export const portfolioParam = () => `portfolio=${currentPortfolio}`;
+
 async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  if (url.startsWith("/api/") && !/[?&]portfolio=/.test(url)) url += (url.includes("?") ? "&" : "?") + portfolioParam();
   let res: Response;
   try {
     res = await fetch(url, {
@@ -141,5 +172,16 @@ export const api = {
   settings: () => request<Settings>("GET", "/api/settings"),
   saveSettings: (s: Partial<Settings>) => request<Settings>("PUT", "/api/settings", s),
   demo: () => request<{ loaded: number }>("POST", "/api/demo"),
+  portfolios: () => request<PortfolioInfo[]>("GET", "/api/portfolios"),
+  createPortfolio: (name: string, note = "") => request<PortfolioInfo>("POST", "/api/portfolios", { name, note }),
+  updatePortfolio: (id: number, name: string, note: string) => request<PortfolioInfo>("PUT", `/api/portfolios/${id}`, { name, note }),
+  deletePortfolio: (id: number) => request<{ ok: boolean }>("DELETE", `/api/portfolios/${id}`),
+  overview: (range: string) => request<Overview>("GET", `/api/overview?${qs({ range })}`),
+  lookback: (p: RangeParams) => request<Lookback>("GET", `/api/lookback?${qs({ ...p })}`),
+  importHoldings: (file: File, commit: boolean, asOf?: string) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<HoldingImport>("POST", `/api/holdings/import?${qs({ commit, as_of: asOf })}`, fd);
+  },
   clearAll: () => request<{ ok: boolean }>("DELETE", "/api/transactions"),
 };

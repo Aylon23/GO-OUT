@@ -26,8 +26,16 @@ CASH_TYPES = {TxType.DEPOSIT, TxType.WITHDRAWAL}
 TRADE_TYPES = {TxType.BUY, TxType.SELL}
 
 
+class Portfolio(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    note: str = ""
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+
+
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    portfolio_id: int = Field(default=1, index=True)
     ticker: str = Field(default="", index=True)
     type: TxType
     date: dt.date = Field(index=True)
@@ -36,6 +44,10 @@ class Transaction(SQLModel, table=True):
     currency: str = "USD"
     fees: float = 0.0
     note: str = ""
+    # Average cost per share when a position was imported from a holdings list (no purchase
+    # history). The BUY itself is recorded at that day's close so performance starts from
+    # market value; this field keeps the real cost basis for gain/loss.
+    cost_price: Optional[float] = None
 
     @property
     def amount(self) -> float:

@@ -51,11 +51,12 @@ def fx_series(session: Session) -> pd.Series:
 
 def to_tx(t: Transaction) -> Tx:
     return Tx(t.ticker.upper(), t.type.value if hasattr(t.type, "value") else t.type, t.date, t.quantity, t.price,
-              t.currency, t.fees, t.id, t.note)
+              t.currency, t.fees, t.id, t.note, t.cost_price)
 
 
-def all_txs(session: Session) -> list[Tx]:
-    return [to_tx(t) for t in session.exec(select(Transaction).order_by(Transaction.date, Transaction.id)).all()]
+def all_txs(session: Session, pid: int = 1) -> list[Tx]:
+    q = select(Transaction).where(Transaction.portfolio_id == pid).order_by(Transaction.date, Transaction.id)
+    return [to_tx(t) for t in session.exec(q).all()]
 
 
 def _f(x):
@@ -81,11 +82,12 @@ def _sample_positions(b: int, e: int) -> list[int]:
 class Context:
     """Everything needed to answer questions about the real portfolio for one request."""
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, pid: int = 1):
         self.session = session
+        self.pid = pid
         self.settings = get_settings(session)
         self.base = self.settings.base_currency
-        self.txs = all_txs(session)
+        self.txs = all_txs(session, pid)
         self.warnings: list[str] = []
         self.bench_md: dict[str, MarketData] = {}
         self.series: PortfolioSeries | None = None
@@ -93,7 +95,7 @@ class Context:
         if not self.txs:
             return  # empty portfolio: no market data needed
         self.load_market()
-        key = (_rev, self.base, self.settings.auto_dividends, tuple(self.bench_md), dt.date.today())
+        key = (_rev, pid, self.base, self.settings.auto_dividends, tuple(self.bench_md), dt.date.today())
         hit = _built.get(key)
         if hit:
             self.series, self.market = hit
@@ -133,12 +135,34 @@ class Context:
         return min(b, e), e
 
 
+def open_positions(ctx: Context) -> dict[str, float]:
+    """Shares held today per ticker (current split basis)."""
+    if ctx.series is None:
+        return {}
+    last = ctx.series.holding_qty.iloc[-1]
+    return {t: float(q) for t, q in last.items() if q > 1e-9}
+
+
+def cost_summary(ctx: Context) -> dict:
+    """Market value of open positions vs their cost basis (average cost when imported)."""
+    if ctx.series is None:
+        return {"positions_value": 0.0, "cost": 0.0, "gain": 0.0, "gain_pct": None}
+    value = cost = 0.0
+    for t, q in open_positions(ctx).items():
+        lots = holding_lots(ctx.txs, t, ctx.market[t].splits, ctx.fx, ctx.base)
+        value += float(ctx.series.holding_value[t].iloc[-1])
+        cost += lots["cost_base"]
+    gain = value - cost
+    return {"positions_value": value, "cost": cost, "gain": gain, "gain_pct": gain / cost if cost > 0 else None}
+
+
+
 def empty_payload(ctx: Context) -> dict:
     return {"empty": True, "base": ctx.base, "benchmarks": list(ctx.bench_md), "warnings": ctx.warnings}
 
 
-def portfolio_payload(session: Session, code: str = "1Y", start: str | None = None, end: str | None = None) -> dict:
-    ctx = Context(session)
+def portfolio_payload(session: Session, code: str = "1Y", start: str | None = None, end: str | None = None, pid: int = 1) -> dict:
+    ctx = Context(session, pid)
     if ctx.series is None:
         return empty_payload(ctx)
     s = ctx.series
@@ -167,13 +191,23 @@ def portfolio_payload(session: Session, code: str = "1Y", start: str | None = No
     today_pct = float(s.ret.iloc[e]) if e > 0 else 0.0
 
     pick = lambda ser: [_f(ser.iloc[i - b]) for i in pos]
+    # Was the range asked for longer than the real history? Then the page shows the look-back.
+    first_trade = min(t.date for t in ctx.txs)
+    req = dt.date.fromisoformat(start) if code.upper() == "CUSTOM" and start else range_start(
+        code if code.upper() != "CUSTOM" else "MAX", cal[e], first_trade)
+    cost = cost_summary(ctx)
+    has_cost_basis = any(t.cost_price for t in ctx.txs)
     payload = {
         "empty": False,
         "base": ctx.base,
         "benchmarks": list(bench),
         "warnings": ctx.warnings,
-        "range": {"code": code.upper(), "start": cal[b].isoformat(), "end": cal[e].isoformat(), "first_date": cal[0].isoformat()},
+        "range": {"code": code.upper(), "start": cal[b].isoformat(), "end": cal[e].isoformat(), "first_date": cal[0].isoformat(),
+                  "tracking_since": first_trade.isoformat(), "short_history": req < first_trade},
         "summary": {
+            "cost_gain": _f(cost["gain"]),
+            "cost_gain_pct": _f(cost["gain_pct"]),
+            "has_cost_basis": has_cost_basis,
             "value": _f(actual_end),
             "invested": _f(s.invested.iloc[e]),
             "total_gain": _f(actual_end - s.invested.iloc[e]),
@@ -221,8 +255,8 @@ def ensure_meta_info(session: Session, tickers: list[str]) -> None:
     session.commit()
 
 
-def holdings_payload(session: Session, code: str = "1Y", start: str | None = None, end: str | None = None) -> dict:
-    ctx = Context(session)
+def holdings_payload(session: Session, code: str = "1Y", start: str | None = None, end: str | None = None, pid: int = 1) -> dict:
+    ctx = Context(session, pid)
     if ctx.series is None:
         return {"empty": True, "base": ctx.base, "rows": []}
     s = ctx.series
@@ -267,6 +301,30 @@ def holdings_payload(session: Session, code: str = "1Y", start: str | None = Non
             "contribution": _f(contrib),
             "closed": lots["quantity"] <= 0,
         })
+    # Range longer than the real history (e.g. holdings imported recently): per-holding return and
+    # contribution come from today's shares held over the range instead.
+    first_trade = min(t.date for t in ctx.txs)
+    req = dt.date.fromisoformat(start) if code.upper() == "CUSTOM" and start else range_start(
+        code if code.upper() != "CUSTOM" else "MAX", s.dates[e], first_trade)
+    lookback_basis = req < first_trade
+    if lookback_basis:
+        ctx.load_market()
+        held = [r for r in rows if not r["closed"]]
+        frames = [ctx.market[r["ticker"]].frame for r in held] + [m.frame for m in ctx.bench_md.values()]
+        cal = sorted({d for f in frames for d in f.index if d <= s.dates[e]})
+        b0 = base_index(cal, req)
+        cal = cal[b0:]
+        start_vals = {}
+        for r in held:
+            md = ctx.market[r["ticker"]]
+            tr = total_return_in_base(md, ctx.fx, cal, ctx.base)
+            i0 = base_index(cal, max(req, md.frame.index[0]))
+            growth = float(tr.iloc[-1] / tr.iloc[i0]) if tr.iloc[i0] > 0 else 1.0
+            r["range_return"] = _f(growth - 1)
+            start_vals[r["ticker"]] = (r["value"] or 0) / growth
+        total_start = sum(start_vals.values())
+        for r in held:
+            r["contribution"] = _f(((r["value"] or 0) - start_vals[r["ticker"]]) / total_start) if total_start else None
     open_rows = [r for r in rows if not r["closed"]]
     ranked = sorted([r for r in rows if r["range_return"] is not None], key=lambda r: r["range_return"])
     sectors: dict[str, float] = {}
@@ -279,6 +337,7 @@ def holdings_payload(session: Session, code: str = "1Y", start: str | None = Non
         "empty": False,
         "base": ctx.base,
         "range": {"code": code.upper(), "start": s.dates[b].isoformat(), "end": s.dates[e].isoformat()},
+        "lookback_basis": lookback_basis,
         "total": _f(total),
         "cash": _f(s.cash.iloc[e]),
         "rows": sorted(rows, key=lambda r: -(r["value"] or 0)),
@@ -289,9 +348,9 @@ def holdings_payload(session: Session, code: str = "1Y", start: str | None = Non
     }
 
 
-def holding_detail(session: Session, ticker: str, code: str = "1Y") -> dict:
+def holding_detail(session: Session, ticker: str, code: str = "1Y", pid: int = 1) -> dict:
     ticker = ticker.upper()
-    ctx = Context(session)
+    ctx = Context(session, pid)
     md = market_data(session, ticker)
     df = md.frame
     last = df.index[-1]
@@ -322,13 +381,16 @@ def tx_dict(t) -> dict:
             "fees": t.fees, "note": t.note}
 
 
-def risk_payload(session: Session, code: str = "MAX", start: str | None = None, end: str | None = None) -> dict:
-    ctx = Context(session)
+def risk_payload(session: Session, code: str = "MAX", start: str | None = None, end: str | None = None, pid: int = 1) -> dict:
+    ctx = Context(session, pid)
     if ctx.series is None:
         return {"empty": True}
     s = ctx.series
     b, e = ctx.window(code, start, end)
     idx = s.index().iloc[b : e + 1]
+    first_trade = min(t.date for t in ctx.txs)
+    req = dt.date.fromisoformat(start) if code.upper() == "CUSTOM" and start else range_start(
+        code if code.upper() != "CUSTOM" else "MAX", s.dates[e], first_trade)
     bench = {k: v.iloc[b : e + 1] for k, v in ctx.bench_prices().items()}
     rf = ctx.settings.risk_free
     spy = bench.get("SPY")
@@ -344,7 +406,8 @@ def risk_payload(session: Session, code: str = "MAX", start: str | None = None, 
     all_years = sorted({y for d in years.values() for y in d})
     return {
         "empty": False,
-        "range": {"code": code.upper(), "start": s.dates[b].isoformat(), "end": s.dates[e].isoformat()},
+        "range": {"code": code.upper(), "start": s.dates[b].isoformat(), "end": s.dates[e].isoformat(),
+                  "tracking_since": first_trade.isoformat(), "short_history": req < first_trade or (s.dates[e] - first_trade).days < 30},
         "risk_free": rf,
         "beta_reference": ref,
         "columns": list(columns),
@@ -379,9 +442,9 @@ def _fx_on(fx: pd.Series, d: dt.date) -> float:
     return float(align(fx, [d]).iloc[0])
 
 
-def swap_payload(session: Session, ticker: str, replacement: str) -> dict:
+def swap_payload(session: Session, ticker: str, replacement: str, pid: int = 1) -> dict:
     ticker, replacement = ticker.upper(), replacement.upper()
-    ctx = Context(session)
+    ctx = Context(session, pid)
     if ctx.series is None:
         raise ValueError("Add a transaction first.")
     own = [t for t in ctx.txs if t.ticker == ticker and t.type in ("BUY", "SELL")]
@@ -450,8 +513,8 @@ def _tr_market(md: MarketData) -> MarketData:
     return MarketData(f, md.currency, [])
 
 
-def custom_payload(session: Session, holdings: list[dict], start: str, initial: float, monthly: float, rebalance: str) -> dict:
-    ctx = Context(session)
+def custom_payload(session: Session, holdings: list[dict], start: str, initial: float, monthly: float, rebalance: str, pid: int = 1) -> dict:
+    ctx = Context(session, pid)
     ctx.load_market()
     start_d = dt.date.fromisoformat(start)
     weights = {h["symbol"].upper(): float(h["weight"]) for h in holdings if float(h.get("weight") or 0) > 0}

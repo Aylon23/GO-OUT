@@ -51,13 +51,15 @@ if errorlevel 1 (
   )
   if exist ".venv\deps-ok" del ".venv\deps-ok"
 )
-if not exist ".venv\deps-ok" (
+rem Install Python packages the first time, and again whenever requirements.txt changes.
+fc /b backend\requirements.txt ".venv\deps-ok" >nul 2>nul
+if errorlevel 1 (
   echo.
   echo [2/3] Installing Python packages. The first time takes a few minutes...
   ".venv\Scripts\python.exe" -m pip install --upgrade pip
   ".venv\Scripts\python.exe" -m pip install -r backend\requirements.txt
   if errorlevel 1 goto :fail
-  echo ok> ".venv\deps-ok"
+  copy /y backend\requirements.txt ".venv\deps-ok" >nul
 )
 if not exist "frontend\node_modules\.bin\vite.cmd" (
   echo.

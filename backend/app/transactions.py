@@ -110,9 +110,9 @@ def _num(v: str, default: float = 0.0) -> float:
     return float(v) if v else default
 
 
-def rows_to_tx(session: Session, rows: list[dict]) -> list[dict]:
+def rows_to_tx(session: Session, rows: list[dict], pid: int = 1) -> list[dict]:
     """Validate each row in date order against the database plus earlier CSV rows."""
-    existing = list(session.exec(select(Transaction)).all())
+    existing = list(session.exec(select(Transaction).where(Transaction.portfolio_id == pid)).all())
     pending: list[Transaction] = []
     out = []
     ordered = sorted(rows, key=lambda r: (r.get("date", ""), 0 if r.get("type", "").upper() != "SELL" else 1))
@@ -145,10 +145,10 @@ def rows_to_tx(session: Session, rows: list[dict]) -> list[dict]:
     return sorted(out, key=lambda r: r["line"])
 
 
-def export_csv(session: Session) -> str:
+def export_csv(session: Session, pid: int = 1) -> str:
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(CSV_COLUMNS)
-    for t in session.exec(select(Transaction).order_by(Transaction.date, Transaction.id)).all():
+    for t in session.exec(select(Transaction).where(Transaction.portfolio_id == pid).order_by(Transaction.date, Transaction.id)).all():
         w.writerow([t.date.isoformat(), t.type.value, t.ticker, f"{t.quantity:g}", f"{t.price:g}", t.currency, f"{t.fees:g}", t.note])
     return buf.getvalue()

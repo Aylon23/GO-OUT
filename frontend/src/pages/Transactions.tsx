@@ -1,10 +1,11 @@
-import { DownloadSimple, PencilSimple, Plus, Trash, UploadSimple } from "@phosphor-icons/react";
+import { DownloadSimple, FileXls, PencilSimple, Plus, Trash, UploadSimple } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useMemo, useRef, useState } from "react";
 import { Avatar } from "../components/Avatar";
+import { HoldingsImport } from "../components/HoldingsImport";
 import { TxForm } from "../components/TxForm";
 import { EmptyState, ErrorLine, Skel } from "../components/ui";
-import { api, ApiError, type ImportResult, type Tx, type TxType } from "../lib/api";
+import { api, ApiError, type ImportResult, portfolioParam, type Tx, type TxType } from "../lib/api";
 import { dateLong, money, num } from "../lib/format";
 import { invalidate, useData } from "../lib/hooks";
 import { useApp } from "../state";
@@ -22,6 +23,8 @@ export default function Transactions() {
   const [confirmDel, setConfirmDel] = useState<number | null>(null);
   const [delErr, setDelErr] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [holdingsOpen, setHoldingsOpen] = useState(false);
+  const { portfolio } = useApp();
   const base = settings?.base_currency ?? "ILS";
 
   const rows = useMemo(() => (txs.data ?? []).filter((t) =>
@@ -36,10 +39,11 @@ export default function Transactions() {
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-8 md:px-8 md:pt-12">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-xl font-semibold">Transactions</h1>
+        <h1 className="text-xl font-semibold">Transactions{portfolio && <span className="text-muted"> · {portfolio.name}</span>}</h1>
         <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-ghost" onClick={() => { setHoldingsOpen((o) => !o); setImportOpen(false); }}><FileXls size={16} /> Import holdings</button>
           <button type="button" className="btn-ghost" onClick={() => setImportOpen((o) => !o)}><UploadSimple size={16} /> Import CSV</button>
-          <a className="btn-ghost" href="/api/transactions/export" download><DownloadSimple size={16} /> Export CSV</a>
+          <a className="btn-ghost" href={`/api/transactions/export?${portfolioParam()}`} download><DownloadSimple size={16} /> Export CSV</a>
           {addTxFor === undefined && <button type="button" className="btn-primary" onClick={() => startAddTx(null)}><Plus size={16} /> Add transaction</button>}
         </div>
       </div>
@@ -53,6 +57,7 @@ export default function Transactions() {
       )}
 
       {importOpen && <CsvImport onClose={() => setImportOpen(false)} />}
+      {holdingsOpen && <HoldingsImport onClose={() => setHoldingsOpen(false)} />}
 
       <div className="mt-10 grid grid-cols-2 gap-3 md:flex md:items-end">
         <div className="col-span-2 md:w-44"><label className="label" htmlFor="f-t">Ticker</label><input id="f-t" className="field" placeholder="Any" value={fTicker} onChange={(e) => setFTicker(e.target.value)} /></div>
@@ -68,8 +73,9 @@ export default function Transactions() {
       {delErr && <ErrorLine message={delErr} />}
       <div className="mt-6">
         {txs.error ? <ErrorLine message={txs.error.message} onRetry={txs.reload} /> : !txs.data ? <ListSkeleton /> : txs.data.length === 0 ? (
-          <EmptyState title="No transactions yet." body="Add your first purchase, or import a CSV from your broker. Deposits are optional: buys without a deposit are treated as new money." >
-            <button type="button" className="btn-primary" onClick={() => startAddTx(null)}><Plus size={16} /> Add transaction</button>
+          <EmptyState title="This portfolio is empty." body="Import what it holds today from Excel (ticker, quantity, average price), or add purchases one by one. Deposits are optional: buys without a deposit are treated as new money.">
+            <button type="button" className="btn-primary" onClick={() => setHoldingsOpen(true)}><FileXls size={16} /> Import holdings</button>
+            <button type="button" className="btn-secondary" onClick={() => startAddTx(null)}><Plus size={16} /> Add transaction</button>
             <button type="button" className="link text-sm" onClick={() => setImportOpen(true)}>Import CSV</button>
           </EmptyState>
         ) : rows.length === 0 ? (

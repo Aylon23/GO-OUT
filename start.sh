@@ -11,10 +11,10 @@ if [ ! -x .venv/bin/python ]; then
   echo "Creating Python virtual environment"
   "$PY" -m venv .venv
 fi
-if [ ! -f .venv/.deps-ok ] || [ backend/requirements.txt -nt .venv/.deps-ok ]; then
+if ! cmp -s backend/requirements.txt .venv/.deps-ok; then
   echo "Installing Python packages"
   .venv/bin/pip install -q -r backend/requirements.txt
-  touch .venv/.deps-ok
+  cp backend/requirements.txt .venv/.deps-ok
 fi
 if [ ! -d frontend/node_modules ] || [ frontend/package.json -nt frontend/node_modules ]; then
   echo "Installing frontend packages"

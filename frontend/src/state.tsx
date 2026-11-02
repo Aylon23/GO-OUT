@@ -1,9 +1,19 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
-import { api, type RangeParams, type Settings, type SymbolItem } from "./lib/api";
+import { api, type PortfolioInfo, type RangeParams, setApiPortfolio, type Settings, type SymbolItem } from "./lib/api";
 import { invalidate } from "./lib/hooks";
 
-export type Route = "dashboard" | "holdings" | "risk" | "transactions" | "whatif" | "settings";
-const ROUTES: Route[] = ["dashboard", "holdings", "risk", "transactions", "whatif", "settings"];
+export type Route = "all" | "dashboard" | "holdings" | "risk" | "transactions" | "whatif" | "settings";
+const ROUTES: Route[] = ["all", "dashboard", "holdings", "risk", "transactions", "whatif", "settings"];
+
+const readPortfolio = (): number => {
+  try {
+    const n = Number(localStorage.getItem("portfolio"));
+    if (n > 0) return n;
+  } catch { /* ignore */ }
+  return 1;
+};
+// set before the first request goes out
+setApiPortfolio(readPortfolio());
 
 interface AppState {
   route: Route;
@@ -20,6 +30,11 @@ interface AppState {
   startAddTx: (s?: SymbolItem | null) => void;
   closeAddTx: () => void;
   refresh: () => void;
+  portfolios: PortfolioInfo[];
+  portfolioId: number;
+  portfolio: PortfolioInfo | null;
+  setPortfolio: (id: number) => void;
+  reloadPortfolios: () => Promise<PortfolioInfo[]>;
 }
 
 const Ctx = createContext<AppState | null>(null);
@@ -55,6 +70,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [quickView, setQuickView] = useState<SymbolItem | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [addTxFor, setAddTxFor] = useState<SymbolItem | null | undefined>(undefined);
+  const [portfolios, setPortfolios] = useState<PortfolioInfo[]>([]);
+  const [portfolioId, setPortfolioId] = useState<number>(readPortfolio);
+
+  const setPortfolio = useCallback((id: number) => {
+    setApiPortfolio(id);
+    setPortfolioId(id);
+    setAddTxFor(undefined);
+    try { localStorage.setItem("portfolio", String(id)); } catch { /* ignore */ }
+    invalidate();
+  }, []);
+  const reloadPortfolios = useCallback(async () => {
+    const list = await api.portfolios();
+    setPortfolios(list);
+    // the remembered portfolio may have been deleted
+    if (list.length && !list.some((p) => p.id === readPortfolio())) setPortfolio(list[0].id);
+    return list;
+  }, [setPortfolio]);
+  useEffect(() => { reloadPortfolios().catch(() => {}); }, [reloadPortfolios]);
 
   useEffect(() => {
     const h = () => setRoute(readRoute());
@@ -86,6 +119,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       route, go, range, setRange, settings, saveSettings, quickView, openQuickView: setQuickView, paletteOpen, setPaletteOpen,
       addTxFor, startAddTx, closeAddTx: () => setAddTxFor(undefined), refresh: invalidate,
+      portfolios, portfolioId, portfolio: portfolios.find((p) => p.id === portfolioId) ?? null, setPortfolio, reloadPortfolios,
     }}>
       {children}
     </Ctx.Provider>

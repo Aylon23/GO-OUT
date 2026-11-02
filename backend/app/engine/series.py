@@ -48,6 +48,7 @@ class Tx:
     fees: float = 0.0
     id: int | None = None
     note: str = ""
+    cost_price: float | None = None  # average cost for imported positions (gain/loss only)
 
 
 @dataclass
@@ -301,9 +302,10 @@ def holding_lots(txs: list[TxLike], ticker: str, splits: list[tuple[dt.date, flo
         q = t.quantity * factor
         rate = float(align(fx, [t.date]).iloc[0])
         if _type(t.type) == "BUY":
+            unit_cost = getattr(t, "cost_price", None) or t.price
             qty += q
-            cost_native += t.quantity * t.price + t.fees
-            cost_base += convert(t.quantity * t.price + t.fees, t.currency, base, rate)
+            cost_native += t.quantity * unit_cost + t.fees
+            cost_base += convert(t.quantity * unit_cost + t.fees, t.currency, base, rate)
         elif qty > 0:
             frac = min(q / qty, 1.0)
             proceeds = convert(t.quantity * t.price - t.fees, t.currency, base, rate)

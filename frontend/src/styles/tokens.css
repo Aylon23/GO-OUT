@@ -21,6 +21,12 @@
   --series-qqq: oklch(0.5 0.045 250);
   --series-4: oklch(0.55 0.05 170);
   --series-5: oklch(0.52 0.05 320);
+  /* one color per portfolio on the comparison chart */
+  --p1: oklch(0.53 0.125 48);
+  --p2: oklch(0.5 0.08 190);
+  --p3: oklch(0.52 0.09 300);
+  --p4: oklch(0.55 0.1 125);
+  --p5: oklch(0.5 0.1 15);
   --grid: oklch(0.92 0.006 75);
   --scrim: oklch(0.2 0.01 70 / 0.28);
   --avatar-l: 0.9;
@@ -59,6 +65,11 @@
     --series-qqq: oklch(0.7 0.05 250);
     --series-4: oklch(0.7 0.05 170);
     --series-5: oklch(0.7 0.05 320);
+    --p1: oklch(0.74 0.12 55);
+    --p2: oklch(0.74 0.08 190);
+    --p3: oklch(0.74 0.08 300);
+    --p4: oklch(0.76 0.1 125);
+    --p5: oklch(0.72 0.1 15);
     --grid: oklch(0.27 0.007 70);
     --scrim: oklch(0.1 0.01 70 / 0.5);
     --avatar-l: 0.34;
@@ -87,6 +98,11 @@
   --series-qqq: oklch(0.7 0.05 250);
   --series-4: oklch(0.7 0.05 170);
   --series-5: oklch(0.7 0.05 320);
+  --p1: oklch(0.74 0.12 55);
+  --p2: oklch(0.74 0.08 190);
+  --p3: oklch(0.74 0.08 300);
+  --p4: oklch(0.76 0.1 125);
+  --p5: oklch(0.72 0.1 15);
   --grid: oklch(0.27 0.007 70);
   --scrim: oklch(0.1 0.01 70 / 0.5);
   --avatar-l: 0.34;
