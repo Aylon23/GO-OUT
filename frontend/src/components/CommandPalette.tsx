@@ -2,7 +2,7 @@ import { Check, Lightning } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type OmniDraft } from "../lib/api";
-import { dateLong, money, num } from "../lib/format";
+import { dateLong, money, num, today } from "../lib/format";
 import { invalidate, useDebounced } from "../lib/hooks";
 import { useApp } from "../state";
 import { SymbolSearch } from "./SymbolSearch";
@@ -14,7 +14,9 @@ export const looksLikeCommand = (q: string) => VERB.test(q) || (/\d/.test(q) && 
 const TYPE_WORD: Record<string, string> = { BUY: "Buy", SELL: "Sell", DIVIDEND: "Dividend", DEPOSIT: "Deposit", WITHDRAWAL: "Withdraw" };
 
 export function CommandPalette() {
-  const { paletteOpen, setPaletteOpen, openQuickView, reloadPortfolios } = useApp();
+  const { paletteOpen, setPaletteOpen, openQuickView, reloadPortfolios, portfolios } = useApp();
+  const [picked, setPicked] = useState<number[] | null>(null); // portfolio picker answer
+  const [choose, setChoose] = useState<Record<string, string | number>>({}); // "Did you mean…" answers
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<OmniDraft | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -33,15 +35,18 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", h);
   }, [paletteOpen, setPaletteOpen]);
 
-  useEffect(() => { if (!paletteOpen) { setQuery(""); setDraft(null); setErr(null); setDone(null); } }, [paletteOpen]);
+  useEffect(() => { if (!paletteOpen) { setQuery(""); setDraft(null); setErr(null); setDone(null); setPicked(null); setChoose({}); } }, [paletteOpen]);
+  // a new sentence starts fresh: no carried-over picks
+  useEffect(() => { setPicked(null); setChoose({}); }, [debounced]);
 
   useEffect(() => {
     if (!debounced.trim()) { setDraft(null); return; }
     const ctl = new AbortController();
     setErr(null);
-    api.omnibox(debounced, ctl.signal).then(setDraft).catch((e) => { if (e.name !== "AbortError") setErr(e instanceof ApiError ? e.message : "Couldn't read that."); });
+    api.omnibox(debounced, { today: today(), portfolio_ids: picked ?? undefined, choose }, ctl.signal)
+      .then(setDraft).catch((e) => { if (e.name !== "AbortError") setErr(e instanceof ApiError ? e.message : "Couldn't read that."); });
     return () => ctl.abort();
-  }, [debounced]);
+  }, [debounced, picked, choose]);
 
   const ready = !!draft && draft.missing.length === 0 && debounced === query;
   const save = useCallback(async () => {
@@ -70,7 +75,8 @@ export function CommandPalette() {
         <SymbolSearch key={inputKey} variant="list" size="lg" autoFocus placeholder="Search a stock, or type: bought 5 QQQ"
           onEscape={() => setPaletteOpen(false)} onQueryChange={onQuery} suppressResults={command} onSubmitQuery={save}
           onSelect={(s) => { setPaletteOpen(false); openQuickView(s); }} />
-        {command && <DraftCard draft={draft} pending={debounced !== query} err={err} busy={busy} ready={ready} onSave={save} logCall={logCall} setLogCall={setLogCall} />}
+        {command && <DraftCard draft={draft} pending={debounced !== query} err={err} busy={busy} ready={ready} onSave={save} logCall={logCall} setLogCall={setLogCall}
+          portfolios={portfolios} onPick={setPicked} onChoose={(k, v) => setChoose((c) => ({ ...c, [k]: v }))} />}
         {done && !command && (
           <p className="flex items-center gap-2 border-b border-line px-4 py-3 text-sm" role="status"><Check size={16} className="text-gain" />{done}</p>
         )}
@@ -104,9 +110,10 @@ const MISSING: Record<string, string> = {
   position: "None of these portfolios holds it.",
 };
 
-function DraftCard({ draft, pending, err, busy, ready, onSave, logCall, setLogCall }: {
+function DraftCard({ draft, pending, err, busy, ready, onSave, logCall, setLogCall, portfolios, onPick, onChoose }: {
   draft: OmniDraft | null; pending: boolean; err: string | null; busy: boolean; ready: boolean; onSave: () => void;
   logCall: boolean; setLogCall: (v: boolean) => void;
+  portfolios: { id: number; name: string }[]; onPick: (ids: number[]) => void; onChoose: (k: string, v: string | number) => void;
 }) {
   return (
     <div className="border-b border-line px-4 py-4" aria-live="polite">
@@ -119,22 +126,39 @@ function DraftCard({ draft, pending, err, busy, ready, onSave, logCall, setLogCa
             <div className="min-w-0 flex-1">
               <p className="num text-base">{draft.missing.length ? <span className="text-muted">{TYPE_WORD[draft.type]} {draft.ticker || "…"}</span> : describe(draft)}</p>
               <p className="mt-1 text-sm text-muted">
-                Into {draft.targets.filter((t) => !t.skip).map((t, i) => (
+                {draft.targets.length > 0 && "Into "}{draft.targets.filter((t) => !t.skip).map((t, i) => (
                   <span key={t.portfolio_id}>{i > 0 && ", "}<span className="font-medium text-text">{t.portfolio_name}</span>
                     {draft.type === "SELL" && t.quantity != null && <span className="num"> ({num(t.quantity, 4)})</span>}</span>))}
-                {draft.price_source === "close" && " · price is that day's close"}
+                {draft.price_source === "close" && draft.price_date && `${draft.targets.length ? " · " : ""}Price as of ${dateLong(draft.price_date)}`}
               </p>
               {draft.targets.filter((t) => t.skip).map((t) => (
                 <p key={t.portfolio_id} className="mt-1 text-xs text-faint">Skips {t.portfolio_name}: {t.reason}.</p>
               ))}
-              {!draft.portfolio_matched && <p className="mt-1 text-xs text-faint">No portfolio named, so it goes to the one you have open. Add a name or a nickname (Settings) to choose.</p>}
+
               {(draft.type === "BUY" || draft.type === "SELL") && (
                 <label className="mt-2 flex items-center gap-2 text-sm text-muted">
                   <input type="checkbox" className="accent-[var(--accent)]" checked={logCall} onChange={(e) => setLogCall(e.target.checked)} />
                   Save as my recommendation
                 </label>
               )}
-              {draft.missing.map((m) => <p key={m} className="mt-2 text-sm text-loss">{MISSING[m]}</p>)}
+              {draft.choices.ticker && (
+                <div className="mt-3"><p className="text-sm">Did you mean…</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">{draft.choices.ticker.map((t) => (
+                    <button key={t} type="button" className="btn-secondary h-8 font-mono" onClick={() => onChoose("ticker", t)}>{t}</button>))}</div></div>
+              )}
+              {draft.choices.quantity && (
+                <div className="mt-3"><p className="text-sm">How many shares did you mean?</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">{draft.choices.quantity.map((q) => (
+                    <button key={q} type="button" className="btn-secondary h-8 num" onClick={() => onChoose("quantity", q)}>{num(q, 4)}</button>))}</div></div>
+              )}
+              {draft.missing.includes("portfolio") && (
+                <div className="mt-3"><p className="text-sm">Whose portfolio? <span className="text-xs text-faint">No name in the text matched a portfolio.</span></p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {portfolios.map((p) => <button key={p.id} type="button" className="btn-secondary h-8" onClick={() => onPick([p.id])}>{p.name}</button>)}
+                    <button type="button" className="btn-ghost h-8" onClick={() => onPick(portfolios.map((p) => p.id))}>Everyone</button>
+                  </div></div>
+              )}
+              {draft.missing.filter((m) => m !== "portfolio" && m !== "choice").map((m) => <p key={m} className="mt-2 text-sm text-loss">{MISSING[m]}</p>)}
               {draft.warnings.map((w) => <p key={w} className="mt-1 text-xs text-faint">{w}</p>)}
             </div>
             <button type="button" className="btn-primary shrink-0" disabled={!ready || busy} onClick={onSave}>{busy ? "Adding" : "Add"}</button>

@@ -59,10 +59,11 @@ export function SeriesChart({ dates, series, format, short, end, height = 320, b
     }
     if (!out.length || spanDays <= 120) {
       const n = 5;
-      return Array.from({ length: n }, (_, i) => dates[Math.round((i * (dates.length - 1)) / (n - 1))]);
+      // few dates: evenly spaced picks can repeat, and repeated ticks break the axis
+      return Array.from(new Set(Array.from({ length: n }, (_, i) => dates[Math.round((i * (dates.length - 1)) / (n - 1))])));
     }
     const step = Math.ceil(out.length / 7);
-    return out.filter((_, i) => i % step === 0).slice(out[0] === dates[0] && out.length > 1 ? 1 : 0);
+    return Array.from(new Set(out.filter((_, i) => i % step === 0).slice(out[0] === dates[0] && out.length > 1 ? 1 : 0)));
   }, [dates, spanDays]);
 
   const axis = useMemo(() => niceAxis(series.flatMap((s) => s.values), baseline), [series, baseline]);

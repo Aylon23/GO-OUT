@@ -18,6 +18,7 @@ from sqlmodel import Session
 from .engine.returns import base_index, range_start
 from .engine.series import align, total_return_in_base
 from .market.cache import NoPriceData
+from .market.names import clean_name
 from .market.provider import ProviderError, get_provider
 from .models import Fundamentals, Portfolio, SymbolMeta
 from .services import Context, _f, _sample_positions, fx_series, get_settings, market_data, open_positions
@@ -164,7 +165,7 @@ def metrics_payload(session: Session, pids: list[int], symbols: list[str], code:
         meta = session.get(SymbolMeta, sym)
         note = f"P/E via {INDEX_PROXY[sym]}" if sym in INDEX_PROXY else ""
         add(sym, sym, "symbol", price, {"trailing_pe": f.trailing_pe, "forward_pe": f.forward_pe,
-                                         "dividend_yield": f.dividend_yield, "name": meta.name if meta else sym}, note)
+                                         "dividend_yield": f.dividend_yield, "name": clean_name(meta.name if meta else sym, sym)}, note)
 
     pos = _sample_positions(0, len(in_range) - 1)
     return {

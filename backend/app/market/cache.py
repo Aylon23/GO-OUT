@@ -21,7 +21,7 @@ from ..models import PriceCache, PriceCoverage, SplitEvent, SymbolMeta
 from .provider import ProviderError, get_provider
 
 FX_TICKER = "ILS=X"
-STALE_AFTER = dt.timedelta(hours=6)
+STALE_AFTER = dt.timedelta(minutes=30)  # one consistent "latest" across symbols
 
 _lock = threading.RLock()
 _mem: dict[str, tuple[dt.date, pd.DataFrame]] = {}

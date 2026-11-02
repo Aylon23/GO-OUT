@@ -336,7 +336,10 @@ def list_portfolios(session: Session = Depends(get_session)):
 
 @router.post("/portfolios")
 def create_portfolio(body: PortfolioIn, session: Session = Depends(get_session)):
-    p = Portfolio(name=_clean_name(body.name), note=body.note.strip(), aliases=_clean_aliases(body.aliases))
+    from ..market.names import auto_aliases
+
+    name = _clean_name(body.name)
+    p = Portfolio(name=name, note=body.note.strip(), aliases=_clean_aliases(body.aliases) or ", ".join(auto_aliases(name)))
     session.add(p)
     session.commit()
     session.refresh(p)
@@ -428,16 +431,19 @@ def metrics(portfolios: str = "", symbols: str = "SPY,QQQ,XLK", range: str = "1Y
 
 class OmniIn(BaseModel):
     text: str
+    today: dt.date | None = None  # the user's local date (from the browser)
+    portfolio_ids: list[int] | None = None  # chosen in the portfolio picker
+    choose: dict | None = None  # answers to "Did you mean…"
 
 
 @router.post("/omnibox")
-def omnibox(body: OmniIn, pid: int = PID, session: Session = Depends(get_session)):
+def omnibox(body: OmniIn, session: Session = Depends(get_session)):
     """Turn a sentence like "קניתי 5 מניות של QQQ" into a draft transaction (not saved)."""
     from .. import omnibox as ob
 
     if not body.text.strip():
         _bad("Type what you bought or sold.")
-    return ob.parse(session, body.text[:300], pid)
+    return ob.parse(session, body.text[:300], today=body.today, force_pids=body.portfolio_ids, choose=body.choose)
 
 
 class OmniCommitIn(BaseModel):

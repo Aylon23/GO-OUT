@@ -18,7 +18,7 @@ export default function Risk() {
     <div className="mx-auto max-w-content px-4 pb-24 pt-8 md:px-8 md:pt-12">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="text-xl font-semibold">Risk and stats</h1>
-        <RangeSelector />
+        <RangeSelector trackingSince={real && !real.empty ? real.range.tracking_since : undefined} />
       </div>
       {q.error && !real ? <ErrorLine message={q.error.message} onRetry={q.reload} /> : !d ? <RiskSkeleton /> : short ? (
         <EmptyState title="Not enough real history yet."

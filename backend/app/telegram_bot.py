@@ -201,19 +201,30 @@ class Bot:
             return
         # free text: a trade
         try:
-            d = parse(s, text, default_pid=0)
+            d = parse(s, text)
         except Exception as exc:  # parsing should never take the bot down
             self.send(chat, f"לא הצלחתי להבין: {exc}")
             return
-        if not d["portfolio_matched"]:
-            key = self._remember({"text": text})
-            ps = s.exec(select(Portfolio).order_by(Portfolio.id)).all()
-            buttons = [[(p.name, f"pf:{key}:{p.id}")] for p in ps] + [[("כל התיקים", f"pf:{key}:all"), ("❌ ביטול", f"no:{key}")]]
-            self.send(chat, "לאיזה תיק?", buttons)
-            return
         self.offer(s, chat, d)
 
-    def offer(self, s: Session, chat: str, d: dict) -> None:
+    def ask_portfolio(self, s: Session, chat: str, d: dict) -> None:
+        key = self._remember({"text": d["text"], "choose": d.get("_choose") or {}})
+        ps = s.exec(select(Portfolio).order_by(Portfolio.id)).all()
+        buttons = [[(p.name, f"pf:{key}:{p.id}")] for p in ps] + [[("כל התיקים", f"pf:{key}:all"), ("❌ ביטול", f"no:{key}")]]
+        self.send(chat, "לאיזה תיק?", buttons)
+
+    def offer(self, s: Session, chat: str, d: dict, force_pids: list[int] | None = None, choose: dict | None = None) -> None:
+        if d.get("choices"):
+            key = self._remember({"text": d["text"], "force": force_pids, "choose": choose or {}})
+            dim, opts = next(iter(d["choices"].items()))
+            label = "איזו מניה?" if dim == "ticker" else "כמה?"
+            self.send(chat, "התכוונת ל… " + label, [[(f"{o:g}" if isinstance(o, float) else str(o), f"ch:{key}:{dim}={o}") for o in opts],
+                                                     [("❌ ביטול", f"no:{key}")]])
+            return
+        if "portfolio" in d["missing"]:
+            d["_choose"] = choose
+            self.ask_portfolio(s, chat, d)
+            return
         if d["missing"]:
             self.send(chat, "\n".join(MISSING_HE.get(m, m) for m in d["missing"]))
             return
@@ -240,15 +251,22 @@ class Bot:
             self.client.call("editMessageText", chat_id=chat, message_id=message_id, text="בוטל.")
             return
         if kind == "pf":
-            text = d["text"]
+            choose = d.get("choose") or {}
             if extra == "all":
-                text += " כולם"
-                pid = 0
+                force = [p.id for p in s.exec(select(Portfolio)).all()]
             else:
-                pid = int(extra)
-            d2 = parse(s, text, default_pid=pid)
+                force = [int(extra)]
+            d2 = parse(s, d["text"], force_pids=force, choose=choose)
             self.client.call("editMessageText", chat_id=chat, message_id=message_id, text=f"תיק: {', '.join(t['portfolio_name'] for t in d2['targets'])}")
-            self.offer(s, chat, d2)
+            self.offer(s, chat, d2, force, choose)
+            return
+        if kind == "ch":
+            dim, _, val = extra.partition("=")
+            choose = dict(d.get("choose") or {})
+            choose[dim] = float(val) if dim == "quantity" else val
+            d2 = parse(s, d["text"], force_pids=d.get("force"), choose=choose)
+            self.client.call("editMessageText", chat_id=chat, message_id=message_id, text=f"בחרת: {val}")
+            self.offer(s, chat, d2, d.get("force"), choose)
             return
         try:
             out = commit(s, d, log_call=(kind == "ok"))

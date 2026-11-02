@@ -7,7 +7,7 @@ import { HoldingsImport } from "../components/HoldingsImport";
 import { ChartSkeleton, colorFor, InlineLegend, SeriesChart, type SeriesDef } from "../components/chart/SeriesChart";
 import { EmptyState, ErrorLine, InfoTip, Segmented, Signed, Skel } from "../components/ui";
 import { api, ApiError, type Overview, type OverviewRow } from "../lib/api";
-import { compactMoney, dateLong, money, pct, pp } from "../lib/format";
+import { compactMoney, dateLong, money, pct, pp, rangeStartDate } from "../lib/format";
 import { useData } from "../lib/hooks";
 import { useApp } from "../state";
 import { rangePhrase } from "./Dashboard";
@@ -23,12 +23,15 @@ export default function AllPortfolios() {
   const open = (r: OverviewRow, page: "dashboard" | "transactions" = "dashboard") => { setPortfolio(r.id); go(page); };
   const [importing, setImporting] = useState(false);
   const [report, setReport] = useState(false);
+  // a range is offered when at least one portfolio has real history that far back
+  const firstTracked = d?.rows.filter((r) => r.tracking_since).map((r) => r.tracking_since!).sort()[0];
+  const tooEarly = (c: string) => { const st = rangeStartDate(c); return !!(firstTracked && st && st < firstTracked); };
 
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-10 md:px-8 md:pt-16">
       {q.error && !d ? <ErrorLine message={q.error.message} onRetry={q.reload} /> : !d ? <OverviewSkeleton /> : (
         <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 [&>h1]:min-w-0">
             <Headline d={d} code={code} />
             {!d.rows.every((r) => r.empty) && <button type="button" className="btn-ghost shrink-0" onClick={() => setReport(true)}><FileText size={16} /> Report</button>}
           </div>
@@ -42,8 +45,8 @@ export default function AllPortfolios() {
               <section className="mt-12" aria-label="Comparison chart">
                 <div className="flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-between">
                   <InlineLegend items={legend(d)} />
-                  <Segmented label="Date range" accent size="sm" value={code} onChange={(v) => setRange({ range: v })}
-                    options={CODES.map((c) => ({ value: c, label: c }))} />
+                  <Segmented label="Date range" accent size="sm" value={tooEarly(code) ? "MAX" : code} onChange={(v) => setRange({ range: v })}
+                    options={CODES.map((c) => ({ value: c, label: c, disabled: tooEarly(c), title: tooEarly(c) ? `Tracking started ${dateLong(firstTracked!)}` : undefined }))} />
                 </div>
                 <div className="mt-4">
                   <SeriesChart ariaLabel="All portfolios versus SPY and QQQ, rebased to 100" dates={d.chart.dates} series={chartSeries(d)} baseline={100}
@@ -145,7 +148,7 @@ function PortfolioTable({ d, code, onOpen }: { d: Overview; code: string; onOpen
             <Kv k="Gain vs cost" v={<Signed value={r.cost_gain}>{money(r.cost_gain, d.base, { signed: true, decimals: 0 })} ({pct(r.cost_gain_pct, 1)})</Signed>} />
             <Kv k="Return" v={<Signed value={r.return}>{pct(r.return, 1)}</Signed>} />
             <Kv k="vs S&P 500" v={<Signed value={diff(r)}>{pp(diff(r), 1)}</Signed>} />
-            <Kv k="Today" v={<Signed value={r.today_pct}>{pct(r.today_pct, 2)}</Signed>} />
+            <Kv k="Today" v={<Signed value={r.today_change}>{money(r.today_change, d.base, { signed: true, decimals: 0 })} ({pct(r.today_pct, 2)})</Signed>} />
           </div>
           <div className={clsx("hidden items-center gap-3 py-3 lg:grid", cols)}>
             <span className="flex min-w-0 items-center gap-2.5">
@@ -165,7 +168,10 @@ function PortfolioTable({ d, code, onOpen }: { d: Overview; code: string; onOpen
               {r.short_history && r.period_start && <span className="block text-xs text-faint">since {dateLong(r.period_start)}</span>}
             </span>
             <Signed value={diff(r)} className="text-right">{pp(diff(r), 1)}</Signed>
-            <Signed value={r.today_pct} className="text-right">{pct(r.today_pct, 2)}</Signed>
+            <span className="text-right leading-5">
+              <Signed value={r.today_change} className="block">{money(r.today_change, d.base, { signed: true, decimals: 0 })}</Signed>
+              <Signed value={r.today_pct} className="block text-xs">{pct(r.today_pct, 2)}</Signed>
+            </span>
             <span className="num text-right text-muted">{r.tracking_since ? dateLong(r.tracking_since) : "–"}</span>
           </div>
         </div>

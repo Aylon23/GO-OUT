@@ -25,8 +25,9 @@ def create_call(session: Session, ticker: str, action: str, date: dt.date, thesi
     ticker, action = ticker.upper().strip(), action.upper()
     if action not in ("BUY", "SELL"):
         raise ValueError("A call is BUY or SELL.")
-    p = price_on(session, ticker, date)  # raises if the ticker has no prices
-    rec = Recommendation(ticker=ticker, action=action, date=dt.date.fromisoformat(p["date"]), price=p["close"], thesis=thesis.strip(), target=target)
+    p = price_on(session, ticker, date)  # latest close on or before the date; raises if no prices
+    # the call keeps the date it was made; its price is the latest close available then
+    rec = Recommendation(ticker=ticker, action=action, date=date, price=p["close"], thesis=thesis.strip(), target=target)
     session.add(rec)
     if action == "SELL":  # selling closes any open BUY call on the same ticker
         for open_buy in session.exec(select(Recommendation).where(Recommendation.ticker == ticker, Recommendation.action == "BUY",

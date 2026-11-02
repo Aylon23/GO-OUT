@@ -61,3 +61,13 @@ export const today = () => {
   const t = new Date();
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 };
+
+/** Start date of a range code, the same rule as the server (used to disable ranges). */
+export function rangeStartDate(code: string, end = new Date()): string | null {
+  const y = end.getFullYear(), m = end.getMonth(), d = end.getDate();
+  const iso = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  const months: Record<string, number> = { "1M": 1, "3M": 3, "1Y": 12, "3Y": 36, "5Y": 60 };
+  if (code === "YTD") return `${y - 1}-12-31`;
+  if (months[code]) return iso(new Date(y, m - months[code], Math.min(d, 28)));
+  return null;
+}

@@ -28,8 +28,29 @@ def p(ctx, text, pid=1):
 
 def test_hebrew_buy_shares(ctx):
     d = p(ctx, "קניתי 5 מניות של QQQ")
-    assert (d["type"], d["ticker"], d["quantity"], d["price"], d["portfolio_id"]) == ("BUY", "QQQ", 5, 500, 1)
-    assert d["price_source"] == "close" and d["missing"] == []
+    assert (d["type"], d["ticker"], d["quantity"], d["price"]) == ("BUY", "QQQ", 5, 500)
+    assert d["price_source"] == "close"
+    # no portfolio named: never falls back to the open one, asks instead
+    assert d["missing"] == ["portfolio"] and d["targets"] == []
+    d = parse(ctx, "קניתי 5 מניות של QQQ", today=TODAY, force_pids=[2])
+    assert d["missing"] == [] and [t["portfolio_name"] for t in d["targets"]] == ["אבא"]
+
+
+def test_date_is_what_the_user_said_price_is_latest(ctx):
+    # the cached prices end two days ago; the trade still gets today's date, the price is labeled
+    d = parse(ctx, "אבא קנה 5 QQQ", today=TODAY + dt.timedelta(days=2))
+    assert d["date"] == (TODAY + dt.timedelta(days=2)).isoformat() and d["price_date"] == TODAY.isoformat()
+
+
+def test_did_you_mean_for_two_tickers_or_two_quantities(ctx):
+    d = p(ctx, "אבא קנה 5 QQQ SPY")
+    assert d["choices"] == {"ticker": ["QQQ", "SPY"]} and d["missing"] == ["choice"] and d["quantity"] == 5
+    d = parse(ctx, "אבא קנה 5 QQQ SPY", today=TODAY, choose={"ticker": "SPY"})
+    assert d["ticker"] == "SPY" and d["missing"] == []
+    d = p(ctx, "אבא קנה 5 מניות 10 מניות QQQ")
+    assert d["choices"] == {"quantity": [5.0, 10.0]}
+    d = parse(ctx, "אבא קנה 5 מניות 10 מניות QQQ", today=TODAY, choose={"quantity": 10})
+    assert d["quantity"] == 10 and d["missing"] == []
 
 
 def test_portfolio_by_name_and_amount(ctx):

@@ -37,6 +37,9 @@ class MarketProvider(Protocol):
     def recent_closes(self, tickers: list[str]) -> dict[str, list[tuple[dt.date, float]]]:
         """Last few daily closes for each ticker (raw units), oldest first."""
 
+    def fund_sectors(self, ticker: str) -> tuple[dict[str, float], str]:
+        """A fund's sector weights ({"technology": 0.5, ...}) and its category, if any."""
+
 
 def _frame_from_yahoo(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
@@ -99,6 +102,18 @@ class YahooProvider:
             return dict(self.yf.Ticker(ticker).info or {})
         except Exception as exc:
             raise ProviderError(str(exc)) from exc
+
+    def fund_sectors(self, ticker: str) -> tuple[dict[str, float], str]:
+        t = self.yf.Ticker(ticker)
+        try:
+            weights = dict(t.funds_data.sector_weightings or {})
+        except Exception:
+            weights = {}
+        try:
+            category = (t.info or {}).get("category") or ""
+        except Exception:
+            category = ""
+        return weights, category
 
     def recent_closes(self, tickers: list[str]) -> dict[str, list[tuple[dt.date, float]]]:
         out: dict[str, list[tuple[dt.date, float]]] = {}

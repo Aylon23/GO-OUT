@@ -1,12 +1,13 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
-import { today } from "../lib/format";
+import { dateLong, rangeStartDate, today } from "../lib/format";
 import { useApp } from "../state";
 import { Segmented } from "./ui";
 
 const CODES = ["1M", "3M", "YTD", "1Y", "3Y", "5Y", "MAX"] as const;
 
-export function RangeSelector() {
+/** `trackingSince`: ranges that would start before real tracking began are disabled. */
+export function RangeSelector({ trackingSince }: { trackingSince?: string }) {
   const { range, setRange } = useApp();
   const [open, setOpen] = useState(false);
   const [start, setStart] = useState(range.start ?? "");
@@ -18,11 +19,15 @@ export function RangeSelector() {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
-  const opts = [...CODES.map((c) => ({ value: c as string, label: c })), { value: "CUSTOM", label: "Custom" }];
+  const tooEarly = (c: string) => { const st = rangeStartDate(c); return !!(trackingSince && st && st < trackingSince); };
+  const tip = trackingSince ? `Tracking started ${dateLong(trackingSince)}` : undefined;
+  const opts = [...CODES.map((c) => ({ value: c as string, label: c, disabled: tooEarly(c), title: tooEarly(c) ? tip : undefined })),
+    { value: "CUSTOM", label: "Custom" }];
+  const shown = tooEarly(range.range) ? "MAX" : range.range;
   const err = start && end && start > end ? "Start must be before end." : "";
   return (
     <div ref={ref} className="relative">
-      <Segmented label="Date range" accent size="sm" options={opts} value={range.range}
+      <Segmented label="Date range" accent size="sm" options={opts} value={shown}
         onChange={(v) => { if (v === "CUSTOM") setOpen(true); else { setOpen(false); setRange({ range: v }); } }} />
       {open && (
         <form className="pop-in absolute right-0 top-full z-30 mt-1.5 w-[280px] rounded-md bg-surface p-4 shadow-pop"

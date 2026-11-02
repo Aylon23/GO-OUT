@@ -15,7 +15,7 @@ from .engine.returns import base_index, range_start, rebased
 from .engine.series import align, fx_factor, total_return_in_base
 from .market.cache import NoPriceData, currency_for, guess_currency, price_on
 from .models import Portfolio, Transaction, TxType
-from .services import Context, _clean, _f, _sample_positions, cost_summary, market_data, open_positions, realized_summary
+from .services import Context, _clean, _f, _sample_positions, cost_summary, day_change, market_data, open_positions, realized_summary
 
 # ------------------------------------------------------------------ CRUD
 
@@ -160,7 +160,8 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
             "realized": _f(realized_summary(ctx)["total"]),
             "cost_gain": _f(cost["gain"]),
             "cost_gain_pct": _f(cost["gain_pct"]),
-            "today_pct": _f(s.ret.iloc[e]) if e > 0 else None,
+            "today_pct": _f(day_change(ctx)["pct"]),
+            "today_change": _f(day_change(ctx)["total"]),
             "tracking_since": first_trade.isoformat(),
             "period_start": s.dates[b].isoformat(),
             "short_history": start < first_trade,
@@ -407,7 +408,9 @@ def import_holdings(session: Session, pid: int, rows: list[dict], as_of: dt.date
         if name:
             p = by_name.get(name.lower())
             if p is None:
-                p = Portfolio(name=name[:60])
+                from .market.names import auto_aliases
+
+                p = Portfolio(name=name[:60], aliases=", ".join(auto_aliases(name[:60])))
                 session.add(p)
                 session.commit()
                 session.refresh(p)
@@ -431,7 +434,7 @@ def import_holdings(session: Session, pid: int, rows: list[dict], as_of: dt.date
                 continue
             m = meta.get(r["ticker"])
             if m and m.get("name"):
-                remember_selection(session, {"symbol": r["ticker"], "name": m["name"].title() if m["name"].isupper() else m["name"],
+                remember_selection(session, {"symbol": r["ticker"], "name": m["name"],
                                              "type": "ETF" if m.get("type") == "ETF" else "Stock", "currency": r["currency"]})
             session.add(Transaction(portfolio_id=target, ticker=r["ticker"], type=TxType.BUY, date=dt.date.fromisoformat(r["price_date"]),
                                     quantity=r["quantity"], price=r["price"], currency=r["currency"],

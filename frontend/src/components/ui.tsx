@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useMediaQuery } from "../lib/hooks";
 
 export function Segmented<T extends string>({ options, value, onChange, label, accent = false, size = "md" }: {
-  options: { value: T; label: string }[]; value: T; onChange: (v: T) => void; label: string; accent?: boolean; size?: "sm" | "md";
+  options: { value: T; label: string; disabled?: boolean; title?: string }[]; value: T; onChange: (v: T) => void; label: string; accent?: boolean; size?: "sm" | "md";
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const idx = options.findIndex((o) => o.value === value);
@@ -12,18 +12,23 @@ export function Segmented<T extends string>({ options, value, onChange, label, a
     const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (!d) return;
     e.preventDefault();
-    const n = (idx + d + options.length) % options.length;
+    let n = idx;
+    for (let k = 0; k < options.length; k++) {  // skip disabled options
+      n = (n + d + options.length) % options.length;
+      if (!options[n].disabled) break;
+    }
     onChange(options[n].value);
     refs.current[n]?.focus();
   };
   return (
-    <div role="radiogroup" aria-label={label} onKeyDown={onKey} className="inline-flex max-w-full overflow-x-auto rounded-sm bg-sunken p-0.5">
+    <div role="radiogroup" aria-label={label} onKeyDown={onKey} className="inline-flex max-w-full flex-wrap rounded-sm bg-sunken p-0.5">
       {options.map((o, i) => {
         const on = o.value === value;
         return (
           <button key={o.value} ref={(el) => { refs.current[i] = el; }} type="button" role="radio" aria-checked={on} tabIndex={on ? 0 : -1}
-            onClick={() => onChange(o.value)}
+            onClick={() => { if (!o.disabled) onChange(o.value); }} aria-disabled={o.disabled || undefined} title={o.title}
             className={clsx("press shrink-0 whitespace-nowrap rounded-[5px] font-medium", size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-sm",
+              o.disabled ? "cursor-not-allowed text-faint opacity-50" :
               on ? clsx("bg-surface shadow-[0_1px_2px_var(--line)]", accent ? "text-accent" : "text-text") : "text-muted hover:text-text")}>
             {o.label}
           </button>

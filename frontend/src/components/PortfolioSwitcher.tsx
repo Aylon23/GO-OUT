@@ -36,7 +36,7 @@ export function PortfolioSwitcher() {
   return (
     <div ref={ref} className="relative shrink-0">
       <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}
-        className="press flex h-8 max-w-[180px] items-center gap-1.5 rounded-sm px-2 text-sm font-medium hover:bg-hover">
+        className="press flex h-8 max-w-[150px] items-center gap-1.5 rounded-sm px-2 text-sm font-medium hover:bg-hover">
         <span className="truncate">{label}</span>
         <CaretUpDown size={14} className="shrink-0 text-faint" />
       </button>

@@ -151,6 +151,10 @@ class Settings(SQLModel, table=True):
     telegram_pair_code: str = ""
     weekly_report: bool = True
     weekly_report_sent: str = ""  # date of the last Sunday summary sent
+    aliases_backfilled: bool = False  # nicknames generated once for portfolios made before nicknames existed
 
     def benchmark_list(self) -> list[str]:
         return [b.strip().upper() for b in self.benchmarks.split(",") if b.strip()]
+
+
+from .market.funds import FundSectors  # noqa: E402,F401  (registers the table)

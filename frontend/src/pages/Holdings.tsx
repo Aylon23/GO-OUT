@@ -8,23 +8,28 @@ import { RangeSelector } from "../components/RangeSelector";
 import { EmptyState, ErrorLine, InfoTip, SidePanel, Signed, Skel } from "../components/ui";
 import { api, type HoldingRow, type Holdings as H } from "../lib/api";
 import { dateLong, money, monthYear, num, pct, pp } from "../lib/format";
-import { useData } from "../lib/hooks";
+import { useData, useMediaQuery } from "../lib/hooks";
 import { useApp } from "../state";
 
-type Key = "ticker" | "quantity" | "avg_cost" | "price" | "value" | "weight" | "unrealized" | "unrealized_pct" | "range_return" | "contribution";
+type Key = "ticker" | "quantity" | "avg_cost" | "price" | "value" | "weight" | "unrealized" | "unrealized_pct" | "today" | "range_return" | "contribution";
 const COLS: { key: Key; label: string; tip?: string; right?: boolean; w: string }[] = [
-  { key: "ticker", label: "Symbol", w: "minmax(180px,1.6fr)" },
-  { key: "quantity", label: "Qty", right: true, w: "80px" },
-  { key: "avg_cost", label: "Avg cost", right: true, w: "96px", tip: "Average price paid per share you still hold, after splits." },
-  { key: "price", label: "Price", right: true, w: "96px" },
-  { key: "value", label: "Value", right: true, w: "112px" },
-  { key: "weight", label: "Weight", right: true, w: "110px" },
-  { key: "unrealized", label: "Unrealized", right: true, w: "128px", tip: "Gain or loss on shares you still hold, in your base currency, at today's price and FX." },
-  { key: "range_return", label: "Return", right: true, w: "84px", tip: "This holding's return over the selected range, while you held it." },
-  { key: "contribution", label: "Contrib.", right: true, w: "92px", tip: "How many percentage points this holding added to or took from your portfolio's return over the range." },
+  { key: "ticker", label: "Symbol", w: "minmax(140px,1.6fr)" },
+  { key: "quantity", label: "Qty", right: true, w: "64px" },
+  { key: "avg_cost", label: "Avg cost", right: true, w: "88px", tip: "Average price paid per share you still hold, after splits." },
+  { key: "price", label: "Price", right: true, w: "88px" },
+  { key: "value", label: "Value", right: true, w: "100px" },
+  { key: "weight", label: "Weight", right: true, w: "84px" },
+  { key: "unrealized", label: "Unrealized", right: true, w: "112px", tip: "(Price now minus average cost) x shares. Shown in the stock's own currency for positions imported without dates." },
+  { key: "today", label: "Today", right: true, w: "88px", tip: "Today's move: last close vs the close before, times your shares." },
+  { key: "range_return", label: "Return", right: true, w: "72px", tip: "This holding's return over the selected range, while you held it." },
+  { key: "contribution", label: "Contrib.", right: true, w: "80px", tip: "How many percentage points this holding added to or took from your portfolio's return over the range." },
 ];
 
+/** Below 1280px the contribution column is dropped so the table fits without scrolling. */
+const useCols = () => (useMediaQuery("(min-width: 1280px)") ? COLS : COLS.filter((c) => c.key !== "contribution"));
+
 export default function Holdings() {
+  const cols = useCols();
   const { range } = useApp();
   const key = JSON.stringify(range);
   const q = useData(() => api.holdings(range), `h-${key}`);
@@ -46,21 +51,22 @@ export default function Holdings() {
     <div className="mx-auto max-w-content px-4 pb-24 pt-8 md:px-8 md:pt-12">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="text-xl font-semibold">Holdings</h1>
-        <RangeSelector />
+        <RangeSelector trackingSince={d && !d.empty ? d.range.tracking_since : undefined} />
       </div>
       {q.error && !d ? <ErrorLine message={q.error.message} onRetry={q.reload} /> : !d ? <HoldingsSkeleton /> : d.empty ? (
         <EmptyState title="No holdings yet." body="Add a purchase on the Transactions page and it shows up here with its weight, gain and contribution." />
       ) : (
         <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
           <Summary d={d} onOpen={setOpen} />
+          {(d.warnings ?? []).map((w) => <p key={w} className="mt-6 text-sm text-muted">{w}</p>)}
           {d.lookback_basis && (
             <p className="mt-10 max-w-[75ch] text-xs text-faint">
               Return and contribution are simulated: today's shares held over the range, dividends reinvested. This portfolio's real history is shorter than the range.
             </p>
           )}
           <div className={clsx("text-sm", d.lookback_basis ? "mt-4" : "mt-12")} role="table" aria-label="Holdings">
-            <div role="row" className="sticky top-14 z-10 hidden gap-3 border-b border-line bg-bg py-2 text-xs font-medium text-muted lg:grid" style={{ gridTemplateColumns: COLS.map((c) => c.w).join(" ") }}>
-              {COLS.map((c) => (
+            <div role="row" className="sticky top-14 z-10 hidden gap-2 border-b border-line bg-bg py-2 text-xs font-medium text-muted lg:grid" style={{ gridTemplateColumns: cols.map((c) => c.w).join(" ") }}>
+              {cols.map((c) => (
                 <span role="columnheader" key={c.key} aria-sort={sort.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : "none"} className={clsx("flex items-center gap-1", c.right && "justify-end")}>
                   <button type="button" className="press flex items-center gap-1 rounded-sm hover:text-text" onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? (s.dir === 1 ? -1 : 1) : c.key === "ticker" ? 1 : -1 }))}>
                     {c.label}
@@ -79,7 +85,8 @@ export default function Holdings() {
               <div className="flex items-center justify-between border-b border-line py-3 text-sm">
                 <span className="text-muted">
                   Realized gains
-                  {d.realized_other.length > 0 && <span className="ml-2 text-xs text-faint">incl. {d.realized_other.map((x) => `${x.ticker} ${money(x.amount, d.base, { signed: true, decimals: 0 })}`).join(", ")}</span>}
+                  {d.realized_other.length > 0 && <span className="ml-2 text-xs text-faint" title={d.realized_other.map((x) => `${x.ticker} ${money(x.amount, d.base, { signed: true, decimals: 0 })}`).join(", ")}>
+                    incl. {d.realized_other.length} closed position{d.realized_other.length === 1 ? "" : "s"} from your records</span>}
                 </span>
                 <Signed value={d.realized} className="font-medium">{money(d.realized, d.base, { signed: true, decimals: 0 })}</Signed>
               </div>
@@ -109,11 +116,12 @@ function Row({ r, base, onOpen }: { r: HoldingRow; base: string; onOpen: () => v
         </div>
         <Kv k="Weight" v={pct(r.weight, 1, false)} />
         {r.closed ? <Kv k="Realized" v={<Signed value={r.realized}>{money(r.realized, base, { signed: true, decimals: 0 })}</Signed>} />
-          : <Kv k="Unrealized" v={<Signed value={r.unrealized}>{money(r.unrealized, base, { signed: true, decimals: 0 })} ({pct(r.unrealized_pct, 1)})</Signed>} />}
+          : <Kv k="Unrealized" v={<Signed value={gainOf(r, base).v}>{money(gainOf(r, base).v, gainOf(r, base).c, { signed: true, decimals: 0 })} ({pct(r.unrealized_pct, 1)})</Signed>} />}
+        <Kv k="Today" v={<Signed value={r.today}>{money(r.today, base, { signed: true, decimals: 0 })} ({pct(r.today_pct, 2)})</Signed>} />
         <Kv k="Return" v={<Signed value={r.range_return}>{pct(r.range_return, 1)}</Signed>} />
         <Kv k="Contribution" v={<Signed value={r.contribution}>{pp(r.contribution, 2)}</Signed>} />
         <Kv k="Quantity" v={num(r.quantity, 4)} />
-        <Kv k="Price, avg cost" v={`${money(r.price, r.currency, { decimals: 2 })}, ${money(r.avg_cost, r.currency, { decimals: 2 })}`} />
+        <Kv k="Price, avg cost" v={r.price_status === "missing" ? <span className="text-faint">No price</span> : `${money(r.price, r.currency, { decimals: 2 })}, ${money(r.avg_cost, r.currency, { decimals: 2 })}`} />
       </div>
       <div className="hidden lg:contents">
         <DesktopRow r={r} base={base} />
@@ -123,8 +131,10 @@ function Row({ r, base, onOpen }: { r: HoldingRow; base: string; onOpen: () => v
 }
 
 function DesktopRow({ r, base }: { r: HoldingRow; base: string }) {
+  const cols = useCols();
+  const wide = cols.length === COLS.length;
   return (
-    <div className="grid items-center gap-3" style={{ gridTemplateColumns: COLS.map((c) => c.w).join(" ") }}>
+    <div className="grid items-center gap-2" style={{ gridTemplateColumns: cols.map((c) => c.w).join(" ") }}>
       <span className="flex min-w-0 items-center gap-2.5">
         <Avatar ticker={r.ticker} size={26} />
         <span className="min-w-0">
@@ -134,7 +144,8 @@ function DesktopRow({ r, base }: { r: HoldingRow; base: string }) {
       </span>
       <span className="num text-right">{r.closed ? "–" : num(r.quantity, 4)}</span>
       <span className="num text-right">{r.closed ? "–" : money(r.avg_cost, r.currency, { decimals: 2 })}</span>
-      <span className="num text-right">{money(r.price, r.currency, { decimals: 2 })}</span>
+      <span className="num text-right">{r.price_status === "missing" ? <span className="text-faint" title={`Couldn't get a price. Showing the last known value${r.price_date ? ` from ${dateLong(r.price_date)}` : ""}.`}>No price</span>
+        : <>{money(r.price, r.currency, { decimals: 2 })}{r.price_status === "stale" && r.price_date && <span className="block text-xs text-faint">as of {dateLong(r.price_date)}</span>}</>}</span>
       <span className="num text-right font-medium">{money(r.value, base, { decimals: 0 })}</span>
       <span className="flex items-center justify-end gap-2">
         <span className="h-1 w-12 overflow-hidden rounded-full bg-sunken" aria-hidden><span className="block h-full rounded-full bg-muted" style={{ width: `${Math.min(100, (r.weight ?? 0) * 100)}%` }} /></span>
@@ -146,16 +157,23 @@ function DesktopRow({ r, base }: { r: HoldingRow; base: string }) {
           <span className="block text-xs text-faint">realized</span>
         </span>
       ) : (
-        <span className="text-right leading-5">
-          <Signed value={r.unrealized} className="block">{money(r.unrealized, base, { signed: true, decimals: 0 })}</Signed>
+        r.price_status === "missing" ? <span className="text-right text-faint">–</span> : <span className="text-right leading-5">
+          <Signed value={gainOf(r, base).v} className="block">{money(gainOf(r, base).v, gainOf(r, base).c, { signed: true, decimals: 0 })}</Signed>
           <Signed value={r.unrealized_pct} className="block text-xs">{pct(r.unrealized_pct, 1)}</Signed>
         </span>
       )}
+      <span className="text-right leading-5">
+        <Signed value={r.today} className="block">{r.price_status === "missing" ? "–" : money(r.today, base, { signed: true, decimals: 0 })}</Signed>
+        <Signed value={r.today_pct} className="block text-xs">{pct(r.today_pct, 2)}</Signed>
+      </span>
       <Signed value={r.range_return} className="text-right">{pct(r.range_return, 1)}</Signed>
-      <Signed value={r.contribution} className="text-right">{pp(r.contribution, 2)}</Signed>
+      {wide && <Signed value={r.contribution} className="text-right">{pp(r.contribution, 2)}</Signed>}
     </div>
   );
 }
+
+/** Opening positions (imported, no purchase dates) show gain in the security's own currency. */
+const gainOf = (r: HoldingRow, base: string) => (r.opening && r.unrealized_native != null ? { v: r.unrealized_native, c: r.currency } : { v: r.unrealized, c: base });
 
 const Kv = ({ k, v }: { k: string; v: React.ReactNode }) => (
   <div className="flex justify-between gap-2 text-xs"><span className="text-faint">{k}</span><span className="num text-text">{v}</span></div>

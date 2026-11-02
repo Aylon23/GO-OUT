@@ -80,3 +80,10 @@ def fake(session):
     p = FakeProvider()
     provider.set_provider(p)
     return p
+
+
+def _fund_sectors(self, ticker):
+    return getattr(self, "funds", {}).get(ticker, ({}, ""))
+
+
+FakeProvider.fund_sectors = _fund_sectors

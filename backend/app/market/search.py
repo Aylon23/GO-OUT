@@ -11,6 +11,7 @@ from sqlmodel import Session, col, or_, select
 
 from ..models import RecentSymbol, SymbolMeta
 from .cache import guess_currency
+from .names import clean_name
 from .provider import ProviderError, get_provider
 
 TYPE_MAP = {"EQUITY": "Stock", "ETF": "ETF", "INDEX": "Index", "MUTUALFUND": "Fund"}
@@ -56,7 +57,7 @@ def normalize_quote(q: dict) -> dict | None:
         currency = ""
     return {
         "symbol": sym,
-        "name": q.get("longname") or q.get("shortname") or sym,
+        "name": clean_name(q.get("longname") or q.get("shortname") or sym, sym),
         "exchange": exchange_label(code, q.get("exchDisp", "")),
         "exchange_code": code,
         "type": TYPE_MAP[qt],
@@ -91,7 +92,7 @@ def local_search(session: Session, query: str, limit: int = 10) -> list[dict]:
     rows = session.exec(
         select(SymbolMeta).where(or_(col(SymbolMeta.ticker).ilike(like), col(SymbolMeta.name).ilike(like))).limit(limit)
     ).all()
-    items = [{"symbol": r.ticker, "name": r.name or r.ticker, "exchange": r.exchange, "exchange_code": "",
+    items = [{"symbol": r.ticker, "name": clean_name(r.name or r.ticker, r.ticker), "exchange": r.exchange, "exchange_code": "",
               "type": r.type or "Stock", "currency": r.currency or guess_currency(r.ticker)} for r in rows]
     return rank(items, q)
 
@@ -128,6 +129,7 @@ def remember_selection(session: Session, item: dict) -> SymbolMeta:
     for field in ("name", "exchange", "type"):
         if item.get(field):
             setattr(meta, field, item[field])
+    meta.name = clean_name(meta.name, sym)
     cur = item.get("currency") or meta.currency or guess_currency(sym)
     meta.currency = cur
     session.add(meta)
@@ -147,7 +149,7 @@ def recent(session: Session, limit: int = 5) -> list[dict]:
 
 
 def meta_dict(m: SymbolMeta) -> dict:
-    return {"symbol": m.ticker, "name": m.name or m.ticker, "exchange": m.exchange, "type": m.type,
+    return {"symbol": m.ticker, "name": clean_name(m.name or m.ticker, m.ticker), "exchange": m.exchange, "type": m.type,
             "currency": m.currency or guess_currency(m.ticker), "sector": m.sector, "country": m.country}
 
 
@@ -162,7 +164,7 @@ POPULAR_META = {
 
 
 def popular() -> list[dict]:
-    return [{"symbol": s, "name": n, "exchange": e, "type": t, "currency": c} for s, (n, e, t, c) in POPULAR_META.items()]
+    return [{"symbol": s, "name": clean_name(n, s), "exchange": e, "type": t, "currency": c} for s, (n, e, t, c) in POPULAR_META.items()]
 
 
 # ---- quotes (15 min cache) ----

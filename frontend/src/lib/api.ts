@@ -31,7 +31,7 @@ export interface Portfolio {
   range: { code: string; start: string; end: string; first_date: string; tracking_since: string; short_history: boolean };
   summary: {
     cost_gain: number; cost_gain_pct: number | null; has_cost_basis: boolean; realized: number | null;
-    value: number; invested: number; total_gain: number; range_gain: number; today_change: number; today_pct: number;
+    value: number; invested: number; total_gain: number; range_gain: number; today_change: number; today_pct: number | null; today_date: string | null;
     twr: number; xirr: number | null; benchmarks: { symbol: string; twr: number | null }[]; start_value: number;
   };
   series: Series;
@@ -41,9 +41,12 @@ export interface HoldingRow {
   ticker: string; name: string; type: string; sector: string; currency: Ccy; quantity: number; avg_cost: number; price: number;
   value: number; weight: number; unrealized: number; unrealized_pct: number | null; range_return: number | null; contribution: number; closed: boolean;
   realized: number | null;
+  price_status: "ok" | "stale" | "missing"; price_date: string | null; unrealized_native: number | null; opening: boolean;
+  today: number | null; today_native: number | null; today_pct: number | null;
 }
 export interface Holdings {
-  empty: boolean; base: Ccy; range: { code: string; start: string; end: string }; lookback_basis?: boolean; total: number; cash: number;
+  empty: boolean; base: Ccy; range: { code: string; start: string; end: string; tracking_since?: string }; lookback_basis?: boolean; total: number; cash: number;
+  warnings?: string[]; today?: { change: number | null; pct: number | null; date: string | null };
   realized: number | null; realized_other: { ticker: string; amount: number }[];
   rows: HoldingRow[]; best: string[]; worst: string[]; sectors: { sector: string; weight: number }[]; concentrated: string[];
 }
@@ -69,7 +72,7 @@ export interface Lookback {
 }
 export interface OverviewRow {
   id: number; name: string; note: string; empty: boolean; value?: number; cash?: number; cost_gain?: number; cost_gain_pct?: number | null; realized?: number | null;
-  today_pct?: number | null; tracking_since?: string; holdings?: number;
+  today_pct?: number | null; today_change?: number | null; tracking_since?: string; holdings?: number;
   period_start?: string; short_history?: boolean; return?: number | null; bench?: Record<string, number | null>;
 }
 export interface Overview {
@@ -99,7 +102,8 @@ export interface Metrics {
 export interface OmniDraft {
   text: string; type: TxType; ticker: string; quantity: number | null; price: number | null; currency: Ccy; date: string;
   portfolio_id: number; portfolio_name: string; price_source?: "close" | "you"; missing: string[]; warnings: string[];
-  portfolio_matched: boolean; everyone: boolean;
+  portfolio_matched: boolean; everyone: boolean; price_date?: string;
+  choices: { ticker?: string[]; quantity?: number[] };
   targets: { portfolio_id: number; portfolio_name: string; quantity: number | null; held: number | null; skip: boolean; reason: string }[];
 }
 export interface OmniResult { saved: { portfolio: string; quantity: number }[]; failed: { portfolio: string; error: string }[]; rec_id: number | null }
@@ -191,7 +195,8 @@ export const api = {
   transactions: () => request<Tx[]>("GET", "/api/transactions"),
   createTx: (t: Tx) => request<Tx>("POST", "/api/transactions", t),
   createTxIn: (portfolioId: number, t: Tx) => request<Tx>("POST", `/api/transactions?portfolio=${portfolioId}`, t),
-  omnibox: (text: string, signal?: AbortSignal) => request<OmniDraft>("POST", "/api/omnibox", { text }, signal),
+  omnibox: (text: string, opts: { today: string; portfolio_ids?: number[]; choose?: Record<string, string | number> }, signal?: AbortSignal) =>
+    request<OmniDraft>("POST", "/api/omnibox", { text, ...opts }, signal),
   omniCommit: (draft: OmniDraft, logCall: boolean) => request<OmniResult>("POST", "/api/omnibox/commit", { draft, log_call: logCall }),
   calls: () => request<Calls>("GET", "/api/calls"),
   createCall: (c: { ticker: string; action: string; date: string; thesis: string; target: number | null }) => request<{ id: number }>("POST", "/api/calls", c),

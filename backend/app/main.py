@@ -28,7 +28,10 @@ def _startup() -> None:
     from . import telegram_bot
     from .services import get_settings
 
+    from .services import backfill_aliases
+
     with Session(get_engine()) as s:
+        backfill_aliases(s)
         token = get_settings(s).telegram_token
     if token and os.environ.get("PORTFOLIO_NO_BOT") != "1":
         telegram_bot.start(token)

@@ -48,6 +48,10 @@ def _seed(ticker: str) -> int:
 
 class SyntheticProvider:
     def _spec(self, ticker: str):
+        import os
+
+        if ticker in os.environ.get("SYNTHETIC_MISSING", "").split(","):
+            return None  # simulate a ticker Yahoo stops returning
         if ticker in CATALOG:
             return CATALOG[ticker]
         if re.match(r"^[A-Z]{1,5}(-[A-Z])?$", ticker):  # any plausible US ticker gets a made-up walk
@@ -121,6 +125,22 @@ class SyntheticProvider:
                 "longName": name, "exchange": exch, "quoteType": qt, "sector": SECTORS.get(ticker, ""),
                 "country": "Israel" if ticker.endswith(".TA") else "United States",
                 "currency": "ILA" if ticker.endswith(".TA") else "USD"}
+
+    def fund_sectors(self, ticker: str) -> tuple[dict[str, float], str]:
+        if ticker in ("IBIT", "ETHA"):
+            return {}, "Digital Assets"
+        if ticker in ("XLK", "SOXX"):
+            return {"technology": 1.0}, "Technology"
+        if ticker == "XLI":
+            return {"industrials": 0.98, "technology": 0.02}, "Industrials"
+        if ticker in ("QQQ",):
+            return {"technology": 0.5, "communication_services": 0.16, "consumer_cyclical": 0.14, "healthcare": 0.06,
+                    "consumer_defensive": 0.06, "industrials": 0.05, "utilities": 0.01, "basic_materials": 0.02}, "Large Growth"
+        if ticker in ("SPY", "VOO", "SPMO", "VFIAX"):
+            return {"technology": 0.32, "financial_services": 0.13, "healthcare": 0.11, "consumer_cyclical": 0.1,
+                    "communication_services": 0.09, "industrials": 0.08, "consumer_defensive": 0.06, "energy": 0.03,
+                    "utilities": 0.02, "realestate": 0.02, "basic_materials": 0.02}, "Large Blend"
+        return {}, ""
 
     def recent_closes(self, tickers: list[str]) -> dict[str, list[tuple[dt.date, float]]]:
         out = {}

@@ -1,5 +1,6 @@
 import { FileText, UploadSimple } from "@phosphor-icons/react";
 import { ReportPanel } from "../components/ReportPanel";
+import { TodayPanel } from "../components/TodayPanel";
 import clsx from "clsx";
 import { useState } from "react";
 import { ChartSkeleton } from "../components/chart/SeriesChart";
@@ -48,9 +49,7 @@ function SecondaryLine({ p }: { p: Portfolio }) {
   const b = p.base;
   const items: React.ReactNode[] = [
     <span key="v">Value <span className="num font-medium text-text">{money(s.value, b, { decimals: 0 })}</span></span>,
-    s.has_cost_basis
-      ? <span key="g" className="inline-flex items-center gap-1"><InfoTip text="Market value of open positions minus what they cost, using the average price you entered.">Gain vs cost</InfoTip> <Signed value={s.cost_gain} className="font-medium">{money(s.cost_gain, b, { signed: true, decimals: 0 })} ({pct(s.cost_gain_pct, 1)})</Signed></span>
-      : <span key="g">Total gain <Signed value={s.total_gain} className="font-medium">{money(s.total_gain, b, { signed: true, decimals: 0 })}</Signed></span>,
+    <span key="g" className="inline-flex items-center gap-1"><InfoTip text="Open positions: (price now minus average cost) x shares, in each stock's currency, converted at today's rate. Same number on every screen.">Gain vs cost</InfoTip> <Signed value={s.cost_gain} className="font-medium">{money(s.cost_gain, b, { signed: true, decimals: 0 })} ({pct(s.cost_gain_pct, 1)})</Signed></span>,
     ...(s.realized && Math.abs(s.realized) >= 0.5 ? [<span key="r" className="inline-flex items-center gap-1"><InfoTip text="Profit or loss already taken on shares you sold, including realized lines imported from your spreadsheet.">Realized</InfoTip> <Signed value={s.realized} className="font-medium">{money(s.realized, b, { signed: true, decimals: 0 })}</Signed></span>] : []),
     <span key="t">Today <Signed value={s.today_change} className="font-medium">{money(s.today_change, b, { signed: true, decimals: 0 })} ({pct(s.today_pct)})</Signed></span>,
     <span key="x" className="inline-flex items-center gap-1">
@@ -154,7 +153,7 @@ export default function Dashboard() {
   return (
     <Page>
       <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 [&>h1]:min-w-0">
           <Headline p={p} />
           <button type="button" className="btn-ghost shrink-0" onClick={() => setReport(true)}><FileText size={16} /> Report</button>
         </div>
@@ -164,9 +163,10 @@ export default function Dashboard() {
             Real results start on {dateLong(p.range.tracking_since)}, when these holdings were added. Import your transaction history (dates of each buy and sell) to compare the earlier years with the S&P 500 too.
           </p>
         )}
-        {p.warnings.map((w) => <p key={w} className="mt-3 text-sm text-loss">{w}</p>)}
+        {p.warnings.map((w) => <p key={w} className="mt-3 text-sm text-muted">{w}</p>)}
+        <TodayPanel p={p} />
         <section className="mt-12" aria-label="Chart">
-          <PortfolioChart series={p.series} base={p.base} animateKey={key} rangeControl={<RangeSelector />} />
+          <PortfolioChart series={p.series} base={p.base} animateKey={key} rangeControl={<RangeSelector trackingSince={p.range.tracking_since} />} />
         </section>
         <ShadowRows p={p} />
       </div>

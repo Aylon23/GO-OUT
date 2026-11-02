@@ -80,11 +80,16 @@ def _strip_prefix(word: str) -> str:
     return w
 
 
-def parse(session: Session, text: str, default_pid: int, today: dt.date | None = None) -> dict:
+def parse(session: Session, text: str, default_pid: int | None = None, today: dt.date | None = None,
+          force_pids: list[int] | None = None, choose: dict | None = None) -> dict:
+    """`default_pid` is ignored on purpose: a trade never lands in a portfolio the text did not name.
+    `force_pids` is the user's pick from the portfolio picker; `choose` resolves "Did you mean…"
+    ({"ticker": "AVGO", "quantity": 5})."""
     today = today or dt.date.today()
+    choose = choose or {}
     original = text.strip()
     t = " " + re.sub(r"\s+", " ", original) + " "
-    out: dict = {"text": original, "missing": [], "warnings": []}
+    out: dict = {"text": original, "missing": [], "warnings": [], "choices": {}}
 
     # 1. portfolios by name, any number of them ("קרן, שיר ואבא"), or everyone ("כולם")
     portfolios = sorted(session.exec(select(Portfolio)).all(), key=lambda p: -len(p.name))
@@ -103,14 +108,17 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
     if everyone:
         t = t[: everyone.start()] + " " + t[everyone.end():]
     out["everyone"] = bool(everyone)
-    out["portfolio_matched"] = bool(matched) or bool(everyone)
-    if everyone:
-        targets = list(reversed(portfolios))  # in id order
+    out["portfolio_matched"] = bool(matched) or bool(everyone) or bool(force_pids)
+    if force_pids:
+        targets = sorted((p for p in portfolios if p.id in set(force_pids)), key=lambda p: p.id)
+    elif everyone:
+        targets = sorted(portfolios, key=lambda p: p.id)
     elif matched:
         targets = sorted(matched, key=lambda p: p.id)
     else:
-        targets = [p for p in portfolios if p.id == default_pid]
-    out["portfolio_id"] = targets[0].id if targets else default_pid
+        targets = []  # no name matched: ask, never guess
+        out["missing"].append("portfolio")
+    out["portfolio_id"] = targets[0].id if targets else None
     out["portfolio_name"] = targets[0].name if targets else ""
     out["_targets"] = [(p.id, p.name) for p in targets]
     sell_all = re.search(r"(?<![\w\u0590-\u05FF])(?:הכל|את הכל|all|everything)(?![\w\u0590-\u05FF])", t, flags=re.I)
@@ -131,7 +139,7 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
 
     # 3. date
     date, t = _parse_date(t, today)
-    out["date"] = (date or today).isoformat()
+    out["date"] = (date or today).isoformat()  # what the user said, today by default
 
     # 4. money amounts with a currency ("1000 דולר", "$1,000", "₪5000", 'ש"ח')
     amount = amount_ccy = None
@@ -146,28 +154,37 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
     price = None
     pm = re.search(rf"(?:(?<![\w֐-׿])(?:at|@|במחיר|בשער|מחיר|שער|price)\s*(?P<a>{NUM}))|(?:(?<![\w֐-׿])ב-?\s?(?P<b>{NUM}))", t, flags=re.I)
 
-    # 6. quantity: a number next to a share word, or the first remaining bare number
+    # 6. quantity: numbers next to a share word, then any bare number left. More than one
+    #    different candidate is a question for the user, not a guess.
     qty = None
-    qm = re.search(rf"(?P<n>{NUM})\s*(?:{'|'.join(SHARE_WORDS)})(?![\w֐-׿])", t, flags=re.I)
-    if qm:
-        qty = _num(qm["n"])
-        t = t[: qm.start()] + " " + t[qm.end():]
-        pm = re.search(rf"(?:(?<![\w֐-׿])(?:at|@|במחיר|בשער|מחיר|שער|price)\s*(?P<a>{NUM}))|(?:(?<![\w֐-׿])ב-?\s?(?P<b>{NUM}))", t, flags=re.I)
+    qty_cands: list[float] = []
+    share_re = rf"(?P<n>{NUM})\s*(?:{'|'.join(SHARE_WORDS)})(?![\w\u0590-\u05FF])"
+    for qm in list(re.finditer(share_re, t, flags=re.I)):
+        qty_cands.append(_num(qm["n"]))
+    t = re.sub(share_re, " ", t, flags=re.I)
+    if qty_cands:
+        pm = re.search(rf"(?:(?<![\w\u0590-\u05FF])(?:at|@|במחיר|בשער|מחיר|שער|price)\s*(?P<a>{NUM}))|(?:(?<![\w\u0590-\u05FF])ב-?\s?(?P<b>{NUM}))", t, flags=re.I)
     if pm:
         price = _num(pm["a"] or pm["b"])
         t = t[: pm.start()] + " " + t[pm.end():]
-    if qty is None:
-        nm = re.search(rf"(?<![\w.]){NUM}(?![\w.])", t)
-        if nm:
-            n = _num(nm.group(0))
-            if out["type"] in ("DEPOSIT", "WITHDRAWAL", "DIVIDEND") and amount is None:
-                amount = n
-            else:
-                qty = n
-            t = t[: nm.start()] + " " + t[nm.end():]
+    for nm in list(re.finditer(rf"(?<![\w.]){NUM}(?![\w.])", t)):
+        n = _num(nm.group(0))
+        if out["type"] in ("DEPOSIT", "WITHDRAWAL", "DIVIDEND") and amount is None:
+            amount = n
+        else:
+            qty_cands.append(n)
+    t = re.sub(rf"(?<![\w.]){NUM}(?![\w.])", " ", t)
+    distinct_q = list(dict.fromkeys(qty_cands))
+    if choose.get("quantity") is not None:
+        qty = float(choose["quantity"])
+    elif len(distinct_q) == 1:
+        qty = distinct_q[0]
+    elif len(distinct_q) > 1:
+        out["choices"]["quantity"] = distinct_q
 
     # 7. ticker: an uppercase-looking token, a known Hebrew name, or a Yahoo search on what is left
     ticker = None
+    tickers: list[str] = []
     leftovers = []
     for w in re.findall(r"[^\s,]+", t):
         raw = re.sub(r"^[\u0590-\u05FF]{1,2}-", "", w.strip(".,!?:;()\"'"))  # "מ-AAPL" -> "AAPL"
@@ -178,14 +195,21 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
         if lw in STOP or bare in STOP or lw in SHARE_WORDS or any(lw in v or bare in v for v in VERBS.values()):
             continue
         if bare in HEBREW_NAMES or lw in HEBREW_NAMES:
-            ticker = ticker or HEBREW_NAMES.get(bare) or HEBREW_NAMES[lw]
+            tickers.append(HEBREW_NAMES.get(bare) or HEBREW_NAMES[lw])
             continue
         # tickers are written in capitals (or have a .TA / ^ marker); lowercase words get searched
         if TICKER_RE.match(raw.upper()) and re.match(r"^[\^A-Za-z]", raw) and (raw == raw.upper() or "." in raw or raw.startswith("^")):
-            ticker = ticker or raw.upper()
+            tickers.append(raw.upper())
             continue
         leftovers.append(raw)
-    if not ticker and leftovers and out["type"] not in ("DEPOSIT", "WITHDRAWAL"):
+    tickers = list(dict.fromkeys(tickers))
+    if choose.get("ticker"):
+        ticker = str(choose["ticker"]).upper()
+    elif len(tickers) == 1:
+        ticker = tickers[0]
+    elif len(tickers) > 1:
+        out["choices"]["ticker"] = tickers
+    if not ticker and not tickers and leftovers and out["type"] not in ("DEPOSIT", "WITHDRAWAL"):
         q = " ".join(leftovers)
         try:
             items = [n for n in (normalize_quote(x) for x in get_provider().search(q, 5)) if n]
@@ -198,7 +222,7 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
     # 8. fill in the rest from market data
     typ_s = out["type"]
     if typ_s in ("BUY", "SELL", "DIVIDEND"):
-        if not ticker:
+        if not ticker and "ticker" not in out["choices"]:
             out["missing"].append("ticker")
         out["ticker"] = ticker or ""
     else:
@@ -217,7 +241,7 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
         cur = (p or {}).get("currency") or currency_for(session, ticker)
         out["currency"] = cur
         if p:
-            out["date"] = p["date"]
+            out["price_date"] = p["date"]  # the close used; the trade keeps the date the user gave
         if price is None and p:
             price = p["close"]
             out["price_source"] = "close"
@@ -228,20 +252,26 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
             if amount_ccy and amount_ccy != cur:
                 from .services import fx_series
 
-                rate = float(align(fx_series(session), [dt.date.fromisoformat(out["date"])]).iloc[0])
+                rate = float(align(fx_series(session), [dt.date.fromisoformat(out.get("price_date") or out["date"])]).iloc[0])
                 amt = convert(amount, amount_ccy, cur, rate)
                 out["warnings"].append(f"Converted {amount:,.0f} {amount_ccy} at that day's rate.")
             qty = round(amt / price, 6)
-        if qty is None and not (typ_s == "SELL" and (sell_all or out["everyone"])):
+        if qty is None and "quantity" not in out["choices"] and not (typ_s == "SELL" and (sell_all or out["everyone"])):
             out["missing"].append("quantity")
         out["quantity"] = qty
         out["price"] = price
+    elif typ_s in ("BUY", "SELL"):  # ticker still undecided ("Did you mean…"): keep what we know
+        out["quantity"] = qty
+        out["price"] = price
+        out["currency"] = amount_ccy or "USD"
     else:
         out["quantity"] = 0
         out["price"] = amount
         out["currency"] = amount_ccy or (currency_for(session, ticker) if ticker else "ILS")
         if amount is None:
             out["missing"].append("amount")
+    if out["choices"]:
+        out["missing"].append("choice")
     out["targets"] = _targets(session, out, out.pop("_targets"), bool(sell_all))
     if out["targets"] and all(x["skip"] for x in out["targets"]) and "quantity" not in out["missing"]:
         out["missing"].append("position")
