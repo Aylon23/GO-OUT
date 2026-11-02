@@ -138,6 +138,7 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
     base = None
     earliest = None
     ctx_any = None
+    contexts: list = []
     for p in list_portfolios(session):
         ctx = Context(session, p.id)
         base = ctx.base
@@ -145,7 +146,8 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
         if ctx.series is None:
             rows.append(row)
             continue
-        ctx_any = ctx
+        if ctx_any is None or s.dates[0] < ctx_any.series.dates[0]:
+            ctx_any = ctx  # benchmarks come from the longest calendar, so they cover every portfolio's window
         s = ctx.series
         e = len(s.dates) - 1
         start = range_start(code, s.dates[e], s.dates[0])
@@ -154,7 +156,18 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
         cost = cost_summary(ctx)
         idx = s.index()
         ret = twr(s.ret, b, e)
-        bench = {k: float(v.iloc[e] / v.iloc[b] - 1) if v.iloc[b] > 0 else None for k, v in ctx.bench_prices().items()}
+        bp = ctx.bench_prices()
+        bench = {k: float(v.iloc[e] / v.iloc[b] - 1) if v.iloc[b] > 0 else None for k, v in bp.items()}
+        # since tracking began, over exactly the same days as the S&P 500
+        b0 = min(base_index(s.dates, first_trade), e)
+        spy = bp.get("SPY")
+        since_ret = twr(s.ret, b0, e)
+        since_spy = float(spy.iloc[e] / spy.iloc[b0] - 1) if spy is not None and spy.iloc[b0] > 0 else None
+        spark_idx = rebased(idx, b0, e)
+        pos = _sample_positions(0, len(spark_idx) - 1) if len(spark_idx) else []
+        spark = [_f(spark_idx.iloc[i]) for i in pos[:: max(1, len(pos) // 40)]] if len(spark_idx) else []
+        fx_now = float(ctx.fx.iloc[-1]) if ctx.fx is not None and len(ctx.fx) else None
+        to_usd = 1.0 if ctx.base == "USD" else (1.0 / fx_now if fx_now else None)
         row.update({
             "value": _f(s.value.iloc[e]),
             "realized": _f(realized_summary(ctx)["total"]),
@@ -168,7 +181,15 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
             "return": _f(ret),
             "bench": {k: _f(v) for k, v in bench.items()},
             "holdings": len(open_positions(ctx)),
+            "since_return": _f(since_ret),
+            "since_spy": _f(since_spy),
+            "since_vs_spy": _f(since_ret - since_spy) if since_spy is not None and since_ret is not None else None,
+            "trading_days": int(e - b0),
+            "spark": spark,
+            "cost_gain_usd": _f(cost["gain"] * to_usd) if to_usd else None,
+            "last_activity": max(t.date for t in ctx.txs).isoformat(),
         })
+        contexts.append(ctx)
         chart[f"p{p.id}"] = rebased(idx, b, e)
         earliest = s.dates[b] if earliest is None else min(earliest, s.dates[b])
         rows.append(row)
@@ -182,7 +203,7 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
             perf[k] = [_f(v) for v in ser.reindex(all_dates).ffill()]
         for k, v in ctx_any.bench_prices().items():
             ser = v.reindex(all_dates).ffill()
-            ser = ser[ser.index >= earliest]
+            ser = ser[ser.index >= earliest].dropna()
             ser = ser / ser.iloc[0] * 100 if len(ser) and ser.iloc[0] > 0 else ser
             perf[k] = [_f(x) for x in ser.reindex(all_dates)]
             bench_total.append({"symbol": k, "twr": _f(ser.iloc[-1] / 100 - 1) if len(ser) else None})
@@ -194,9 +215,93 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
         "since": earliest.isoformat() if earliest else None,
         "total_value": _f(total),
         "rows": rows,
+        "insights": insights(session, contexts, {p.id: p.name for p in list_portfolios(session)}),
+        "min_trading_days": MIN_TRADING_DAYS,
         "benchmarks": bench_total,
         "chart": {"dates": dates, "perf": perf, "labels": {f"p{r['id']}": r["name"] for r in rows}},
     }
+
+
+MIN_TRADING_DAYS = 20  # before this, a portfolio's return vs the S&P 500 is too early to read
+STOCK_LIMIT = 0.25
+SECTOR_LIMIT = 0.35
+
+
+def insights(session: Session, contexts: list, names: dict[int, str]) -> list[dict]:
+    """A few plain conclusions across the family: biggest winner and loser (gain vs cost), the most
+    widely held stock and how much of the family's money it is, and concentration (over 25% in
+    one stock or 35% in one sector, funds looked through)."""
+    from .market.names import clean_name
+    from .models import SymbolMeta
+    from .services import ensure_meta_info, position_gain, sector_weights
+
+    if not contexts:
+        return []
+    base = contexts[0].base
+    fx_now = float(contexts[0].fx.iloc[-1]) if contexts[0].fx is not None and len(contexts[0].fx) else None
+    to_usd = 1.0 if base == "USD" else (1.0 / fx_now if fx_now else 1.0)
+    gain: dict[str, float] = {}
+    holders: dict[str, list[str]] = {}
+    value: dict[str, float] = {}
+    family_total = 0.0
+    concentration: list[tuple[float, dict]] = []
+    all_tickers = sorted({t for c in contexts for t in open_positions(c)})
+    ensure_meta_info(session, all_tickers)
+    metas = {m.ticker: m for m in session.exec(select(SymbolMeta).where(SymbolMeta.ticker.in_(all_tickers))).all()} if all_tickers else {}
+    for c in contexts:
+        total = float(c.series.value.iloc[-1])
+        family_total += total
+        hv = c.series.holding_value.iloc[-1]
+        sectors: dict[str, float] = {}
+        for t in open_positions(c):
+            v = float(hv.get(t, 0.0))
+            value[t] = value.get(t, 0.0) + v
+            holders.setdefault(t, []).append(names.get(c.pid, str(c.pid)))
+            if t not in c.missing:
+                gain[t] = gain.get(t, 0.0) + position_gain(c, t)["gain_base"] * to_usd
+            meta = metas.get(t)
+            w = v / total if total > 0 else 0.0
+            if meta is None or (meta.type or "") not in ("ETF", "Fund"):
+                if w > STOCK_LIMIT:
+                    concentration.append((w - STOCK_LIMIT, {"kind": "stock", "tone": "warn", "symbol": t,
+                                          "text": f"{names.get(c.pid)} has {w:.0%} in {t}, one stock."}))
+            for sec, sw in sector_weights(session, t, w, meta).items():
+                sectors[sec] = sectors.get(sec, 0.0) + sw
+        for sec, sw in sectors.items():
+            if sw > SECTOR_LIMIT and sec != "Unclassified":
+                label = sec.replace("_", " ").title()
+                concentration.append((sw - SECTOR_LIMIT, {"kind": "sector", "tone": "warn",
+                                      "text": f"{names.get(c.pid)} has {sw:.0%} in {label}."}))
+    out: list[dict] = []
+
+    def who(t: str) -> str:
+        h = holders[t]
+        return h[0] if len(h) == 1 else ("everyone" if len(h) == len(contexts) and len(h) > 2 else ", ".join(h[:-1]) + " and " + h[-1])
+
+    def named(t: str) -> str:
+        n = clean_name(metas[t].name, t) if t in metas and metas[t].name else t
+        return f" ({n})" if n and n.upper() != t else ""
+
+    def usd(v: float) -> str:
+        return f"{'+' if v > 0 else '−'}${abs(v):,.0f}"
+
+    if gain:
+        best = max(gain, key=gain.get)
+        if gain[best] > 0:
+            out.append({"kind": "winner", "tone": "gain", "symbol": best,
+                        "text": f"Biggest winner: {best}{named(best)}, {usd(gain[best])} vs cost, held by {who(best)}."})
+        worst = min(gain, key=gain.get)
+        if gain[worst] < 0:
+            out.append({"kind": "loser", "tone": "loss", "symbol": worst,
+                        "text": f"Biggest loser: {worst}{named(worst)}, {usd(gain[worst])} vs cost, held by {who(worst)}."})
+    shared = [t for t in holders if len(holders[t]) >= 2]
+    if shared and family_total > 0:
+        top = max(shared, key=lambda t: (len(holders[t]), value[t]))
+        out.append({"kind": "shared", "tone": "info", "symbol": top,
+                    "text": f"Most widely held: {top}, in {len(holders[top])} of {len(contexts)} portfolios, {value[top] / family_total:.0%} of the family's money."})
+    concentration.sort(key=lambda x: -x[0])
+    out += [c for _, c in concentration[: max(0, 5 - len(out))]]
+    return out[:5]
 
 
 # ------------------------------------------------------------------ holdings import

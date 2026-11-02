@@ -2,9 +2,10 @@ import { ArrowRight, CaretDown, FloppyDisk, Lightning, Plus, ShieldCheck, Sparkl
 import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SymbolSearch } from "../components/SymbolSearch";
+import { Avatar } from "../components/Avatar";
 import { EmptyState, ErrorLine, InfoTip, Segmented, Signed, Skel } from "../components/ui";
 import {
-  api, ApiError, type EventReplay, type Hedge, type ImpactHolding, type ModelCheck, type SavedScenario, type ScenarioLibrary,
+  api, ApiError, type EventReplay, type Idea, type ImpactHolding, type ModelCheck, type Regime, type SavedScenario, type ScenarioLibrary,
   type ScenarioParse, type ScenarioRun, type Shock,
 } from "../lib/api";
 import { dateLong, money, pct } from "../lib/format";
@@ -44,6 +45,8 @@ function ScenarioLab() {
   const [shocks, setShocks] = useState<EditShock[]>([]);
   const [horizon, setHorizon] = useState(1);
   const [events, setEvents] = useState<string[]>([]);
+  const [usedEvents, setUsedEvents] = useState<string[]>([]);
+  const [regime, setRegime] = useState<Regime>("normal");
   const [parseErr, setParseErr] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
   const [run, setRun] = useState<ScenarioRun | null>(null);
@@ -57,18 +60,18 @@ function ScenarioLab() {
     setParsing(true); setParseErr(null);
     try {
       const p = await api.scenarioParse(q);
-      setParsed(p); setShocks(p.shocks.map(withKey)); setHorizon(p.horizon_weeks || 1); setEvents(p.events);
+      setParsed(p); setShocks(p.shocks.map(withKey)); setHorizon(p.horizon_weeks || 1); setEvents(p.events); setUsedEvents(p.used_events ?? []); setRegime("normal");
       if (!p.understood) setRun(null);
     } catch (e) { setParseErr(e instanceof ApiError ? e.message : "Couldn't read that."); } finally { setParsing(false); }
   }, []);
 
   const load = (s: SavedScenario) => {
-    setText(s.text); setParsed({ text: s.text, parser: "rules", label: s.name, themes: [], shocks: s.shocks, events: s.events, horizon_weeks: s.horizon_weeks, notes: [], understood: true });
-    setShocks(s.shocks.map((x) => withKey({ ...x, basis: x.basis ?? "manual" }))); setHorizon(s.horizon_weeks); setEvents(s.events);
+    setText(s.text); setParsed({ text: s.text, parser: "rules", label: s.name, themes: [], shocks: s.shocks, events: s.events, used_events: s.used_events ?? [], horizon_weeks: s.horizon_weeks, notes: [], understood: true });
+    setShocks(s.shocks.map((x) => withKey({ ...x, basis: x.basis ?? "manual" }))); setHorizon(s.horizon_weeks); setEvents(s.events); setUsedEvents(s.used_events ?? []); setRegime("normal");
   };
 
   // run whenever the shocks change
-  const body = useMemo(() => JSON.stringify({ shocks: shocks.filter((s) => isFinite(s.move)).map(({ symbol, kind, move }) => ({ symbol, kind, move })), horizon_weeks: horizon, events }), [shocks, horizon, events]);
+  const body = useMemo(() => JSON.stringify({ shocks: shocks.filter((s) => isFinite(s.move)).map(({ symbol, kind, move }) => ({ symbol, kind, move })), horizon_weeks: horizon, events, used_events: usedEvents, regime }), [shocks, horizon, events, usedEvents, regime]);
   const debounced = useDebounced(body, 350);
   useEffect(() => {
     const b = JSON.parse(debounced);
@@ -113,13 +116,13 @@ function ScenarioLab() {
 
       {parsed && (
         <div className="fade-in mt-8">
-          <ReadAs parsed={parsed} ai={lib.data?.ai ?? false} />
+          <ReadAs parsed={parsed} />
           {!parsed.understood && shocks.length === 0 ? (
             <EmptyState title="I couldn't turn that into market moves."
               body="Name something that moves prices: oil, rates or bonds, the dollar or shekel, a sector, an index, a company, or an event like a war, a recession or tariffs. Or add a shock by hand below." />
           ) : null}
           <ShockEditor shocks={shocks} setShocks={setShocks} lib={lib.data} run={run} horizon={horizon} setHorizon={setHorizon} />
-          {shocks.length > 0 && <SaveBar text={text} shocks={shocks} events={events} horizon={horizon} defaultName={parsed.label || text} onSaved={saved.reload} />}
+          {shocks.length > 0 && <SaveBar text={text} shocks={shocks} events={events} usedEvents={usedEvents} horizon={horizon} defaultName={parsed.label || text} onSaved={saved.reload} />}
         </div>
       )}
       {!parsed && shocks.length === 0 && (
@@ -135,7 +138,7 @@ function ScenarioLab() {
       {run && !run.empty && (
         <div className={clsx("transition-opacity duration-fast", running && "opacity-60")}>
           {run.warnings.map((w) => <p key={w} className="mt-2 text-xs text-faint">{w}</p>)}
-          <FamilySummary run={run} ccy={ccy} view={view} setView={setView} />
+          <FamilySummary run={run} ccy={ccy} view={view} setView={setView} setRegime={setRegime} />
           <Market run={run} />
           <HoldingsImpact run={run} view={view} ccy={ccy} />
           <Protection run={run} view={view} ccy={ccy} />
@@ -152,15 +155,16 @@ function ScenarioLab() {
   );
 }
 
-function ReadAs({ parsed, ai }: { parsed: ScenarioParse; ai: boolean }) {
+function ReadAs({ parsed }: { parsed: ScenarioParse }) {
   return (
     <div className="text-sm">
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted">
-        {parsed.parser === "ai" ? <><Sparkle size={14} className="text-accent" />Read by Claude</> : <>Read by the local rules{!ai && <InfoTip text="Add a Claude API key in Settings to read freer sentences. The local rules are free and work offline." />}</>}
+        {parsed.parser === "ai" ? <><Sparkle size={14} className="text-accent" />Read by Claude</> : <>Read by the local rules</>}
         {parsed.themes.length > 0 && <span>· {parsed.themes.map((t) => t.label).join(", ")}</span>}
         {parsed.label && !parsed.themes.length && parsed.parser === "ai" && <span dir="auto">· {parsed.label}</span>}
       </p>
-      {parsed.notes.map((n) => <p key={n} className="mt-1 text-xs text-faint">{n}</p>)}
+      {parsed.parser === "rules" && <p className="mt-1 text-xs text-faint">Free-text research coming soon. Local rules understand simple moves like “oil falls 20%”.</p>}
+      {parsed.notes.map((n) => <p key={n} className="mt-1 text-xs text-muted">{n}</p>)}
     </div>
   );
 }
@@ -207,6 +211,7 @@ function ShockEditor({ shocks, setShocks, lib, run, horizon, setHorizon }: {
             </div>
             <MoveInput value={s.move} onChange={(v) => setShocks((xs) => xs.map((x) => x.key === s.key ? { ...x, move: v, basis: "manual", basis_text: "Set by you" } : x))} label={`Move for ${s.symbol}`} />
             <p className="col-span-3 text-xs text-muted sm:col-span-1">
+              {s.split && s.basis !== "manual" && <span className="font-medium text-text">Past events split: no clear direction. </span>}
               {s.basis_text}
               {z(s.symbol) != null && <span className="text-faint"> · {Math.abs(z(s.symbol)!).toFixed(1)}× a normal week</span>}
             </p>
@@ -253,7 +258,7 @@ function MoveInput({ value, onChange, label }: { value: number; onChange: (v: nu
   );
 }
 
-function SaveBar({ text, shocks, events, horizon, defaultName, onSaved }: { text: string; shocks: EditShock[]; events: string[]; horizon: number; defaultName: string; onSaved: () => void }) {
+function SaveBar({ text, shocks, events, usedEvents, horizon, defaultName, onSaved }: { text: string; shocks: EditShock[]; events: string[]; usedEvents: string[]; horizon: number; defaultName: string; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(defaultName);
   const [done, setDone] = useState(false);
@@ -262,7 +267,7 @@ function SaveBar({ text, shocks, events, horizon, defaultName, onSaved }: { text
   return (
     <form className="mt-2 flex max-w-[480px] gap-2" onSubmit={async (e) => {
       e.preventDefault();
-      await api.saveScenario({ name, text, shocks: shocks.map(({ symbol, kind, move }) => ({ symbol, kind, move })), events, horizon_weeks: horizon });
+      await api.saveScenario({ name, text, shocks: shocks.map(({ symbol, kind, move }) => ({ symbol, kind, move })), events, used_events: usedEvents, horizon_weeks: horizon });
       setOpen(false); setDone(true); onSaved();
     }}>
       <input aria-label="Scenario name" dir="auto" className="field h-8 text-sm" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -284,23 +289,42 @@ function Bar({ v, max }: { v: number; max: number }) {
   );
 }
 
-function FamilySummary({ run, ccy, view, setView }: { run: ScenarioRun; ccy: string; view: string; setView: (v: string) => void }) {
+function FamilySummary({ run, ccy, view, setView, setRegime }: { run: ScenarioRun; ccy: string; view: string; setView: (v: string) => void; setRegime: (r: Regime) => void }) {
   const f = run.family;
   const rows = [...run.portfolios].sort((a, b) => a.impact - b.impact);
   const max = Math.max(...rows.map((r) => Math.abs(r.impact)), Math.abs(f.impact), 0.001);
-  const which = run.mode === "stress" ? "sell-off" : "normal";
+  const h = run.history;
+  const Choice = ({ r, label, impact, change }: { r: Regime; label: string; impact: number; change: number }) => {
+    const on = run.regime === r;
+    return (
+      <button type="button" aria-pressed={on} onClick={() => setRegime(r)}
+        className={clsx("press rounded-sm border px-3 py-2 text-left", on ? "border-accent bg-accent-soft" : "border-line hover:bg-hover")}>
+        <span className={clsx("block text-xs", on ? "font-medium text-text" : "text-muted")}>{label}</span>
+        <span className="flex items-baseline gap-2">
+          <Signed value={impact} className={clsx(on ? "text-3xl font-semibold tracking-tight" : "text-xl")}>{pct(impact, 1)}</Signed>
+          <Signed value={change} className={clsx(on ? "text-base" : "text-sm")}>{money(change, ccy, { signed: true })}</Signed>
+        </span>
+      </button>
+    );
+  };
   return (
     <div className="mt-12">
       <p className="text-sm text-muted">{run.portfolios.length > 1 ? "All portfolios together" : run.portfolios[0]?.name}</p>
-      <p className="mt-1 flex flex-wrap items-baseline gap-x-3">
-        <Signed value={f.impact} className="text-3xl font-semibold tracking-tight">{pct(f.impact, 1)}</Signed>
-        <Signed value={f.change} className="text-lg">{money(f.change, ccy, { signed: true })}</Signed>
-      </p>
-      <p className="mt-1 text-sm text-muted">
+      <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Market regime">
+        <Choice r="normal" label="Normal markets" impact={f.impact_normal} change={f.change_normal} />
+        <Choice r="selloff" label="In a sell-off" impact={f.impact_selloff} change={f.change_selloff} />
+      </div>
+      <p className="mt-2 text-sm text-muted">
         Likely between <span className="num">{pct(f.low, 1)}</span> and <span className="num">{pct(f.high, 1)}</span>
-        <InfoTip text="About 2 in 3 outcomes fall in this range, given the moves above. It widens for longer periods and for holdings measured through a stand-in." />
-        <span className="text-faint"> · with {which} correlations; {run.mode === "stress" ? "normal" : "sell-off"} ones give <span className="num">{pct(f.impact_other, 1)}</span></span>
+        <InfoTip text="About 2 in 3 outcomes fall in this range, given the moves above. “In a sell-off” uses how prices moved together in the worst 15% of weeks, when they tend to fall together. Click either number to use it everywhere below." />
       </p>
+      {h && (
+        <p className="mt-1 text-sm text-muted">
+          Worst past event: {h.worst.name} <Signed value={h.worst.impact}>{pct(h.worst.impact, 1)}</Signed> (<Signed value={h.worst.change}>{money(h.worst.change, ccy, { signed: true })}</Signed>)
+          {h.n > 1 && <> · Best: {h.best.name} <Signed value={h.best.impact}>{pct(h.best.impact, 1)}</Signed></>}
+          <span className="block text-xs text-faint">Based on {h.n} event{h.n === 1 ? "" : "s"}, {h.from === h.to ? h.from : `${h.from}–${h.to}`}.</span>
+        </p>
+      )}
       {run.portfolios.length > 1 && (
         <div className="mt-6 overflow-x-auto">
           <table className="w-full text-sm sm:min-w-[520px]">
@@ -378,7 +402,7 @@ function HoldingsImpact({ run, view, ccy }: { run: ScenarioRun; view: string; cc
           </tr></thead>
           <tbody>{shown.map((h) => (
             <tr key={h.symbol} className="border-b border-line">
-              <td className="max-w-[220px] py-2"><span className="font-mono font-semibold">{h.symbol}</span>
+              <td className="max-w-[220px] py-2"><span className="inline-flex items-center gap-2 align-middle"><Avatar ticker={h.symbol} size={20} /><span className="font-mono font-semibold">{h.symbol}</span></span>
                 <span className="ml-2 hidden truncate text-xs text-faint sm:inline">{h.name !== h.symbol ? h.name : ""}</span>
                 {h.proxy && <span className="ml-1 text-xs text-faint">(via {h.proxy})</span>}</td>
               <td className="num hidden py-2 text-right text-muted sm:table-cell">{pct(h.weight, 1, false)}</td>
@@ -396,31 +420,41 @@ function HoldingsImpact({ run, view, ccy }: { run: ScenarioRun; view: string; cc
   );
 }
 
-function hedgeLine(h: Hedge, ccy: string): { title: string; body: string } {
-  if (h.kind === "trim") return { title: `Trim ${h.symbol} by half`, body: `Sell about ${money(h.amount, ccy)}; saves about ${money(h.saves, ccy)} in this scenario${h.share ? ` (${pct(h.share, 0, false)} of the hit)` : ""}.` };
-  if (h.kind === "index") return {
-    title: `Short ${money(h.notional, ccy)} of ${h.symbol}${h.inverse ? ` (or buy ${h.inverse}, its inverse fund)` : ""}`,
-    body: `Offsets about ${money(h.offset, ccy)}${h.share ? ` (${pct(h.share, 0, false)} of the hit)` : ""} and ${pct(h.risk_cut, 0, false)} of normal weekly swings. You also give up that much upside when markets rise.`,
-  };
-  return {
-    title: `Hold ${money(h.notional, ccy)} of ${h.symbol}`,
-    body: `It rises about ${pct(h.move, 1)} in this scenario, covering half the hit. In a normal week it swings about ${money(h.weekly_swing, ccy)}${Math.abs(h.corr) > 0.2 ? `, and it usually moves ${h.corr < 0 ? "against" : "with"} this portfolio` : ""}.`,
-  };
+function ideaText(i: Idea, ccy: string): { title: string; body: string } {
+  const size = `${pct(i.share_of_portfolio, 0, false)} of the portfolio · ${money(i.amount, ccy)}`;
+  const covers = `Covers ${pct(i.covers, 0, false)} of the hit.`;
+  switch (i.kind) {
+    case "trim": return { title: `Trim ${i.symbol} by half`, body: `${size}, moved to cash. ${covers}` };
+    case "rebalance": return { title: `Bring ${i.symbols.join(", ")} down to ${pct(i.target, 0, false)}${i.symbols.length > 1 ? " each" : ""} of the portfolio`, body: `${size}, moved to cash. ${covers}` };
+    case "cash": return { title: "Raise cash: sell a quarter of every holding", body: `${size}. ${covers}` };
+    case "add": return { title: `Shift into ${i.symbol}`, body: `${size}, taken evenly from your holdings. ${i.symbol} rose ${pct(i.move, 1)} in this case. ${covers}` };
+    case "short": return { title: `Short ${i.symbol}${i.inverse ? ` (or buy ${i.inverse}, its inverse fund)` : ""}`, body: `${size}. ${covers} You give up as much upside if markets rise.` };
+  }
 }
 
 function Protection({ run, view, ccy }: { run: ScenarioRun; view: string; ccy: string }) {
-  const hedges = run.hedges[view] ?? [];
-  const name = view === "family" ? "the family" : run.portfolios.find((p) => String(p.id) === view)?.name;
+  const p = run.protection[view];
+  const name = view === "family" ? "the family" : run.portfolios.find((x) => String(x.id) === view)?.name;
+  if (!p) return null;
   return (
     <div className="mt-12">
       <h2 className="flex items-center gap-2 text-base font-semibold"><ShieldCheck size={18} className="text-accent" />Protection ideas · {name}</h2>
-      {hedges.length === 0 ? <p className="mt-2 text-sm text-muted">This scenario doesn't hurt {name} enough to need protection.</p> : (
-        <ul className="mt-3 border-t border-line">{hedges.map((h, i) => {
-          const l = hedgeLine(h, ccy);
-          return <li key={i} className="border-b border-line py-3"><p className="text-sm font-medium">{l.title}</p><p className="mt-0.5 text-sm text-muted">{l.body}</p></li>;
-        })}</ul>
+      {p.status === "not_needed" ? <p className="mt-2 text-sm text-muted">This scenario doesn't hurt {name} enough to need protection, and no past event used cost it more than 2%.</p> : (
+        <>
+          {p.basis && <p className="mt-1 text-sm text-muted">
+            {p.basis.kind === "event" ? <>Sized for the worst past event used: {p.basis.name} (<Signed value={p.basis.impact}>{pct(p.basis.impact, 1)}</Signed>).</>
+              : <>Sized for the estimate above (<Signed value={p.basis.impact}>{pct(p.basis.impact, 1)}</Signed>).</>}
+          </p>}
+          <ul className="mt-3 border-t border-line">{p.ideas.map((i, k) => {
+            const l = ideaText(i, ccy);
+            return <li key={k} className="border-b border-line py-3"><p className="text-sm font-medium">{l.title}</p><p className="num mt-0.5 text-sm text-muted">{l.body}</p></li>;
+          })}</ul>
+          {p.weak && <p className="mt-2 text-sm text-muted">None of these ideas, capped at half the portfolio, covers 20% of the hit.</p>}
+        </>
       )}
-      <p className="mt-2 text-xs text-faint">Sizes come from the same model. Protection costs money or upside when the scenario doesn't happen. Ideas, not advice.</p>
+      <p className="mt-2 text-xs text-faint">
+        Each idea is capped at half the portfolio. {run.allow_shorts ? "Shorts and inverse funds are on (Settings)." : "Long-only: shorts and inverse funds are off (Settings)."} Ideas, not advice.
+      </p>
     </div>
   );
 }
@@ -435,7 +469,8 @@ function PastEvents({ events, ccy }: { events: EventReplay[]; ccy: string }) {
         {events.map((e) => (
           <li key={e.id} className="border-t border-line pt-3">
             <div className="flex items-baseline justify-between gap-3">
-              <div className="min-w-0"><p className="font-medium">{e.name}</p><p className="text-xs text-faint">{dateLong(e.start)} to {dateLong(e.end)}</p></div>
+              <div className="min-w-0"><p className="font-medium">{e.name}</p><p className="text-xs text-faint">{dateLong(e.start)} to {dateLong(e.end)}</p>
+                {!e.used && <p className="mt-0.5 text-xs font-medium text-muted">Not used in the estimate</p>}</div>
               <div className="shrink-0 text-right"><Signed value={e.family.impact} className="text-lg font-semibold">{pct(e.family.impact, 1)}</Signed>
                 <p><Signed value={e.family.change} className="text-xs">{money(e.family.change, ccy, { signed: true })}</Signed></p></div>
             </div>
@@ -459,11 +494,13 @@ function Reverse({ run }: { run: ScenarioRun }) {
   return (
     <div className="mt-12">
       <h2 className="text-base font-semibold">How big before it costs 10%?</h2>
-      <p className="mt-1 max-w-[72ch] text-sm text-muted">
-        The same story <span className="num font-medium text-text">{r.scale.toFixed(1)}×</span> as strong would cost {run.portfolios.length > 1 ? "the family" : "the portfolio"} 10%:{" "}
-        {r.shocks.map((s, i) => <span key={s.symbol}>{i > 0 && ", "}{lab(s.symbol)} <Signed value={s.move}>{pct(s.move, 0)}</Signed></span>)}.{" "}
-        {r.label === "not seen in the data" ? "Nothing like that appears in the data." : r.years ? `About once every ${r.years < 1 ? "few months" : `${Math.round(r.years)} years`}.` : ""}
-      </p>
+      {r.beyond ? <p className="mt-1 text-sm text-muted">No past event was that large.</p> : (
+        <p className="mt-1 max-w-[72ch] text-sm text-muted">
+          The same story <span className="num font-medium text-text">{r.scale.toFixed(1)}×</span> as strong would cost {run.portfolios.length > 1 ? "the family" : "the portfolio"} 10%:{" "}
+          {r.shocks.map((s, i) => <span key={s.symbol}>{i > 0 && ", "}{lab(s.symbol)} <Signed value={s.move}>{pct(s.move, 0)}</Signed></span>)}.{" "}
+          {r.years ? `About once every ${r.years < 1 ? "few months" : `${Math.round(r.years)} years`} in the data.` : ""}
+        </p>
+      )}
     </div>
   );
 }

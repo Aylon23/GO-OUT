@@ -28,9 +28,9 @@ export function TodayPanel({ p }: { p: Portfolio }) {
               <tr key={r.ticker} className="border-t border-line first:border-t-0">
                 <td className="py-2"><span className="flex min-w-0 items-center gap-2.5"><Avatar ticker={r.ticker} size={22} />
                   <span className="font-mono font-semibold">{r.ticker}</span><span className="hidden truncate text-muted sm:inline">{r.name}</span></span></td>
-                <td className="num py-2 text-right text-muted">{r.price_status === "missing" ? "No price" : money(r.price, r.currency, { decimals: 2 })}</td>
-                <td className="py-2 text-right"><Signed value={r.today_pct}>{pct(r.today_pct, 2)}</Signed></td>
-                <td className="w-28 py-2 text-right font-medium"><Signed value={r.today}>{money(r.today, p.base, { signed: true, decimals: 0 })}</Signed></td>
+                <td className="num py-2 text-right text-muted">{r.price_status !== "ok" ? <span className="text-faint">No price{r.price_date && <span className="block text-xs">last {dateLong(r.price_date)}</span>}</span> : money(r.price, r.currency, { decimals: 2 })}</td>
+                <td className="py-2 text-right">{r.price_status !== "ok" ? <span className="text-faint">–</span> : <Signed value={r.today_pct}>{pct(r.today_pct, 2)}</Signed>}</td>
+                <td className="w-28 py-2 text-right font-medium">{r.price_status !== "ok" ? <span className="text-faint">–</span> : <Signed value={r.today}>{money(r.today, p.base, { signed: true, decimals: 0 })}</Signed>}</td>
               </tr>
             ))}
           </tbody>

@@ -52,7 +52,10 @@ PORTFOLIO_PROVIDER=synthetic PORTFOLIO_DB=/tmp/synthetic.db ./start.sh
 
 Use the switcher next to the app name to pick a portfolio, open **All portfolios**, or add one.
 Every page (Overview, Holdings, Risk, Compare, Transactions, What-if) shows the selected portfolio.
-**All portfolios** compares them side by side against SPY and QQQ.
+**All portfolios** compares them side by side against SPY and QQQ: a few automatic insights (biggest
+winner and loser, the most widely held stock, any portfolio over 25% in one stock or 35% in one sector),
+and a sortable table with each person's trend, value, gain vs cost in dollars, return vs the S&P 500 since
+tracking began (shown after 20 trading days), today's move and last activity.
 
 ### Importing holdings from Excel
 
@@ -144,13 +147,20 @@ can edit, then shows for every portfolio and the whole family:
 - what else rises and falls, and each holding's move with the reason ("oil +1.6%, defense −0.3%")
 - today's holdings replayed through past events like it (Iran 2024–2025, October 7, COVID, 2022 rate hikes, SVB, tariffs…)
 - how big the same story would need to be to cost 10%, and how often history has seen weeks that unusual
-- protection ideas: trims, an index hedge, and assets that rise in the scenario (ideas, not advice)
+- protection ideas, long-only by default (trim, rebalance, add bonds or gold, raise cash), each capped at half
+  the portfolio and sized for the worst past event used; shorts and inverse funds only if you turn them on in Settings
 - "How reliable is this?": the model rebuilt before each past event and scored against what really happened
 
-Sentences are read by free local rules. With a Claude API key in Settings, Claude reads freer
-sentences too (falls back to the rules if it fails). The first run loads ten years of prices for ~26
+Sentences are read by free local rules ("oil falls 20%", "war with Iran"). Free-text research is coming later.
+The headline shows the result in normal markets and in a sell-off; normal is the default, and you choose. The first run loads ten years of prices for ~26
 market ETFs; the app starts fetching them in the background when it starts. Method and sources:
 [docs/SCENARIOS.md](docs/SCENARIOS.md). Swap-a-holding and build-a-portfolio are still on the same page.
+
+## Company logos
+
+Logos are fetched once by the app from free public sources that need no key (Parqet, Financial Modeling
+Prep's image endpoint, or the company website's icon), saved in `data/logos/`, and served from there.
+A symbol without a logo shows its letter. To fix a wrong or missing logo, upload your own in Settings.
 
 ## How the numbers work
 

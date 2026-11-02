@@ -342,8 +342,12 @@ def parse(session: Session, text: str, use_ai: bool = True) -> dict:
             mv = u.typical[sym] * s["direction"]
             what = "a strong week for it (90th percentile of weekly moves, 10 years)"
             shocks.append(_shock(u, sym, s["kind"], mv, "typical", what, s.get("event")))
+    # past events actually used: a theme's events that have prices in the window
+    used: list[str] = []
     for th in themes:
-        evs = [EVENT_BY_ID[e] for e in th["events"]]
+        used += [e for e in th["events"] if e not in used and event_move(u, "SPY", EVENT_BY_ID[e]) is not None]
+    for th in themes:
+        evs = [EVENT_BY_ID[e] for e in th["events"] if e in used]
         for sym in th["factors"]:
             if sym in seen or not u.has(sym) or len(shocks) >= MAX_SHOCKS:
                 continue
@@ -352,20 +356,29 @@ def parse(session: Session, text: str, use_ai: bool = True) -> dict:
                 mv = float(np.median(moves))
                 if abs(mv) < 0.002:
                     continue  # this factor didn't move in these events; let the model decide
-                shocks.append(_shock(u, sym, "factor", mv, "events", f"Median of {len(moves)} past events (listed below)"))
+                text = f"Median of {len(moves)} past event{'s' if len(moves) != 1 else ''} used"
+                if len(moves) < len(evs):
+                    text += f" ({len(evs) - len(moves)} had no prices for it)"
+                sh = _shock(u, sym, "factor", mv, "events", text)
+                sh["split"] = any(m > 0.002 for m in moves) and any(m < -0.002 for m in moves)
+                sh["event_moves"] = [{"id": ev["id"], "move": m} for ev in evs if (m := event_move(u, sym, ev)) is not None]
+                shocks.append(sh)
             else:
                 mv = u.typical[sym] * th["fallback"].get(sym, -1)
                 shocks.append(_shock(u, sym, "factor", mv, "typical", "No past event data; a strong week for it"))
             seen.add(sym)
+    if any(sh["symbol"] == "USO" and sh["move"] < 0 for sh in shocks) and not {"recession", "crash", "pandemic"} & {t["id"] for t in themes}:
+        notes.append("Assumes supply-driven (OPEC, ceasefire). A recession-driven drop looks very different.")
     horizon = 1.0
     if themes:
-        lens = [event_weeks(EVENT_BY_ID[e]) for th in themes for e in th["events"]]
+        lens = [event_weeks(EVENT_BY_ID[e]) for e in (used or [e for th in themes for e in th["events"]])]
         horizon = float(np.median(lens)) if lens else 1.0
     shocks = shocks[:MAX_SHOCKS]
+    events = used + [e for e in events if e not in used]
     events += [e for e in _analogs(u, {s["symbol"]: s["move"] for s in shocks}, set(events)) if e not in events]
     label = raw.get("label") or (themes[0]["label"] if themes else "")
     return {"text": text, "parser": parser, "label": label, "themes": [{"id": t["id"], "label": t["label"]} for t in themes],
-            "shocks": shocks, "events": events[:6], "horizon_weeks": round(horizon, 1), "notes": notes,
+            "shocks": shocks, "events": events[:max(6, len(used))], "used_events": used, "horizon_weeks": round(horizon, 1), "notes": notes,
             "understood": bool(shocks)}
 
 
@@ -376,8 +389,9 @@ def _shock(u: Universe, sym: str, kind: str, move: float, basis: str, basis_text
 
 # ------------------------------------------------------------------ the run
 
-def _propagate(u: Universe, shocks: list[dict], horizon: float) -> dict:
-    """Conditional moves of every asset, with calm and sell-off correlations."""
+def _propagate(u: Universe, shocks: list[dict], horizon: float, regime: str = "normal") -> dict:
+    """Conditional moves of every asset, with normal and sell-off correlations. The regime is the
+    user's choice (normal by default); the size of the move never switches it."""
     S = [u.idx(s["symbol"]) for s in shocks]
     s = np.array([float(x["move"]) for x in shocks])
     pinned = None
@@ -388,15 +402,13 @@ def _propagate(u: Universe, shocks: list[dict], horizon: float) -> dict:
         pinned = "SPY"
     calm = stress.conditional(u.C["calm"], S, s, horizon)
     sell = stress.conditional(u.C["stress"], S, s, horizon)
-    spy = u.idx("SPY")
-    mode = "stress" if calm["mu"][spy] < -0.01 or sell["mu"][spy] < -0.01 else "calm"
+    mode = "stress" if regime == "selloff" else "calm"
     plaus = stress.plausibility(u.C["calm"], S, s, horizon, u.R)
     return {"S": S, "s": s, "calm": calm, "stress": sell, "mode": mode, "pinned": pinned, "plaus": plaus}
 
 
 def _book_impact(u: Universe, book: Book, prop: dict, detail: bool = True) -> dict:
     head = prop[prop["mode"]]
-    other = prop["calm" if prop["mode"] == "stress" else "stress"]
     shocked = {u.symbols[i]: prop["s"][k] for k, i in enumerate(prop["S"])}
     cols, extra, rows = [], [], []
     for h in book.holdings:
@@ -404,11 +416,12 @@ def _book_impact(u: Universe, book: Book, prop: dict, detail: bool = True) -> di
         w = h.value / book.value
         own_shock = h.symbol in shocked
         mu = float(shocked[h.symbol]) if own_shock else float(head["mu"][col])
-        mu_o = float(shocked[h.symbol]) if own_shock else float(other["mu"][col])
+        mu_n = float(shocked[h.symbol]) if own_shock else float(prop["calm"]["mu"][col])
+        mu_s = float(shocked[h.symbol]) if own_shock else float(prop["stress"]["mu"][col])
         sd = 0.0 if own_shock else math.sqrt(float(head["sd"][col]) ** 2 + (EXTRA_IDIO_WEEKLY ** 2 * prop["h"] if proxied else 0.0))
         cols.append(col)
         extra.append(0.0 if own_shock or not proxied else EXTRA_IDIO_WEEKLY ** 2 * prop["h"])
-        row = {"symbol": h.symbol, "name": h.name, "value": h.value, "weight": w, "move": mu, "move_other": mu_o,
+        row = {"symbol": h.symbol, "name": h.name, "value": h.value, "weight": w, "move": mu, "move_normal": mu_n, "move_selloff": mu_s,
                "low": mu - sd, "high": mu + sd, "change": mu * h.value, "proxy": proxy if proxied else None, "shocked": own_shock}
         if detail and not own_shock:
             contrib = head["B"][col] * prop["s"]
@@ -417,7 +430,6 @@ def _book_impact(u: Universe, book: Book, prop: dict, detail: bool = True) -> di
         rows.append(row)
     w = np.array([r["weight"] for r in rows])
     mu = np.array([r["move"] for r in rows])
-    mu_o = np.array([r["move_other"] for r in rows])
     cc = head["cond_cov"][np.ix_(cols, cols)].copy()
     shocked_mask = np.array([r["shocked"] for r in rows])
     cc[shocked_mask, :] = 0
@@ -425,59 +437,102 @@ def _book_impact(u: Universe, book: Book, prop: dict, detail: bool = True) -> di
     var = float(w @ cc @ w + np.sum(w ** 2 * np.array(extra)))
     m = float(w @ mu)
     sd = math.sqrt(max(var, 0.0))
+    normal = float(w @ np.array([r["move_normal"] for r in rows]))
+    selloff = float(w @ np.array([r["move_selloff"] for r in rows]))
     rows.sort(key=lambda r: r["change"])
     return {"id": book.pid, "name": book.name, "value": book.value, "invested": float(sum(h.value for h in book.holdings)),
-            "impact": m, "impact_other": float(w @ mu_o), "change": m * book.value, "low": m - sd, "high": m + sd,
+            "impact": m, "change": m * book.value, "low": m - sd, "high": m + sd,
+            "impact_normal": normal, "impact_selloff": selloff, "change_normal": normal * book.value, "change_selloff": selloff * book.value,
             "holdings": rows, "_w": w, "_cols": cols, "_mu": mu}
 
 
-def _hedges(u: Universe, imp: dict, prop: dict) -> list[dict]:
-    loss = imp["change"]
-    if imp["impact"] > -0.005:
-        return []
-    out = []
+NEEDS_PROTECTION_MODEL = -0.005  # model hit beyond -0.5%
+NEEDS_PROTECTION_EVENT = -0.02  # or any used past event beyond -2% for this portfolio
+CAP_SHARE = 0.5  # no single idea moves more than half a portfolio
+REBALANCE_MAX = 0.15
+CASH_SHARE = 0.25
+LONG_HEDGES = ["TLT", "IEF", "GLD"]
+
+
+def _protection(u: Universe, imp: dict, prop: dict, book_events: list[dict], family_value: float, allow_shorts: bool) -> dict:
+    """Protection ideas for one portfolio, long-only unless shorts are allowed.
+
+    Sized for the worst case among the model estimate and the past events actually used:
+    each idea's effect is computed with that case's own moves (a past event's real moves, or the
+    model's). Every idea is capped at half the portfolio and at the family's total value."""
+    value = imp["value"]
+    invested = imp["invested"]
+    worst_ev = min(book_events, key=lambda e: e["change"]) if book_events else None
+    event_hit = worst_ev is not None and worst_ev["impact"] < NEEDS_PROTECTION_EVENT
+    if imp["impact"] > NEEDS_PROTECTION_MODEL and not event_hit:
+        return {"status": "not_needed", "ideas": [], "basis": None, "weak": False}
     head = prop[prop["mode"]]
-    losers = [r for r in imp["holdings"] if r["change"] < 0][:3]
-    for r in losers:
-        out.append({"kind": "trim", "symbol": r["symbol"], "amount": r["value"] / 2, "saves": -r["change"] / 2,
-                    "share": (r["change"] / 2) / loss if loss else None})
-    C = u.C["calm"]
-    w, cols = imp["_w"], imp["_cols"]
-    cov_full = C[np.ix_(cols, cols)]
-    var_p = float(w @ cov_full @ w)
-    best = None
-    for hsym in INDEX_HEDGES:
-        j = u.idx(hsym)
-        if j is None or not u.has(hsym) or var_p <= 0:
+    if worst_ev is not None and worst_ev["change"] < imp["change"]:
+        basis = {"kind": "event", "id": worst_ev["id"], "name": worst_ev["name"], "impact": worst_ev["impact"], "change": worst_ev["change"]}
+        hmove = dict(worst_ev["_moves"])
+        amove = dict(worst_ev["_assets"])
+    else:
+        basis = {"kind": "model", "impact": imp["impact"], "change": imp["change"]}
+        hmove = {r["symbol"]: r["move"] for r in imp["holdings"]}
+        amove = {sym: float(head["mu"][u.idx(sym)]) for sym in LONG_HEDGES + INDEX_HEDGES if u.has(sym)}
+    rows = [r for r in imp["holdings"]]
+    hit = -sum(r["value"] * hmove.get(r["symbol"], r["move"]) for r in rows)
+    if hit <= 0:
+        return {"status": "not_needed", "ideas": [], "basis": basis, "weak": False}
+    cap = min(CAP_SHARE * value, family_value)
+    ideas = []
+
+    def idea(kind: str, amount: float, offset: float, **extra):
+        amount = min(amount, cap)
+        ideas.append({"kind": kind, "amount": amount, "share_of_portfolio": amount / value, "offset": offset,
+                      "covers": max(offset, 0.0) / hit, **extra})
+
+    losers = sorted(rows, key=lambda r: r["value"] * hmove.get(r["symbol"], r["move"]))
+    for r in losers[:2]:
+        m = hmove.get(r["symbol"], r["move"])
+        if m >= -0.002:
             continue
-        cov_ph = float(w @ C[cols, j])
-        vh = float(C[j, j])
-        ratio = cov_ph / vh
-        corr2 = cov_ph ** 2 / (var_p * vh)
-        offset = -ratio * imp["value"] * float(head["mu"][j])  # a short position gains what H loses
-        cand = {"kind": "index", "symbol": hsym, "notional": ratio * imp["value"], "offset": offset,
-                "share": offset / -loss if loss else None, "risk_cut": corr2, "inverse": INVERSE.get(hsym)}
-        if ratio > 0 and (best is None or corr2 > best["risk_cut"]):
-            best = cand
-    if best and best["offset"] > 0:
-        out.append(best)
-    picks = []
-    for hsym in SCENARIO_HEDGES:
-        j = u.idx(hsym)
-        if j is None or not u.has(hsym):
+        amt = min(r["value"] / 2, cap)
+        idea("trim", amt, amt * -m, symbol=r["symbol"])
+    over = [(r, r["value"] - REBALANCE_MAX * value) for r in rows if r["weight"] > REBALANCE_MAX and hmove.get(r["symbol"], r["move"]) < -0.002]
+    if over:
+        amt = min(sum(x for _, x in over), cap)
+        scale = amt / sum(x for _, x in over)
+        idea("rebalance", amt, sum(x * scale * -hmove.get(r["symbol"], r["move"]) for r, x in over),
+             symbols=[r["symbol"] for r, _ in over], target=REBALANCE_MAX)
+    if invested > 0:
+        amt = min(CASH_SHARE * invested, cap)
+        idea("cash", amt, hit * amt / invested)
+    for sym in LONG_HEDGES:
+        m = amove.get(sym)
+        if m is None or m <= 0.002 or invested <= 0:
             continue
-        m = float(head["mu"][j])
-        sd = math.sqrt(float(C[j, j]) * prop["h"])
-        if m <= 0.002 or sd <= 0:
-            continue
-        cov_ph = float(w @ C[cols, j])
-        corr = cov_ph / math.sqrt(var_p * float(C[j, j])) if var_p > 0 else 0.0
-        notional = 0.5 * -loss / m
-        picks.append((m / sd, {"kind": "scenario", "symbol": hsym, "notional": notional, "offset": -loss * 0.5, "share": 0.5,
-                               "move": m, "weekly_swing": notional * math.sqrt(float(C[j, j])), "corr": corr}))
-    picks.sort(key=lambda x: -x[0])
-    out += [p for _, p in picks[:2]]
-    return out
+        # shift money from everything (pro rata) into this asset: lose that slice of the hit, gain the asset's move
+        per_dollar = m + hit / invested
+        amt = min(hit / per_dollar, cap)
+        idea("add", amt, amt * per_dollar, symbol=sym, move=m)
+    if allow_shorts:
+        C = u.C["calm"]
+        w, cols = imp["_w"], imp["_cols"]
+        var_p = float(w @ C[np.ix_(cols, cols)] @ w)
+        best = None
+        for hsym in INDEX_HEDGES:
+            j = u.idx(hsym)
+            m = amove.get(hsym)
+            if j is None or not u.has(hsym) or var_p <= 0 or m is None or m >= -0.002:
+                continue
+            cov_ph = float(w @ C[cols, j])
+            ratio = cov_ph / float(C[j, j])
+            corr2 = cov_ph ** 2 / (var_p * float(C[j, j]))
+            if ratio > 0 and (best is None or corr2 > best[1]):
+                best = (hsym, corr2, ratio, m)
+        if best:
+            hsym, corr2, ratio, m = best
+            amt = min(ratio * value, cap)
+            idea("short", amt, amt * -m, symbol=hsym, inverse=INVERSE.get(hsym), risk_cut=corr2)
+    ideas.sort(key=lambda x: -x["covers"])
+    weak = not any(i["covers"] >= 0.2 for i in ideas)
+    return {"status": "ideas", "ideas": ideas[:5], "basis": basis, "hit": hit, "weak": weak}
 
 
 def _clean_book(imp: dict, top: int | None = None) -> dict:
@@ -491,8 +546,9 @@ def _clean_book(imp: dict, top: int | None = None) -> dict:
 
 
 def run(session: Session, shocks: list[dict], horizon: float = 1.0, event_ids: list[str] | None = None,
-        pids: list[int] | None = None) -> dict:
+        pids: list[int] | None = None, regime: str = "normal", used_events: list[str] | None = None) -> dict:
     ports, family = books(session, pids)
+    settings = services.get_settings(session)
     shocks = [s for s in shocks if s.get("symbol")][:MAX_SHOCKS]
     u = universe(session, [h.symbol for h in family.holdings] + [s["symbol"].upper() for s in shocks])
     warnings = []
@@ -509,14 +565,29 @@ def run(session: Session, shocks: list[dict], horizon: float = 1.0, event_ids: l
     if not clean:
         return {"empty": True, "warnings": warnings or ["Add at least one shock."]}
     horizon = float(min(max(horizon or 1.0, 1.0), 52.0))
-    prop = _propagate(u, clean, horizon)
+    regime = "selloff" if regime == "selloff" else "normal"
+    prop = _propagate(u, clean, horizon, regime)
     prop["h"] = horizon
     head = prop[prop["mode"]]
 
+    used = [e for e in (used_events or []) if e in EVENT_BY_ID]
+    shown = list(dict.fromkeys(used + [e for e in (event_ids or []) if e in EVENT_BY_ID]))
+    replays = [r for e in shown if (r := replay(u, EVENT_BY_ID[e], ports, family))]
+    for r in replays:
+        r["used"] = r["id"] in used
+    used_replays = [r for r in replays if r["used"]]
+
     fam = _book_impact(u, family, prop)
     per = [_book_impact(u, b, prop, detail=False) for b in ports]
-    hedges = {str(b["id"]): _hedges(u, b, prop) for b in per}
-    hedges["family"] = _hedges(u, fam, prop)
+    allow = bool(settings.allow_short_hedges)
+    protection = {}
+    for b in per:
+        evs = [{"id": r["id"], "name": r["name"], "impact": pr["impact"], "change": pr["change"], "_moves": r["_moves"], "_assets": r["_assets"]}
+               for r in used_replays for pr in r["portfolios"] if pr["id"] == b["id"]]
+        protection[str(b["id"])] = _protection(u, b, prop, evs, family.value, allow)
+    fam_evs = [{"id": r["id"], "name": r["name"], "impact": r["family"]["impact"], "change": r["family"]["change"],
+                "_moves": r["_moves"], "_assets": r["_assets"]} for r in used_replays]
+    protection["family"] = _protection(u, fam, prop, fam_evs, family.value, allow)
 
     shocked = {u.symbols[i] for i in prop["S"]}
     market = []
@@ -534,15 +605,24 @@ def run(session: Session, shocks: list[dict], horizon: float = 1.0, event_ids: l
         k = -0.10 / fam["impact"]
         scaled = prop["s"] * k
         rp = stress.plausibility(u.C["calm"], prop["S"], scaled, horizon, u.R)
-        reverse = {"target": -0.10, "scale": k, "shocks": [{"symbol": u.symbols[i], "move": float(scaled[j])}
-                   for j, i in enumerate(prop["S"]) if u.symbols[i] != prop["pinned"]],
-                   "years": rp["years"], "label": rp["label"]}
+        if rp["seen"] == 0 or rp["years"] is None:
+            reverse = {"beyond": True, "scale": k}
+        else:
+            reverse = {"beyond": False, "target": -0.10, "scale": k, "years": rp["years"], "label": rp["label"],
+                       "shocks": [{"symbol": u.symbols[i], "move": float(scaled[j])} for j, i in enumerate(prop["S"]) if u.symbols[i] != prop["pinned"]]}
 
-    events = [replay(u, EVENT_BY_ID[e], ports, family) for e in (event_ids or []) if e in EVENT_BY_ID]
-    events = [e for e in events if e]
+    history = None
+    if used_replays:
+        worst = min(used_replays, key=lambda r: r["family"]["impact"])
+        best = max(used_replays, key=lambda r: r["family"]["impact"])
+        years = sorted({r["start"][:4] for r in used_replays})
+        history = {"n": len(used_replays), "from": years[0], "to": years[-1],
+                   "worst": {"id": worst["id"], "name": worst["name"], "impact": worst["family"]["impact"], "change": worst["family"]["change"]},
+                   "best": {"id": best["id"], "name": best["name"], "impact": best["family"]["impact"], "change": best["family"]["change"]}}
+    events_out = [{k: v for k, v in r.items() if not k.startswith("_")} for r in replays]
     return {
         "empty": False,
-        "mode": prop["mode"],
+        "regime": regime,
         "horizon_weeks": horizon,
         "shocks": [{**c, "label": LABEL.get(c["symbol"], c["symbol"]), "z": z}
                    for c, z in zip(clean, pl["z"][: len(clean)])],
@@ -553,12 +633,14 @@ def run(session: Session, shocks: list[dict], horizon: float = 1.0, event_ids: l
         "portfolio_holdings": {str(b["id"]): _clean_book(b)["holdings"] for b in per},
         "market": market,
         "reverse": reverse,
-        "hedges": hedges,
-        "events": events,
+        "protection": protection,
+        "allow_shorts": allow,
+        "history": history,
+        "events": events_out,
         "stress_weeks": u.C.get("stress_weeks", 0),
         "weeks": int(len(u.R)),
         "warnings": warnings,
-        "base_currency": services.get_settings(session).base_currency,
+        "base_currency": settings.base_currency,
     }
 
 
@@ -569,7 +651,6 @@ def replay(u: Universe, ev: dict, ports: list[Book], family: Book) -> dict | Non
     if "SPY" not in fmoves:
         return None
     h = event_weeks(ev)
-    est = None
     syms = list(fmoves)
     est = stress.conditional(u.C["calm"], [u.idx(s) for s in syms], np.array([fmoves[s] for s in syms]), h)
 
@@ -597,10 +678,12 @@ def replay(u: Universe, ev: dict, ports: list[Book], family: Book) -> dict | Non
             for hd in family.holdings]
     rows.sort(key=lambda r: r["change"])
     key = ["SPY", "QQQ", "EIS", "TLT", "USO", "GLD", "ILS=X", "^VIX"]
+    assets = {s: (fmoves[s] if s in fmoves else float(est["mu"][u.idx(s)])) for s in LONG_HEDGES + INDEX_HEDGES if u.has(s)}
     return {"id": ev["id"], "name": ev["name"], "he": ev["he"], "start": ev["start"], "end": ev["end"],
             "family": fam, "portfolios": [book(b) for b in ports],
             "factors": [{"symbol": s, "label": LABEL.get(s, s), "move": fmoves[s]} for s in key if s in fmoves],
-            "worst": rows[:3], "best": [r for r in reversed(rows) if r["change"] > 0][:3]}
+            "worst": rows[:3], "best": [r for r in reversed(rows) if r["change"] > 0][:3],
+            "_moves": {k: v[0] for k, v in cache.items()}, "_assets": assets}
 
 
 # ------------------------------------------------------------------ model check
@@ -701,4 +784,5 @@ def library(session: Session) -> dict:
 
 def saved_dict(s: Scenario) -> dict:
     return {"id": s.id, "name": s.name, "text": s.text, "shocks": json.loads(s.shocks or "[]"), "events": json.loads(s.events or "[]"),
+            "used_events": json.loads(s.used_events or "[]"),
             "horizon_weeks": s.horizon_weeks, "created_at": s.created_at.isoformat()}

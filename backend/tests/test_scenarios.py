@@ -137,7 +137,7 @@ def api(session):
 
 def _run(c, parsed, **kw):
     body = {"shocks": [{"symbol": s["symbol"], "kind": s["kind"], "move": s["move"]} for s in parsed["shocks"]],
-            "horizon_weeks": parsed["horizon_weeks"], "events": parsed["events"], **kw}
+            "horizon_weeks": parsed["horizon_weeks"], "events": parsed["events"], "used_events": parsed.get("used_events", []), **kw}
     r = c.post("/api/scenario/run", json=body)
     assert r.status_code == 200, r.text
     return r.json()
@@ -163,16 +163,87 @@ def test_iran_war_end_to_end(api):
 def test_typed_size_is_kept_and_propagates(api):
     p = api.post("/api/scenario/parse", json={"text": "Nasdaq falls 10%"}).json()
     assert p["shocks"][0]["symbol"] == "QQQ" and p["shocks"][0]["move"] == pytest.approx(-0.10)
+    assert p["used_events"] == []  # no theme: past events shown are only for comparison
     out = _run(api, p)
     spy = next(m for m in out["market"] if m["symbol"] == "SPY")
-    assert spy["move"] < -0.03 and out["mode"] == "stress"  # a sell-off uses sell-off correlations
+    assert spy["move"] < -0.03
     nvda = next(h for h in out["family"]["holdings"] if h["symbol"] == "NVDA")
     assert nvda["move"] < -0.05 and nvda["drivers"][0]["symbol"] == "QQQ"
-    assert out["reverse"]["scale"] == pytest.approx(-0.10 / out["family"]["impact"])
-    kinds = {h["kind"] for h in out["hedges"]["family"]}
-    assert "trim" in kinds and "index" in kinds
-    idx = next(h for h in out["hedges"]["family"] if h["kind"] == "index")
-    assert idx["offset"] > 0 and 0 < idx["risk_cut"] <= 1
+    assert all(not e["used"] for e in out["events"]) and out["history"] is None
+
+
+def test_regime_is_chosen_never_switched_by_size(api):
+    big = {"shocks": [{"symbol": "QQQ", "kind": "factor", "move": -0.25}], "horizon_weeks": 1, "events": []}
+    normal = _run(api, big)
+    assert normal["regime"] == "normal"  # a huge move still uses normal correlations by default
+    f = normal["family"]
+    assert f["impact"] == pytest.approx(f["impact_normal"])
+    sell = _run(api, big, regime="selloff")
+    assert sell["regime"] == "selloff" and sell["family"]["impact"] == pytest.approx(f["impact_selloff"])
+    assert sell["family"]["impact_normal"] == pytest.approx(f["impact_normal"])
+    assert api.post("/api/scenario/run", json={**big, "regime": "panic"}).status_code == 400
+
+
+def test_protection_long_only_capped_and_sized_for_worst_event(api):
+    p = api.post("/api/scenario/parse", json={"text": "מלחמה עם איראן"}).json()
+    out = _run(api, p)
+    allowed = {"trim", "rebalance", "cash", "add"}
+    for key, prot in out["protection"].items():
+        value = out["family"]["value"] if key == "family" else next(b["value"] for b in out["portfolios"] if str(b["id"]) == key)
+        if prot["status"] == "not_needed":
+            # never "not needed" while a used past event cost this portfolio more than 2%
+            impacts = [e["family"]["impact"] if key == "family" else next(x["impact"] for x in e["portfolios"] if str(x["id"]) == key)
+                       for e in out["events"] if e["used"]]
+            assert all(i >= -0.02 for i in impacts)
+            continue
+        for i in prot["ideas"]:
+            assert i["kind"] in allowed  # long-only by default
+            assert i["amount"] <= 0.5 * value + 1e-6 and i["amount"] <= out["family"]["value"] + 1e-6
+            assert i["share_of_portfolio"] == pytest.approx(i["amount"] / value)
+        if prot["basis"]["kind"] == "event":
+            used = [e for e in out["events"] if e["used"]]
+            worst = min(used, key=lambda e: e["family"]["change"] if key == "family" else next(x["change"] for x in e["portfolios"] if str(x["id"]) == key))
+            assert prot["basis"]["id"] == worst["id"]
+        assert prot["weak"] == (not any(i["covers"] >= 0.2 for i in prot["ideas"]))
+
+
+def test_shorts_only_when_allowed(api):
+    big = {"shocks": [{"symbol": "QQQ", "kind": "factor", "move": -0.15}], "horizon_weeks": 1, "events": []}
+    off = _run(api, big)
+    assert all(i["kind"] != "short" for p in off["protection"].values() for i in p["ideas"])
+    api.put("/api/settings", json={"allow_short_hedges": True})
+    on = _run(api, big)
+    shorts = [i for i in on["protection"]["family"]["ideas"] if i["kind"] == "short"]
+    assert shorts and shorts[0]["offset"] > 0 and shorts[0]["amount"] <= 0.5 * on["family"]["value"] + 1e-6
+
+
+def test_used_events_and_split_directions(api):
+    p = api.post("/api/scenario/parse", json={"text": "מלחמה עם איראן"}).json()
+    used = p["used_events"]
+    assert used and set(used) <= set(p["events"])
+    for sh in p["shocks"]:
+        if sh["basis"] == "events":
+            n = len(sh["event_moves"])
+            assert sh["basis_text"].startswith(f"Median of {n} past event")
+            assert {e["id"] for e in sh["event_moves"]} <= set(used)
+            signs = {m["move"] > 0.002 for m in sh["event_moves"] if abs(m["move"]) > 0.002}
+            assert sh["split"] == (len(signs) == 2)
+    out = _run(api, p)
+    assert {e["id"] for e in out["events"] if e["used"]} == set(used)
+    h = out["history"]
+    assert h["n"] == len(used) and h["worst"]["impact"] <= h["best"]["impact"]
+    assert int(h["from"]) <= int(h["to"])
+
+
+def test_oil_drop_note_and_reverse_beyond_data(api):
+    p = api.post("/api/scenario/parse", json={"text": "מחיר הנפט יורד 20%"}).json()
+    assert any("supply-driven" in n for n in p["notes"])
+    out = _run(api, {"shocks": [{"symbol": "SPY", "kind": "factor", "move": -0.002}], "horizon_weeks": 1, "events": []})
+    r = out["reverse"]
+    assert r is None or r["beyond"] or r["years"] is not None
+    huge = _run(api, {"shocks": [{"symbol": "GLD", "kind": "factor", "move": -0.001}], "horizon_weeks": 1, "events": []})
+    if huge["reverse"]:
+        assert huge["reverse"]["beyond"] and "shocks" not in huge["reverse"]
 
 
 def test_company_news_holds_market_still(api):
@@ -204,8 +275,10 @@ def test_model_check_and_saved_scenarios(api):
     chk = api.get("/api/scenario/check").json()
     assert chk["summary"]["events"] >= 5 and 0 <= chk["summary"]["hit_rate"] <= 1
     assert all(e["holdings"] >= 2 for e in chk["events"])
-    r = api.post("/api/scenarios", json={"name": "Oil shock", "text": "oil +30%", "shocks": [{"symbol": "USO", "kind": "factor", "move": 0.3}]})
+    r = api.post("/api/scenarios", json={"name": "Oil shock", "text": "oil +30%", "shocks": [{"symbol": "USO", "kind": "factor", "move": 0.3}],
+                                         "events": ["ukraine22"], "used_events": ["ukraine22"]})
     sid = r.json()["id"]
+    assert r.json()["used_events"] == ["ukraine22"]
     assert api.get("/api/scenarios").json()[0]["shocks"][0]["move"] == 0.3
     assert api.delete(f"/api/scenarios/{sid}").json()["ok"] and api.get("/api/scenarios").json() == []
 

@@ -1,4 +1,4 @@
-import { Plus } from "@phosphor-icons/react";
+import { CaretDown, CaretUp, Plus } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useState } from "react";
 import { FileText, FileXls } from "@phosphor-icons/react";
@@ -42,6 +42,7 @@ export default function AllPortfolios() {
             </EmptyState>
           ) : (
             <>
+              <Insights d={d} />
               <section className="mt-12" aria-label="Comparison chart">
                 <div className="flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-between">
                   <InlineLegend items={legend(d)} />
@@ -115,72 +116,140 @@ function Headline({ d, code }: { d: Overview; code: string }) {
   );
 }
 
-function PortfolioTable({ d, code, onOpen }: { d: Overview; code: string; onOpen: (r: OverviewRow, page?: "dashboard" | "transactions") => void }) {
-  const cols = "grid-cols-[minmax(160px,1.6fr)_120px_150px_110px_110px_90px_120px]";
+type SortKey = "name" | "value" | "gain" | "vs" | "today" | "activity";
+
+function Spark({ values }: { values: (number | null)[] }) {
+  const v = values.filter((x): x is number => x != null);
+  if (v.length < 2) return <span className="text-xs text-faint">–</span>;
+  const w = 80, h = 24, lo = Math.min(...v), hi = Math.max(...v), span = hi - lo || 1;
+  const pts = v.map((x, i) => `${((i / (v.length - 1)) * w).toFixed(1)},${(h - 2 - ((x - lo) / span) * (h - 4)).toFixed(1)}`).join(" ");
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden className={v[v.length - 1] >= v[0] ? "text-gain" : "text-loss"}>
+      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function Insights({ d }: { d: Overview }) {
+  if (!d.insights?.length) return null;
+  const dot = { gain: "bg-gain", loss: "bg-loss", warn: "bg-accent", info: "bg-muted" } as const;
+  return (
+    <section className="mt-10" aria-label="Insights">
+      <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+        {d.insights.map((i, k) => (
+          <li key={k} className="flex items-start gap-2.5 border-t border-line pt-2.5 text-sm">
+            <span className={clsx("mt-2 h-1.5 w-1.5 shrink-0 rounded-full", dot[i.tone])} aria-hidden />
+            <span>{i.text}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function PortfolioTable({ d, onOpen }: { d: Overview; code: string; onOpen: (r: OverviewRow, page?: "dashboard" | "transactions") => void }) {
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "value", dir: -1 });
+  const min = d.min_trading_days ?? 20;
+  const early = (r: OverviewRow) => (r.trading_days ?? 0) < min;
+  const val = (r: OverviewRow, k: SortKey): number | string | null => {
+    switch (k) {
+      case "name": return r.name;
+      case "value": return r.value ?? null;
+      case "gain": return r.cost_gain_usd ?? null;
+      case "vs": return early(r) ? null : r.since_vs_spy ?? null;
+      case "today": return r.today_change ?? null;
+      case "activity": return r.last_activity ?? null;
+    }
+  };
+  const live = d.rows.filter((r) => !r.empty);
+  const rows = [...live].sort((a, b) => {
+    const av = val(a, sort.key), bv = val(b, sort.key);
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return (typeof av === "string" ? av.localeCompare(String(bv)) : (av as number) - (bv as number)) * sort.dir;
+  });
+  const color = (r: OverviewRow) => pColor(d.rows.indexOf(r));
+  const Th = ({ k, children, right, className, tip }: { k: SortKey; children: React.ReactNode; right?: boolean; className?: string; tip?: string }) => (
+    <th scope="col" aria-sort={sort.key === k ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
+      className={clsx("sticky top-14 z-10 border-b border-line bg-bg py-2 text-xs font-medium text-muted", right ? "pl-3 text-right" : "text-left", className)}>
+      <button type="button" className={clsx("press inline-flex items-center gap-1 rounded-sm hover:text-text", right && "flex-row-reverse")}
+        onClick={() => setSort((s) => ({ key: k, dir: s.key === k ? (s.dir === 1 ? -1 : 1) : k === "name" ? 1 : -1 }))}>
+        {sort.key === k ? (sort.dir === 1 ? <CaretUp size={10} /> : <CaretDown size={10} />) : <span className="w-[10px]" />}
+        {children}
+      </button>
+      {tip && <span className="ml-1 inline-flex align-middle"><InfoTip text={tip} /></span>}
+    </th>
+  );
+  const vsCell = (r: OverviewRow) => early(r)
+    ? <span className="text-xs text-faint">Too early · {r.trading_days ?? 0} day{r.trading_days === 1 ? "" : "s"}</span>
+    : <span className="leading-5"><Signed value={r.since_vs_spy} className="block">{pp(r.since_vs_spy, 1)}</Signed>
+      <span className="block text-xs text-faint">{pct(r.since_return, 1)} vs {pct(r.since_spy, 1)}</span></span>;
   return (
     <section className="mt-14 text-sm" aria-label="Portfolios">
-      <div role="row" className={clsx("sticky top-14 z-10 hidden gap-3 border-b border-line bg-bg py-2 text-xs font-medium text-muted lg:grid", cols)}>
-        <span role="columnheader">Portfolio</span>
-        <span role="columnheader" className="text-right">Value</span>
-        <span role="columnheader" className="flex justify-end"><InfoTip text="Market value of open positions minus what they cost, using the average price you entered.">Gain vs cost</InfoTip></span>
-        <span role="columnheader" className="flex justify-end"><InfoTip text={`Real time-weighted return ${rangePhrase(code, "")}, or since the portfolio was added if that is later.`}>Return</InfoTip></span>
-        <span role="columnheader" className="flex justify-end"><InfoTip text="Return minus the S&P 500 (SPY, dividends included) over exactly the same days.">vs S&P 500</InfoTip></span>
-        <span role="columnheader" className="text-right">Today</span>
-        <span role="columnheader" className="text-right">Tracked since</span>
+      <table className="hidden w-full border-separate border-spacing-0 md:table">
+        <thead><tr>
+          <Th k="name">Person</Th>
+          <th scope="col" className="sticky top-14 z-10 hidden border-b border-line bg-bg py-2 pl-3 text-left text-xs font-medium text-muted lg:table-cell">Since tracking</th>
+          <Th k="value" right>Value</Th>
+          <Th k="gain" right tip="Market value of open positions minus what they cost (your average price), in dollars.">Gain vs cost</Th>
+          <Th k="vs" right tip={`Return since tracking began minus the S&P 500 (SPY, dividends included) over exactly the same days. Shown after ${min} trading days.`}>vs S&P 500</Th>
+          <Th k="today" right>Today</Th>
+          <Th k="activity" right className="hidden lg:table-cell">Last activity</Th>
+        </tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} tabIndex={0} onClick={() => onOpen(r)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(r); }} className="cursor-pointer transition-colors duration-fast hover:bg-hover">
+              <td className="border-b border-line py-3">
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color(r) }} />
+                  <span className="min-w-0"><span className="block truncate font-medium">{r.name}</span>
+                    <span className="block truncate text-xs text-faint">{r.note || `${r.holdings} holding${r.holdings === 1 ? "" : "s"}`}</span></span>
+                </span>
+              </td>
+              <td className="hidden border-b border-line py-3 pl-3 lg:table-cell"><Spark values={r.spark ?? []} /></td>
+              <td className="num border-b border-line py-3 pl-3 text-right font-medium">{money(r.value, d.base, { decimals: 0 })}</td>
+              <td className="num border-b border-line py-3 pl-3 text-right"><span className="leading-5">
+                <Signed value={r.cost_gain_usd} className="block">{money(r.cost_gain_usd, "USD", { signed: true, decimals: 0 })}</Signed>
+                <Signed value={r.cost_gain_pct} className="block text-xs">{pct(r.cost_gain_pct, 1)}</Signed></span></td>
+              <td className="num border-b border-line py-3 pl-3 text-right">{vsCell(r)}</td>
+              <td className="num border-b border-line py-3 pl-3 text-right"><span className="leading-5">
+                <Signed value={r.today_change} className="block">{money(r.today_change, d.base, { signed: true, decimals: 0 })}</Signed>
+                <Signed value={r.today_pct} className="block text-xs">{pct(r.today_pct, 2)}</Signed></span></td>
+              <td className="num hidden border-b border-line py-3 pl-3 text-right text-muted lg:table-cell">{r.last_activity ? dateLong(r.last_activity) : "–"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {/* stacked below 768px */}
+      <div className="md:hidden">
+        {rows.map((r) => (
+          <div key={r.id} role="button" tabIndex={0} onClick={() => onOpen(r)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(r); }}
+            className="grid cursor-pointer grid-cols-2 gap-x-3 gap-y-1 border-b border-line py-3 transition-colors duration-fast hover:bg-hover">
+            <span className="col-span-2 flex items-center gap-2.5">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color(r) }} />
+              <span className="font-medium">{r.name}</span>
+              <span className="ml-auto"><Spark values={r.spark ?? []} /></span>
+              <span className="num font-medium">{money(r.value, d.base, { decimals: 0 })}</span>
+            </span>
+            <Kv k="Gain vs cost" v={<Signed value={r.cost_gain_usd}>{money(r.cost_gain_usd, "USD", { signed: true, decimals: 0 })} ({pct(r.cost_gain_pct, 1)})</Signed>} />
+            <Kv k="vs S&P 500" v={early(r) ? <span className="text-faint">Too early · {r.trading_days ?? 0}d</span> : <Signed value={r.since_vs_spy}>{pp(r.since_vs_spy, 1)}</Signed>} />
+            <Kv k="Today" v={<Signed value={r.today_change}>{money(r.today_change, d.base, { signed: true, decimals: 0 })} ({pct(r.today_pct, 2)})</Signed>} />
+            <Kv k="Last activity" v={r.last_activity ? dateLong(r.last_activity) : "–"} />
+          </div>
+        ))}
       </div>
-      {d.rows.map((r, i) => r.empty ? (
+      {d.rows.filter((r) => r.empty).map((r) => (
         <div key={r.id} className="flex items-center gap-3 border-b border-line py-3">
-          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: pColor(i) }} />
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color(r) }} />
           <span className="font-medium">{r.name}</span>
           <span className="text-faint">Empty.</span>
           <button type="button" className="link ml-auto text-sm" onClick={() => onOpen(r, "transactions")}>Add holdings</button>
-        </div>
-      ) : (
-        <div key={r.id} role="row" tabIndex={0} onClick={() => onOpen(r)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(r); }}
-          className="cursor-pointer border-b border-line transition-colors duration-fast hover:bg-hover">
-          {/* stacked below 1024px */}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 py-3 lg:hidden">
-            <span className="col-span-2 flex items-center gap-2.5">
-              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: pColor(i) }} />
-              <span className="font-medium">{r.name}</span>
-              <span className="num ml-auto font-medium">{money(r.value, d.base, { decimals: 0 })}</span>
-            </span>
-            <Kv k="Gain vs cost" v={<Signed value={r.cost_gain}>{money(r.cost_gain, d.base, { signed: true, decimals: 0 })} ({pct(r.cost_gain_pct, 1)})</Signed>} />
-            <Kv k="Return" v={<Signed value={r.return}>{pct(r.return, 1)}</Signed>} />
-            <Kv k="vs S&P 500" v={<Signed value={diff(r)}>{pp(diff(r), 1)}</Signed>} />
-            <Kv k="Today" v={<Signed value={r.today_change}>{money(r.today_change, d.base, { signed: true, decimals: 0 })} ({pct(r.today_pct, 2)})</Signed>} />
-          </div>
-          <div className={clsx("hidden items-center gap-3 py-3 lg:grid", cols)}>
-            <span className="flex min-w-0 items-center gap-2.5">
-              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: pColor(i) }} />
-              <span className="min-w-0">
-                <span className="block truncate font-medium">{r.name}</span>
-                <span className="block truncate text-xs text-faint">{r.note || `${r.holdings} holding${r.holdings === 1 ? "" : "s"}`}</span>
-              </span>
-            </span>
-            <span className="num text-right font-medium">{money(r.value, d.base, { decimals: 0 })}</span>
-            <span className="text-right leading-5">
-              <Signed value={r.cost_gain} className="block">{money(r.cost_gain, d.base, { signed: true, decimals: 0 })}</Signed>
-              <Signed value={r.cost_gain_pct} className="block text-xs">{pct(r.cost_gain_pct, 1)}</Signed>
-            </span>
-            <span className="text-right leading-5">
-              <Signed value={r.return} className="block">{pct(r.return, 1)}</Signed>
-              {r.short_history && r.period_start && <span className="block text-xs text-faint">since {dateLong(r.period_start)}</span>}
-            </span>
-            <Signed value={diff(r)} className="text-right">{pp(diff(r), 1)}</Signed>
-            <span className="text-right leading-5">
-              <Signed value={r.today_change} className="block">{money(r.today_change, d.base, { signed: true, decimals: 0 })}</Signed>
-              <Signed value={r.today_pct} className="block text-xs">{pct(r.today_pct, 2)}</Signed>
-            </span>
-            <span className="num text-right text-muted">{r.tracking_since ? dateLong(r.tracking_since) : "–"}</span>
-          </div>
         </div>
       ))}
     </section>
   );
 }
-
-const diff = (r: OverviewRow) => (r.return != null && r.bench?.SPY != null ? r.return - r.bench.SPY : null);
 
 const Kv = ({ k, v }: { k: string; v: React.ReactNode }) => (
   <div className="flex justify-between gap-2 text-xs"><span className="text-faint">{k}</span><span className="num text-text">{v}</span></div>

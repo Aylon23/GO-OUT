@@ -142,3 +142,43 @@ def test_deleted_default_portfolio_stays_deleted(client):
     assert client.delete("/api/portfolios/1").status_code == 200
     db.migrate(db.get_engine())  # what happens on every app start
     assert [p["name"] for p in client.get("/api/portfolios").json()] == ["Dad"]
+
+
+def test_overview_since_tracking_spark_activity_and_insights(client):
+    ds = days(400)
+    p2 = client.post("/api/portfolios", json={"name": "Keren"}).json()["id"]
+    p3 = client.post("/api/portfolios", json={"name": "Shir"}).json()["id"]
+    # My portfolio: all AAPL (one stock, 100%); Keren: AAPL + TEVA.TA; Shir: started 5 days ago
+    client.post("/api/transactions?portfolio=1", json={"ticker": "AAPL", "type": "BUY", "date": ds[10].isoformat(), "quantity": 10, "price": 40, "currency": "USD"})
+    client.post(f"/api/transactions?portfolio={p2}", json={"ticker": "AAPL", "type": "BUY", "date": ds[100].isoformat(), "quantity": 2, "price": 200, "currency": "USD"})
+    client.post(f"/api/transactions?portfolio={p2}", json={"ticker": "TEVA.TA", "type": "BUY", "date": ds[120].isoformat(), "quantity": 100, "price": 50, "currency": "ILS"})
+    client.post(f"/api/transactions?portfolio={p3}", json={"ticker": "QQQ", "type": "BUY", "date": ds[-5].isoformat(), "quantity": 1, "price": 100, "currency": "USD"})
+    o = client.get("/api/overview?range=1M").json()
+    rows = {r["name"]: r for r in o["rows"]}
+    me = rows["My portfolio"]
+    # since tracking: AAPL from day 10 vs SPY over exactly the same days, independent of the 1M range
+    a10, a_end = 50 * (1 + 2 * 10 / 399), 150
+    s10, s_end = 100 * (1 + 10 / 399), 200
+    assert me["since_return"] == pytest.approx(a_end / a10 - 1, rel=1e-6)
+    assert me["since_spy"] == pytest.approx(s_end / s10 - 1, rel=1e-6)
+    assert me["since_vs_spy"] == pytest.approx(me["since_return"] - me["since_spy"])
+    assert me["trading_days"] == 389 and me["spark"][0] == pytest.approx(100) and len(me["spark"]) <= 45
+    assert me["last_activity"] == ds[10].isoformat()
+    assert me["cost_gain_usd"] == pytest.approx(10 * (150 - 40), rel=1e-6)  # base is ILS; shown in dollars
+    assert rows["Shir"]["trading_days"] < o["min_trading_days"]
+    kinds = {i["kind"]: i for i in o["insights"]}
+    assert kinds["winner"]["symbol"] == "AAPL" and "My portfolio and Keren" in kinds["winner"]["text"]
+    assert kinds["shared"]["symbol"] == "AAPL" and "2 of 3" in kinds["shared"]["text"]
+    assert any(i["kind"] == "stock" and "My portfolio has 100% in AAPL" in i["text"] for i in o["insights"])
+    assert 3 <= len(o["insights"]) <= 5
+
+
+def test_overview_benchmarks_cover_the_oldest_portfolio(client):
+    ds = days(400)
+    client.post("/api/transactions?portfolio=1", json={"ticker": "AAPL", "type": "BUY", "date": ds[10].isoformat(), "quantity": 1, "price": 51, "currency": "USD"})
+    p2 = client.post("/api/portfolios", json={"name": "New"}).json()["id"]  # listed last, started last week
+    client.post(f"/api/transactions?portfolio={p2}", json={"ticker": "QQQ", "type": "BUY", "date": ds[-6].isoformat(), "quantity": 1, "price": 100, "currency": "USD"})
+    o = client.get("/api/overview?range=MAX").json()
+    spy = [v for v in o["chart"]["perf"]["SPY"] if v is not None]
+    assert len(spy) > 350 and spy[0] == pytest.approx(100)
+    assert spy[-1] == pytest.approx(200 / (100 * (1 + 10 / 399)) * 100, rel=1e-6)  # SPY from the oldest start, rebased

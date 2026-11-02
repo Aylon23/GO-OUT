@@ -74,9 +74,13 @@ export interface OverviewRow {
   id: number; name: string; note: string; empty: boolean; value?: number; cash?: number; cost_gain?: number; cost_gain_pct?: number | null; realized?: number | null;
   today_pct?: number | null; today_change?: number | null; tracking_since?: string; holdings?: number;
   period_start?: string; short_history?: boolean; return?: number | null; bench?: Record<string, number | null>;
+  since_return?: number | null; since_spy?: number | null; since_vs_spy?: number | null; trading_days?: number; spark?: (number | null)[];
+  cost_gain_usd?: number | null; last_activity?: string;
 }
+export interface Insight { kind: "winner" | "loser" | "shared" | "stock" | "sector"; tone: "gain" | "loss" | "warn" | "info"; text: string; symbol?: string }
 export interface Overview {
   base: Ccy; range: string; since: string | null; total_value: number; rows: OverviewRow[]; benchmarks: { symbol: string; twr: number | null }[];
+  insights: Insight[]; min_trading_days: number;
   chart: { dates: string[]; perf: Record<string, (number | null)[]>; labels: Record<string, string> };
 }
 export interface HoldingImportRow {
@@ -121,53 +125,65 @@ export interface TelegramStatus { configured: boolean; paired: boolean; pair_cod
 
 export interface Settings {
   base_currency: Ccy; benchmarks: string[]; risk_free: number; theme: "light" | "dark" | "system"; auto_dividends: boolean;
-  anthropic_key_set?: boolean; anthropic_key_hint?: string; anthropic_key?: string;
+  anthropic_key_set?: boolean; anthropic_key_hint?: string; anthropic_key?: string; allow_short_hedges?: boolean;
 }
 
 // ---- scenarios
 export type ShockKind = "factor" | "stock";
-export interface Shock { symbol: string; kind: ShockKind; move: number; label?: string; basis?: "text" | "typical" | "events" | "manual"; basis_text?: string; typical?: number | null; event?: string | null }
+export interface Shock { symbol: string; kind: ShockKind; move: number; label?: string; basis?: "text" | "typical" | "events" | "manual"; basis_text?: string; typical?: number | null; event?: string | null;
+  split?: boolean; event_moves?: { id: string; move: number }[] }
 export interface ScenarioParse {
-  text: string; parser: "rules" | "ai"; label: string; themes: { id: string; label: string }[]; shocks: Shock[]; events: string[];
+  text: string; parser: "rules" | "ai"; label: string; themes: { id: string; label: string }[]; shocks: Shock[]; events: string[]; used_events: string[];
   horizon_weeks: number; notes: string[]; understood: boolean;
 }
 export interface ScenarioFactor { symbol: string; label: string; label_he: string; group: string }
 export interface ScenarioEventInfo { id: string; name: string; he: string; start: string; end: string; tags: string[] }
 export interface ScenarioLibrary { factors: ScenarioFactor[]; events: ScenarioEventInfo[]; ai: boolean }
 export interface ImpactHolding {
-  symbol: string; name: string; value: number; weight: number; move: number; move_other: number; low: number; high: number; change: number;
+  symbol: string; name: string; value: number; weight: number; move: number; move_normal: number; move_selloff: number; low: number; high: number; change: number;
   proxy: string | null; shocked: boolean; drivers?: { symbol: string; effect: number }[];
 }
 export interface ImpactBook {
-  id: number | null; name: string; value: number; invested: number; impact: number; impact_other: number; change: number; low: number; high: number;
+  id: number | null; name: string; value: number; invested: number; impact: number; change: number; low: number; high: number;
+  impact_normal: number; impact_selloff: number; change_normal: number; change_selloff: number;
   holdings?: ImpactHolding[]; losers?: ImpactHolding[]; gainers?: ImpactHolding[];
 }
-export type Hedge =
-  | { kind: "trim"; symbol: string; amount: number; saves: number; share: number | null }
-  | { kind: "index"; symbol: string; notional: number; offset: number; share: number | null; risk_cut: number; inverse: string | null }
-  | { kind: "scenario"; symbol: string; notional: number; offset: number; share: number; move: number; weekly_swing: number; corr: number };
+export type Idea = { amount: number; share_of_portfolio: number; offset: number; covers: number } & (
+  | { kind: "trim"; symbol: string }
+  | { kind: "rebalance"; symbols: string[]; target: number }
+  | { kind: "cash" }
+  | { kind: "add"; symbol: string; move: number }
+  | { kind: "short"; symbol: string; inverse: string | null; risk_cut: number });
+export interface Protection {
+  status: "not_needed" | "ideas"; ideas: Idea[]; weak: boolean; hit?: number;
+  basis: { kind: "model"; impact: number; change: number } | { kind: "event"; id: string; name: string; impact: number; change: number } | null;
+}
 export interface EventReplay {
-  id: string; name: string; he: string; start: string; end: string;
+  id: string; name: string; he: string; start: string; end: string; used: boolean;
   family: { impact: number; change: number; estimated_share: number };
   portfolios: { id: number; name: string; impact: number; change: number; estimated_share: number }[];
   factors: { symbol: string; label: string; move: number }[];
   worst: { symbol: string; move: number; estimated: boolean; change: number }[];
   best: { symbol: string; move: number; estimated: boolean; change: number }[];
 }
+export type Regime = "normal" | "selloff";
+export interface PastExtreme { id: string; name: string; impact: number; change: number }
 export interface ScenarioRun {
-  empty: boolean; warnings: string[]; mode: "calm" | "stress"; horizon_weeks: number; base_currency: Ccy;
+  empty: boolean; warnings: string[]; regime: Regime; horizon_weeks: number; base_currency: Ccy;
   shocks: (Shock & { z: number | null })[]; pinned: string | null;
   plausibility: { years: number | null; label: string; d2: number; seen: number | null; weeks: number | null };
   family: ImpactBook & { holdings: ImpactHolding[] }; portfolios: ImpactBook[]; portfolio_holdings: Record<string, ImpactHolding[]>;
   market: { symbol: string; label: string; label_he: string; group: string; move: number; low: number; high: number; shocked: boolean; pinned: boolean }[];
-  reverse: { target: number; scale: number; shocks: { symbol: string; move: number }[]; years: number | null; label: string } | null;
-  hedges: Record<string, Hedge[]>; events: EventReplay[]; stress_weeks: number; weeks: number;
+  reverse: { beyond: true; scale: number } | { beyond: false; target: number; scale: number; shocks: { symbol: string; move: number }[]; years: number | null; label: string } | null;
+  protection: Record<string, Protection>; allow_shorts: boolean;
+  history: { n: number; from: string; to: string; worst: PastExtreme; best: PastExtreme } | null;
+  events: EventReplay[]; stress_weeks: number; weeks: number;
 }
 export interface ModelCheck {
   summary: { events: number; predictions: number; hit_rate: number | null; mae: number; mae_naive: number; in_range: number; family_mae: number; corr: number | null } | null;
   events: { id: string; name: string; start: string; end: string; story: string[]; holdings: number; family_predicted: number; family_actual: number; sp500: number; mae: number; mae_naive: number; hit_rate: number | null; in_range: number }[];
 }
-export interface SavedScenario { id: number; name: string; text: string; shocks: Shock[]; events: string[]; horizon_weeks: number; created_at: string }
+export interface SavedScenario { id: number; name: string; text: string; shocks: Shock[]; events: string[]; used_events: string[]; horizon_weeks: number; created_at: string }
 export interface Swap {
   base: Ccy; ticker: string; replacement: string; real_value: number; hypo_value: number; diff: number; diff_pct: number | null; since: string; trades: number;
   series: { dates: string[]; real: number[]; hypo: number[] };
@@ -285,13 +301,20 @@ export const api = {
     return request<HoldingImport>("POST", `/api/holdings/import?${qs({ commit, as_of: asOf, replace })}`, fd);
   },
   clearAll: () => request<{ ok: boolean }>("DELETE", "/api/transactions"),
+  logoOverrides: () => request<string[]>("GET", "/api/logos/overrides"),
+  uploadLogo: (symbol: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<{ symbol: string }>("POST", `/api/logo/${encodeURIComponent(symbol)}`, fd);
+  },
+  clearLogo: (symbol: string) => request<{ ok: boolean }>("DELETE", `/api/logo/${encodeURIComponent(symbol)}`),
   scenarioLibrary: () => request<ScenarioLibrary>("GET", "/api/scenario/library"),
   scenarioParse: (text: string, ai = true, signal?: AbortSignal) => request<ScenarioParse>("POST", "/api/scenario/parse", { text, ai }, signal),
-  scenarioRun: (body: { shocks: { symbol: string; kind: ShockKind; move: number }[]; horizon_weeks: number; events: string[]; portfolio_ids?: number[] }, signal?: AbortSignal) =>
+  scenarioRun: (body: { shocks: { symbol: string; kind: ShockKind; move: number }[]; horizon_weeks: number; events: string[]; used_events: string[]; regime: Regime; portfolio_ids?: number[] }, signal?: AbortSignal) =>
     request<ScenarioRun>("POST", "/api/scenario/run", body, signal),
   scenarioCheck: () => request<ModelCheck>("GET", "/api/scenario/check"),
   scenarios: () => request<SavedScenario[]>("GET", "/api/scenarios"),
-  saveScenario: (b: { name: string; text: string; shocks: { symbol: string; kind: ShockKind; move: number }[]; events: string[]; horizon_weeks: number }) =>
+  saveScenario: (b: { name: string; text: string; shocks: { symbol: string; kind: ShockKind; move: number }[]; events: string[]; used_events: string[]; horizon_weeks: number }) =>
     request<SavedScenario>("POST", "/api/scenarios", b),
   deleteScenario: (id: number) => request<{ ok: boolean }>("DELETE", `/api/scenarios/${id}`),
 };

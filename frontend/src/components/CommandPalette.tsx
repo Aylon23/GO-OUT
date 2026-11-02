@@ -5,6 +5,7 @@ import { api, ApiError, type OmniDraft } from "../lib/api";
 import { dateLong, money, num, today } from "../lib/format";
 import { invalidate, useDebounced } from "../lib/hooks";
 import { useApp } from "../state";
+import { Avatar } from "./Avatar";
 import { SymbolSearch } from "./SymbolSearch";
 
 const VERB = /(קני|קנה|קנת|קנו|מכר|הפקד|משכ|משך|דיבידנד|\bbuy\b|\bbought\b|\bsell\b|\bsold\b|\bdeposit|\bwithdr|\bdividend)/i;
@@ -122,7 +123,7 @@ function DraftCard({ draft, pending, err, busy, ready, onSave, logCall, setLogCa
       ) : (
         <div className={clsx("transition-opacity duration-fast", pending && "opacity-50")}>
           <div className="flex items-start gap-3">
-            <Lightning size={18} className="mt-0.5 shrink-0 text-accent" />
+            {draft.ticker ? <span className="mt-0.5"><Avatar ticker={draft.ticker} size={20} /></span> : <Lightning size={18} className="mt-0.5 shrink-0 text-accent" />}
             <div className="min-w-0 flex-1">
               <p className="num text-base">{draft.missing.length ? <span className="text-muted">{TYPE_WORD[draft.type]} {draft.ticker || "…"}</span> : describe(draft)}</p>
               <p className="mt-1 text-sm text-muted">

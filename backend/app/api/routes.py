@@ -244,12 +244,13 @@ class SettingsIn(BaseModel):
     theme: str | None = None
     auto_dividends: bool | None = None
     anthropic_key: str | None = None
+    allow_short_hedges: bool | None = None
 
 
 def _settings_dict(s):
     key = (s.anthropic_key or "").strip()
     return {"base_currency": s.base_currency, "benchmarks": s.benchmark_list(), "risk_free": s.risk_free,
-            "theme": s.theme, "auto_dividends": s.auto_dividends,
+            "theme": s.theme, "auto_dividends": s.auto_dividends, "allow_short_hedges": bool(s.allow_short_hedges),
             "anthropic_key_set": bool(key), "anthropic_key_hint": f"…{key[-4:]}" if len(key) > 8 else ""}
 
 
@@ -281,6 +282,8 @@ def put_settings(body: SettingsIn, session: Session = Depends(get_session)):
         s.theme = body.theme if body.theme in ("light", "dark", "system") else "system"
     if body.auto_dividends is not None:
         s.auto_dividends = body.auto_dividends
+    if body.allow_short_hedges is not None:
+        s.allow_short_hedges = body.allow_short_hedges
     if body.anthropic_key is not None:
         key = body.anthropic_key.strip()
         if key and not key.startswith("sk-ant-"):
@@ -593,6 +596,50 @@ def telegram_new_code(session: Session = Depends(get_session)):
     return _telegram_dict(st)
 
 
+# ---------------------------------------------------------------- logos
+
+_IMG_HEADERS = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"}
+
+
+@router.get("/logo/{symbol}", include_in_schema=False)
+def logo(symbol: str, session: Session = Depends(get_session)):
+    from fastapi.responses import FileResponse, Response
+    from .. import logos
+
+    got = logos.get_logo(session, symbol)
+    if got is None:
+        return Response(status_code=404, headers={"Cache-Control": "max-age=3600"})
+    path, ctype = got
+    return FileResponse(path, media_type=ctype, headers={"Cache-Control": "max-age=86400", **_IMG_HEADERS})
+
+
+@router.post("/logo/{symbol}")
+async def logo_upload(symbol: str, file: UploadFile = File(...), session: Session = Depends(get_session)):
+    from .. import logos
+
+    data = await file.read(logos.MAX_BYTES + 1)
+    try:
+        row = logos.set_manual(session, symbol, data)
+    except ValueError as exc:
+        _bad(str(exc))
+    return {"symbol": row.symbol, "source": row.source}
+
+
+@router.delete("/logo/{symbol}")
+def logo_clear(symbol: str, session: Session = Depends(get_session)):
+    from .. import logos
+
+    logos.clear(session, symbol)
+    return {"ok": True}
+
+
+@router.get("/logos/overrides")
+def logo_overrides(session: Session = Depends(get_session)):
+    from .. import logos
+
+    return logos.overrides(session)
+
+
 # ---------------------------------------------------------------- scenarios
 
 class ScenarioParseIn(BaseModel):
@@ -610,7 +657,9 @@ class ScenarioRunIn(BaseModel):
     shocks: list[ShockIn]
     horizon_weeks: float = 1.0
     events: list[str] = []
+    used_events: list[str] = []
     portfolio_ids: list[int] | None = None
+    regime: str = "normal"
 
 
 class ScenarioSaveIn(BaseModel):
@@ -618,6 +667,7 @@ class ScenarioSaveIn(BaseModel):
     text: str = ""
     shocks: list[ShockIn]
     events: list[str] = []
+    used_events: list[str] = []
     horizon_weeks: float = 1.0
 
 
@@ -641,7 +691,10 @@ def scenario_run(body: ScenarioRunIn, session: Session = Depends(get_session)):
     for s in body.shocks:
         if not -0.95 <= s.move <= 5:
             _bad(f"{s.symbol}: a move of {s.move:+.0%} is outside what the model can use (−95% to +500%).")
-    out = scenarios.run(session, [s.model_dump() for s in body.shocks], body.horizon_weeks, body.events, body.portfolio_ids)
+    if body.regime not in ("normal", "selloff"):
+        _bad("Regime must be normal or selloff.")
+    out = scenarios.run(session, [s.model_dump() for s in body.shocks], body.horizon_weeks, body.events, body.portfolio_ids,
+                        regime=body.regime, used_events=body.used_events)
     return services._clean(out)
 
 
@@ -667,7 +720,7 @@ def scenarios_save(body: ScenarioSaveIn, session: Session = Depends(get_session)
     if not body.name.strip():
         _bad("Give the scenario a name.")
     row = Scenario(name=body.name.strip()[:80], text=body.text[:500], shocks=json.dumps([s.model_dump() for s in body.shocks]),
-                   events=json.dumps(body.events), horizon_weeks=body.horizon_weeks)
+                   events=json.dumps(body.events), used_events=json.dumps(body.used_events), horizon_weeks=body.horizon_weeks)
     session.add(row)
     session.commit()
     session.refresh(row)

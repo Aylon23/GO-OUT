@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { X } from "@phosphor-icons/react";
 import { useState } from "react";
-import { Avatar } from "../components/Avatar";
+import { Avatar, refreshLogo } from "../components/Avatar";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { ErrorLine, Segmented, Skel } from "../components/ui";
 import { api, ApiError, type PortfolioInfo, type Settings as S } from "../lib/api";
@@ -27,8 +27,12 @@ export default function Settings() {
         <Item title="Telegram" help="Add trades and get reports from your phone. Works while the app is running on this computer.">
           <TelegramSetup />
         </Item>
-        <Item title="Claude (optional)" help="The What-if page reads scenarios with free local rules. With a Claude API key it understands freer sentences too. The key stays on this computer; each scenario costs a fraction of a cent.">
-          <ClaudeKey />
+        <Item title="Protection ideas" help="On the What-if page, protection ideas are long-only: trim, rebalance, add bonds or gold, raise cash. Turn this on to also see shorts and inverse funds.">
+          <Segmented label="Allow short and inverse hedges" value={settings.allow_short_hedges ? "on" : "off"} onChange={(v) => save({ allow_short_hedges: v === "on" })}
+            options={[{ value: "off", label: "Long-only" }, { value: "on", label: "Allow short and inverse hedges" }]} />
+        </Item>
+        <Item title="Company logos" help="Logos are fetched once from free public sources and kept on this computer. If one is wrong or missing, upload your own (PNG, JPEG, SVG or WebP, up to 300 KB).">
+          <LogoOverrides />
         </Item>
         <Item title="Base currency" help="Everything is converted into this currency using each day's exchange rate.">
           <Segmented label="Base currency" value={settings.base_currency} onChange={(v) => save({ base_currency: v })} options={[{ value: "ILS", label: "₪ Shekel" }, { value: "USD", label: "$ Dollar" }]} />
@@ -194,25 +198,39 @@ function TelegramSetup() {
   );
 }
 
-function ClaudeKey() {
-  const { settings, saveSettings } = useApp();
-  const [key, setKey] = useState("");
+function LogoOverrides() {
+  const q = useData(api.logoOverrides, "logo-overrides");
+  const [sym, setSym] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const save = async (v: string) => {
-    setErr(null);
-    try { await saveSettings({ anthropic_key: v }); setKey(""); } catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't save."); }
+  const [busy, setBusy] = useState(false);
+  const [inputKey, setInputKey] = useState(0);
+  const upload = async () => {
+    const s = sym.trim().toUpperCase();
+    if (!s || !file) return;
+    setBusy(true); setErr(null);
+    try { await api.uploadLogo(s, file); refreshLogo(s); setSym(""); setFile(null); setInputKey((k) => k + 1); q.reload(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't upload it."); } finally { setBusy(false); }
   };
-  if (settings?.anthropic_key_set) return (
-    <div className="flex flex-wrap items-center gap-3 text-sm">
-      <span className="text-muted">Key saved <span className="font-mono text-xs">{settings.anthropic_key_hint}</span></span>
-      <button type="button" className="btn-ghost h-8" onClick={() => save("")}>Remove</button>
-    </div>
-  );
   return (
-    <form className="flex max-w-[480px] gap-2" onSubmit={(e) => { e.preventDefault(); if (key.trim()) save(key.trim()); }}>
-      <input aria-label="Claude API key" type="password" autoComplete="off" className="field h-9 font-mono text-sm" placeholder="sk-ant-…" value={key} onChange={(e) => setKey(e.target.value)} />
-      <button type="submit" className="btn-secondary" disabled={!key.trim()}>Save</button>
+    <div>
+      {(q.data ?? []).length > 0 && (
+        <ul className="mb-3 flex flex-wrap gap-2">
+          {q.data!.map((s) => (
+            <li key={s} className="flex h-8 items-center gap-2 rounded-sm border border-line bg-surface pl-1.5 pr-1 text-sm">
+              <Avatar ticker={s} size={20} /><span className="font-mono font-semibold">{s}</span>
+              <button type="button" aria-label={`Remove the logo for ${s}`} className="btn-ghost h-6 w-6 px-0" onClick={async () => { await api.clearLogo(s); refreshLogo(s); q.reload(); }}><X size={12} /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); upload(); }}>
+        <input aria-label="Symbol" className="field h-9 w-28 font-mono uppercase" placeholder="SEDG" value={sym} onChange={(e) => setSym(e.target.value)} />
+        <input key={inputKey} aria-label="Logo image" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif" className="text-sm text-muted file:mr-3 file:h-9 file:rounded-sm file:border file:border-line-strong file:bg-surface file:px-3 file:text-sm file:text-text"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <button type="submit" className="btn-secondary" disabled={!sym.trim() || !file || busy}>{busy ? "Uploading" : "Use this logo"}</button>
+      </form>
       {err && <p className="error-text">{err}</p>}
-    </form>
+    </div>
   );
 }
