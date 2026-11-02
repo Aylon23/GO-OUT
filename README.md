@@ -32,6 +32,10 @@ Other modes:
 
 Your data lives in `data/portfolio.db` (SQLite). Delete that file to start over.
 
+**Updates (Windows):** `start.bat` checks GitHub on every start and, when there is a new version,
+downloads and installs it before starting. Your data and installed packages are kept. With no
+internet it simply starts the version you have.
+
 New here? Click **Load demo portfolio** on the empty overview page. It loads AAPL, MSFT, NVDA, VOO and TEVA.TA
 bought on different dates, with a few shekel deposits, priced from real closes on those days.
 

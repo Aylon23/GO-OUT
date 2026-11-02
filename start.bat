@@ -12,6 +12,11 @@ cd /d "%~dp0"
 echo Benchmark - folder: %CD%
 echo.
 
+rem Update from GitHub when there is a new version (keeps your data). Then restart with the new start.bat.
+if exist "tools\update.ps1" powershell -NoProfile -ExecutionPolicy Bypass -File "tools\update.ps1"
+if exist "start.bat.new" (fc /b "start.bat.new" "start.bat" >nul && del "start.bat.new" || (move /y "start.bat.new" "start.bat" >nul & start "Benchmark" cmd /k ""%~f0" run" & exit))
+echo.
+
 where python >nul 2>nul
 if errorlevel 1 (
   echo [X] Python was not found.
@@ -61,7 +66,11 @@ if errorlevel 1 (
   if errorlevel 1 goto :fail
   copy /y backend\requirements.txt ".venv\deps-ok" >nul
 )
-if not exist "frontend\node_modules\.bin\vite.cmd" (
+rem Install frontend packages the first time, and again whenever package.json changes.
+set "NEEDNPM="
+if not exist "frontend\node_modules\.bin\vite.cmd" set "NEEDNPM=1"
+fc /b frontend\package.json "frontend\node_modules\.pkg-ok" >nul 2>nul || set "NEEDNPM=1"
+if defined NEEDNPM (
   echo.
   echo [3/3] Installing frontend packages...
   pushd frontend
@@ -70,6 +79,7 @@ if not exist "frontend\node_modules\.bin\vite.cmd" (
     popd
     goto :fail
   )
+  copy /y package.json "node_modules\.pkg-ok" >nul
   popd
 )
 

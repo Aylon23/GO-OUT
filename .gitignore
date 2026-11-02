@@ -7,3 +7,5 @@ frontend/dist/
 data/*.db
 data/*.db-*
 .DS_Store
+.version
+start.bat.new
