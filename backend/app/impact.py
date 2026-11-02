@@ -134,7 +134,7 @@ def _fx_now(session: Session) -> float:
 
 
 def simulate(session: Session, spec: dict, syms: list[str], base: str, regime: str | None = None, n: int = N_DRAWS,
-             seed: int = SEED, noise: bool = True, exp: dict | None = None) -> dict:
+             seed: int = SEED, noise: bool = True, exp: dict | None = None, band_scale: float = 1.0) -> dict:
     """Simulated moves (in shekels) of any list of symbols under a spec.
     Returns H (draws x symbols), cash (draws: the move of dollar cash in shekels), and per branch:
     the rows drawn, its middle-case moves and the factor contributions behind them."""
@@ -150,7 +150,7 @@ def simulate(session: Session, spec: dict, syms: list[str], base: str, regime: s
     probs = np.array([b["probability"] for b in branches], dtype=float)
     probs = probs / probs.sum()
     pick = rng.choice(len(branches), size=n, p=probs)
-    eps = rng.standard_normal((n, len(syms))) * resid * (1.0 if noise else 0.0)  # shared by every portfolio holding the same stock
+    eps = rng.standard_normal((n, len(syms))) * resid * (band_scale if noise else 0.0)  # shared by every portfolio holding the same stock
     H = np.zeros((n, len(syms)))
     cash = np.zeros(n)
     branch_info = []
@@ -169,7 +169,9 @@ def simulate(session: Session, spec: dict, syms: list[str], base: str, regime: s
             z = rng.standard_normal((m, len(names))) @ np.linalg.cholesky(R).T
             u = np.clip(norm_cdf(z), 1e-9, 1 - 1e-9)
             for j, (_, _, r) in enumerate(names):
-                draws[:, j] = tri_ppf(u[:, j], r["low"] / 100, r["mid"] / 100, r["high"] / 100)
+                lo = r["mid"] - band_scale * (r["mid"] - r["low"])  # widened when past bands were too narrow
+                hi = r["mid"] + band_scale * (r["high"] - r["mid"])
+                draws[:, j] = tri_ppf(u[:, j], lo / 100, r["mid"] / 100, hi / 100)
         mid_vec = np.array([r["mid"] / 100 for _, _, r in names])
 
         def factor_matrix(vals: np.ndarray) -> tuple[np.ndarray, dict]:
@@ -226,7 +228,9 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
     exp = factors.exposures(session, syms)
     days = HORIZON_DAYS.get(spec.get("horizon", "1m"), 21)
 
-    sim = simulate(session, spec, syms, base, regime=regime, n=n, seed=seed, noise=noise, exp=exp)
+    settings = services.get_settings(session)
+    k = float(settings.band_scale or 1.0)
+    sim = simulate(session, spec, syms, base, regime=regime, n=n, seed=seed, noise=noise, exp=exp, band_scale=k)
     cols, B = sim["cols"], sim["B"]
 
     def weights(b: Book) -> tuple[np.ndarray, float]:
@@ -301,7 +305,7 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
             f"{n:,} draws: branch by probability, moves from triangular low/mid/high ranges with historical correlations, plus each holding's own noise over {days} trading days.",
             "Crisis causes (geopolitical, supply, demand) use correlations from sell-off weeks; others use normal weeks, unless you choose.",
             "Cash in dollars moves with USD/ILS when counted in shekels." if base == "USD" else "Cash is in shekels and doesn't move.",
-        ],
+        ] + ([f"Ranges and noise are widened ×{k:.2f}: {settings.band_note}"] if abs(k - 1) > 1e-9 else []),
         "warnings": [],
     }
     if keep:  # raw draws for callers that need more than the summaries (not serialized)

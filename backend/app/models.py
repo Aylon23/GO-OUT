@@ -152,7 +152,10 @@ class Settings(SQLModel, table=True):
     weekly_report: bool = True
     weekly_report_sent: str = ""  # date of the last Sunday summary sent
     allow_short_hedges: bool = False
-    inbox_dir: str = ""  # folder watched for researched files; empty = ./inbox next to the app  # protection ideas may include shorts and inverse funds
+    inbox_dir: str = ""
+    memo_language: str = "he"  # he | en
+    band_scale: float = 1.0  # widens scenario ranges when past outcomes fell outside them too often
+    band_note: str = ""  # folder watched for researched files; empty = ./inbox next to the app  # protection ideas may include shorts and inverse funds
     anthropic_key: str = ""  # optional: lets Claude read scenarios; the free local rules work without it
     aliases_backfilled: bool = False  # nicknames generated once for portfolios made before nicknames existed
 
@@ -208,6 +211,22 @@ class EarningsItem(SQLModel, table=True):
     score_20d: str = ""
     score: str = ""  # overall
     imported_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+
+
+class ScenarioPrediction(SQLModel, table=True):
+    """What the engine predicted for an imported scenario, scored once its horizon has passed."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    spec_id: str = Field(index=True)
+    title: str = ""
+    start: dt.date
+    end: dt.date
+    horizon: str = "1m"
+    predicted: str = "{}"  # JSON: factor mids, family median/p5/p95, holdings snapshot
+    actual: str = "{}"  # JSON once scored
+    abs_error: Optional[float] = None
+    inside: Optional[bool] = None
+    scored_at: Optional[dt.datetime] = None
 
 
 class Watch(SQLModel, table=True):

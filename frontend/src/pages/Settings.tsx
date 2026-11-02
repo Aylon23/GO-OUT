@@ -34,6 +34,9 @@ export default function Settings() {
         <Item title="Company logos" help="Logos are fetched once from free public sources and kept on this computer. If one is wrong or missing, upload your own (PNG, JPEG, SVG or WebP, up to 300 KB).">
           <LogoOverrides />
         </Item>
+        <Item title="Memo language" help="The analyst memo on the What-if page, and its PDF and image card.">
+          <Segmented label="Memo language" value={settings.memo_language ?? "he"} onChange={(v) => save({ memo_language: v })} options={[{ value: "he", label: "עברית" }, { value: "en", label: "English" }]} />
+        </Item>
         <Item title="Base currency" help="Everything is converted into this currency using each day's exchange rate.">
           <Segmented label="Base currency" value={settings.base_currency} onChange={(v) => save({ base_currency: v })} options={[{ value: "ILS", label: "₪ Shekel" }, { value: "USD", label: "$ Dollar" }]} />
         </Item>

@@ -195,6 +195,20 @@ probabilities not adding up to 1, or low > mid > high out of order. Warnings don
 own price data and any factor that actually moved against the branch is flagged, moves larger than anything seen over
 that horizon, context older than 30 days, fewer than 2 analogs. The spec's own numbers are never changed.
 
+## Stress tests, risk summary, memo, model accuracy
+
+- **Risk → Risk summary:** historical 1-week and 1-month 95% loss for today's holdings (VaR) and the average loss beyond
+  it (CVaR), each holding's share of risk vs its share of value, and the effective number of independent bets.
+- **Risk → Stress tests:** today's holdings through 2008, the Covid crash, the 2022 rate shock, Q4 2018, the
+  7 October week and the April 2025 tariffs, from real prices in shekels (holdings without prices then are estimated
+  from their factor exposures and labeled). The reverse test finds the most likely month that would cost the family
+  10% or 20% and the closest past stress.
+- **Analyst memo** under every scenario: nine sections written only from the engine's numbers and the scenario's own
+  research, in Hebrew or English (Settings), as a page, a PDF or a phone-sized image card.
+- **Model accuracy** (Researched tab): every imported scenario's prediction is scored when its horizon ends, using only
+  prices up to then. If too few outcomes land inside the 5–95% band, future ranges are widened automatically and the
+  app says so.
+
 ## Exposures (Risk page)
 
 What moves each portfolio, in shekels: market, size, value vs growth, momentum, quality, rates (TLT),

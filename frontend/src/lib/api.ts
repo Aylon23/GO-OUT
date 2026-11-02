@@ -124,6 +124,7 @@ export interface Calls { base: Ccy; reference: string; rows: CallRow[]; scorecar
 export interface TelegramStatus { configured: boolean; paired: boolean; pair_code: string; weekly_report: boolean; running: boolean; error: string; username: string }
 
 export interface Settings {
+  memo_language?: "he" | "en";
   base_currency: Ccy; benchmarks: string[]; risk_free: number; theme: "light" | "dark" | "system"; auto_dividends: boolean;
   anthropic_key_set?: boolean; anthropic_key_hint?: string; anthropic_key?: string; allow_short_hedges?: boolean;
 }
@@ -259,6 +260,19 @@ export interface EarningsCard {
 export interface EarningsPayload { date: string | null; dates: string[]; companies: EarningsCard[]; last_trading_day: string }
 export interface EarningsJournal { rows: { date: string; symbol: string; name: string; confidence: string; move_5d: number | null; move_20d: number | null; score_5d: string; score_20d: string; score: string; scored: boolean }[];
   accuracy: Record<string, { d5: { n: number; hit: number | null }; d20: { n: number; hit: number | null }; overall: { n: number; hit: number | null } }> }
+export interface StressBook { id: number | null; name: string; impact: number | null; change_ils: number | null; estimated_share: number | null; missing_share: number }
+export interface StressTest { id: string; name: string; start: string; end: string; data: boolean; used_start: string | null; used_end: string | null;
+  sp500_usd: number | null; sp500_ils: number | null; family: StressBook; portfolios: StressBook[]; worst: { symbol: string; move: number; estimated: boolean }[] }
+export interface ReverseStress { empty: boolean; monthly_sd: number; results: { loss: number; sentence: string; sigmas: number; forward: number;
+  top: { factor: string; move: number; sigmas: number }[]; closest: { id: string; name: string; family: number | null; similarity: number } | null }[] }
+export interface RiskBook { id: number | null; name: string; weeks: number; var_1w: number; cvar_1w: number; var_1m: number | null; cvar_1m: number | null;
+  var_1w_ils: number; cvar_1w_ils: number; var_1m_ils: number | null; cvar_1m_ils: number | null; holdings: number; effective_bets: number | null;
+  vol_annual: number; risk: { symbol: string; value_share: number; risk_share: number }[] }
+export interface Memo { empty: boolean; lang: "he" | "en"; title: string; date: string; sections: { n: number; title: string; lines: string[] }[] }
+export interface JournalPanel { rows: { id: number; title: string; start: string; end: string; predicted: { median: number; p5: number; p95: number };
+  actual: number | null; abs_error: number | null; inside: boolean | null; scored: boolean }[];
+  summary: { n: number; mae: number; coverage: number; worst: { title: string; abs_error: number; actual: number; predicted: { median: number } }[] } | null;
+  pending: number; band_scale: number; band_note: string; target: number }
 export interface ExposureFactor { id: string; label: string; he: string; tip: string; when: string; shock: number }
 export interface ExposureHolding {
   symbol: string; name: string; weight: number; value: number; betas: Record<string, number>; betas_usd: Record<string, number>;
@@ -325,6 +339,23 @@ async function request<T>(method: string, url: string, body?: unknown, signal?: 
   }
   const ct = res.headers.get("content-type") ?? "";
   return (ct.includes("json") ? res.json() : res.text()) as Promise<T>;
+}
+
+/** POSTs JSON and saves the file the server returns (PDF, PNG). */
+export async function download(url: string, body: unknown, filename: string): Promise<void> {
+  const res = await fetch(url + (url.includes("?") ? "&" : "?") + portfolioParam(), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) {
+    let msg = `Request failed (${res.status}).`;
+    try { const j = await res.json(); msg = j.detail?.message ?? msg; } catch { /* not json */ }
+    throw new ApiError(res.status, msg);
+  }
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
 const qs = (o: Record<string, string | number | boolean | undefined | null>) =>
@@ -413,6 +444,11 @@ export const api = {
   earnings: (date?: string) => request<EarningsPayload>("GET", `/api/earnings${date ? `?date=${date}` : ""}`),
   earningsJournal: () => request<EarningsJournal>("GET", "/api/earnings/journal"),
   earningsImport: (text: string) => request<{ date: string; companies: number }>("POST", "/api/earnings/import", { text }),
+  stress: () => request<{ empty: boolean; tests: StressTest[]; value_ils: number }>("GET", "/api/stress"),
+  reverseStress: () => request<ReverseStress>("GET", "/api/stress/reverse"),
+  riskSummary: () => request<{ empty: boolean; books: RiskBook[] }>("GET", "/api/risk/summary"),
+  memo: (b: ActionsBody & { lang?: "he" | "en" }) => request<Memo>("POST", "/api/memo", b),
+  scenarioJournal: () => request<JournalPanel>("GET", "/api/scenario-journal"),
   logoOverrides: () => request<string[]>("GET", "/api/logos/overrides"),
   uploadLogo: (symbol: string, file: File) => {
     const fd = new FormData();

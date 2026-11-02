@@ -246,12 +246,13 @@ class SettingsIn(BaseModel):
     anthropic_key: str | None = None
     allow_short_hedges: bool | None = None
     inbox_dir: str | None = None
+    memo_language: str | None = None
 
 
 def _settings_dict(s):
     key = (s.anthropic_key or "").strip()
     return {"base_currency": s.base_currency, "benchmarks": s.benchmark_list(), "risk_free": s.risk_free,
-            "theme": s.theme, "auto_dividends": s.auto_dividends, "allow_short_hedges": bool(s.allow_short_hedges), "inbox_dir": s.inbox_dir or "",
+            "theme": s.theme, "auto_dividends": s.auto_dividends, "allow_short_hedges": bool(s.allow_short_hedges), "inbox_dir": s.inbox_dir or "", "memo_language": s.memo_language or "he",
             "anthropic_key_set": bool(key), "anthropic_key_hint": f"…{key[-4:]}" if len(key) > 8 else ""}
 
 
@@ -283,6 +284,10 @@ def put_settings(body: SettingsIn, session: Session = Depends(get_session)):
         s.theme = body.theme if body.theme in ("light", "dark", "system") else "system"
     if body.auto_dividends is not None:
         s.auto_dividends = body.auto_dividends
+    if body.memo_language is not None:
+        if body.memo_language not in ("he", "en"):
+            _bad("Language must be he or en.")
+        s.memo_language = body.memo_language
     if body.inbox_dir is not None:
         from pathlib import Path
 
@@ -1016,6 +1021,82 @@ def book_compare(a: int, b: int, session: Session = Depends(get_session)):
         return services._clean(book.compare(session, a, b))
     except book.BookError as exc:
         _bad(str(exc), 404)
+
+
+# ---------------------------------------------------------------- stress tests, memo, journal, risk summary
+
+@router.get("/stress")
+def stress(session: Session = Depends(get_session)):
+    from .. import stresstests
+
+    return services._clean(stresstests.stress_suite(session))
+
+
+@router.get("/stress/reverse")
+def stress_reverse(session: Session = Depends(get_session)):
+    from .. import stresstests
+
+    return services._clean(stresstests.reverse(session))
+
+
+@router.get("/risk/summary")
+def risk_summary(session: Session = Depends(get_session)):
+    from .. import stresstests
+
+    return services._clean(stresstests.risk_summary(session))
+
+
+class MemoIn(ActionsIn):
+    lang: str | None = None
+
+
+def _memo(body: MemoIn, session: Session) -> dict:
+    import json as _json
+    from .. import memo
+    from ..models import ResearchedSpec
+
+    _check_regime(body.regime)
+    spec = _spec_from(body, session)
+    report = None
+    if body.spec_id:
+        report = _json.loads(session.get(ResearchedSpec, body.spec_id).report)
+    lang = body.lang or services.get_settings(session).memo_language or "he"
+    if lang not in ("he", "en"):
+        _bad("Language must be he or en.")
+    m = memo.build(session, spec, report, lang=lang, regime=body.regime)
+    if m.get("empty"):
+        _bad("Add holdings first.")
+    return m
+
+
+@router.post("/memo")
+def memo_json(body: MemoIn, session: Session = Depends(get_session)):
+    return services._clean(_memo(body, session))
+
+
+@router.post("/memo/pdf")
+def memo_pdf(body: MemoIn, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from .. import render
+
+    m = _memo(body, session)
+    return Response(render.memo_pdf(m), media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="memo.pdf"'})
+
+
+@router.post("/memo/card")
+def memo_card(body: MemoIn, session: Session = Depends(get_session)):
+    from fastapi.responses import Response
+    from .. import render
+
+    m = _memo(body, session)
+    return Response(render.memo_card(m), media_type="image/png", headers={"Content-Disposition": 'attachment; filename="memo.png"'})
+
+
+@router.get("/scenario-journal")
+def scenario_journal_panel(session: Session = Depends(get_session)):
+    from .. import scenario_journal
+
+    return services._clean(scenario_journal.panel(session))
 
 
 # ---------------------------------------------------------------- earnings

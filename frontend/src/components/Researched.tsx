@@ -5,6 +5,7 @@ import { api, ApiError, type ImpactEdit, type ImpactResult, type ScenarioSpec, t
 import { dateLong } from "../lib/format";
 import { useData } from "../lib/hooks";
 import { PersonActionsPanel } from "./Actions";
+import { MemoPanel } from "./Memo";
 import { Impact, type RegimeChoice } from "./Impact";
 import { EmptyState, ErrorLine, Signed, Skel } from "./ui";
 
@@ -29,6 +30,7 @@ export function Researched() {
         <p className="max-w-[64ch] text-sm text-muted">Scenarios researched outside the app (in a Claude chat or a scheduled task), imported here. The app checks them against real price history and never changes their numbers.</p>
         <button type="button" className="btn-primary" onClick={() => setImporting(true)}><DownloadSimple size={16} />Import researched scenario</button>
       </div>
+      <ModelAccuracy />
       {importing && <ImportPanel onClose={() => setImporting(false)} onSaved={(id) => { setImporting(false); list.reload(); setOpenId(id); }} />}
       <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
         <Tray size={14} />
@@ -263,6 +265,27 @@ function SpecImpact({ id }: { id: string }) {
       <Impact r={r} regime={regime} setRegime={setRegime} busy={busy}
         onEdit={(e) => setEdits((xs) => [...xs.filter((x) => !(x.branch === e.branch && x.factor === e.factor)), e])} />
       <PersonActionsPanel body={{ spec_id: id, regime: regime === "auto" ? null : regime, edits }} />
+      <MemoPanel body={{ spec_id: id, regime: regime === "auto" ? null : regime, edits }} />
     </>
+  );
+}
+
+function ModelAccuracy() {
+  const q = useData(api.scenarioJournal, "scenario-journal");
+  const d = q.data;
+  if (!d || (d.rows.length === 0)) return null;
+  const s = d.summary;
+  return (
+    <div className="mt-6 rounded-md border border-line p-4 text-sm">
+      <p className="font-medium">Model accuracy</p>
+      {s ? (
+        <p className="mt-1 text-muted">
+          {s.n} scenario{s.n === 1 ? "" : "s"} scored: typical miss for the family {(s.mae * 100).toFixed(1)}%, and {Math.round(s.coverage * 100)}% of outcomes inside the 5–95% band
+          (aim: about {Math.round(d.target * 100)}%).{s.worst[0] && <> Worst miss: {s.worst[0].title}.</>}
+        </p>
+      ) : <p className="mt-1 text-muted">Nothing scored yet: each imported scenario is checked when its horizon ends.</p>}
+      {d.pending > 0 && <p className="mt-1 text-xs text-faint">{d.pending} waiting for their horizon to end.</p>}
+      {Math.abs(d.band_scale - 1) > 1e-9 && <p className="mt-2 text-xs font-medium">Ranges are now {d.band_scale.toFixed(2)}× wider: {d.band_note}</p>}
+    </div>
   );
 }

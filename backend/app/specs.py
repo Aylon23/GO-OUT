@@ -235,6 +235,12 @@ def save(session: Session, spec: dict, report: dict, source: str) -> ResearchedS
     row.imported_at = dt.datetime.now(dt.timezone.utc)
     session.add(row)
     session.commit()
+    try:  # the prediction journal keeps what the engine says today, to score when the horizon ends
+        from . import scenario_journal
+
+        scenario_journal.record(session, spec)
+    except Exception as exc:  # no holdings yet, or no prices: the import still counts
+        log.info("No journal entry for %s: %s", spec.get("id"), exc)
     return row
 
 

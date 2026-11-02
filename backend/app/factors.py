@@ -111,8 +111,9 @@ def factor_returns(session: Session, as_of: dt.date) -> pd.DataFrame:
         if e in W and "SPY" in W:
             out[f"sector_{e}"] = W[e] - W["SPY"]
     F = pd.DataFrame(out).dropna(how="all")
-    cut = pd.Timestamp(as_of) - pd.Timedelta(weeks=WINDOW_WEEKS + 1)
-    F = F[F.index > cut]
+    if not F.empty:
+        cut = pd.Timestamp(as_of) - pd.Timedelta(weeks=WINDOW_WEEKS + 1)
+        F = F[F.index > cut]
     if len(_factor_cache) > 16:
         _factor_cache.clear()
     _factor_cache[key] = F
@@ -208,6 +209,9 @@ def estimate(session: Session, symbol: str, as_of: dt.date) -> dict[str, dict]:
         cols.append(f"sector_{sector}")
     ccy = currency_for(session, symbol)
     native = "ils" if ccy == "ILS" else "usd"
+    if not cols:  # no factor prices at all (offline, first start): no exposures yet
+        empty = {"betas": {}, "r2": None, "resid_vol": None, "weeks": 0, "short_history": True, "sector": sector or ""}
+        return {"usd": dict(empty), "ils": dict(empty, betas={"shekel": 1.0} if native == "usd" else {})}
     other = "usd" if native == "ils" else "ils"
     R = holding_returns(session, symbol, as_of)
     b0 = prior(native, ccy, sector, cols)

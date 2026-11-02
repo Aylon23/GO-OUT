@@ -67,6 +67,9 @@ CATALOG = {
     "XOM": ("Exxon Mobil Corporation", "NYQ", "EQUITY", 80, 0.06, 0.28, "1990-01-02", 0.035),
     "DAL": ("Delta Air Lines, Inc.", "NYQ", "EQUITY", 40, 0.05, 0.40, "2007-05-03", 0.0),
     "NEE": ("NextEra Energy, Inc.", "NYQ", "EQUITY", 40, 0.08, 0.20, "1990-01-02", 0.025),
+    "^TNX": ("CBOE 10-Year Treasury Yield", "CBO", "INDEX", 2.2, 0.03, 0.25, "1990-01-02", 0.0),
+    "CL=F": ("Crude Oil Futures", "NYM", "FUTURE", 50, 0.02, 0.36, "2000-08-23", 0.0),
+    "BZ=F": ("Brent Crude Futures", "NYM", "FUTURE", 55, 0.02, 0.34, "2007-07-30", 0.0),
 }
 SPLITS = {"NVDA": [(dt.date(2021, 7, 20), 4.0), (dt.date(2024, 6, 10), 10.0)], "AAPL": [(dt.date(2020, 8, 31), 4.0)]}
 SECTORS = {"XOM": "Energy", "DAL": "Industrials", "NEE": "Utilities", "AAPL": "Technology", "MSFT": "Technology", "NVDA": "Technology", "INTC": "Technology",
@@ -79,6 +82,7 @@ DISPLAY_START = dt.date(2015, 1, 1)
 FACTOR_VOL = {"M": 0.16, "T": 0.12, "S": 0.18, "R": 0.12, "O": 0.35, "G": 0.14, "D": 0.07, "I": 0.14, "E": 0.12, "F": 0.10}
 LOADINGS = {
     "IWD": {"M": 0.95, "F": 0.35, "E": 0.15}, "IWF": {"M": 1.05, "T": 0.55}, "MTUM": {"M": 1.0, "T": 0.35}, "QUAL": {"M": 0.95, "T": 0.15},
+    "^TNX": {"R": -2.0}, "CL=F": {"O": 1.0}, "BZ=F": {"O": 0.95},
     "XOM": {"M": 0.7, "E": 1.0, "O": 0.5}, "DAL": {"M": 1.3, "O": -0.7}, "NEE": {"M": 0.45, "R": 0.55},
     "SPY": {"M": 1.0}, "VOO": {"M": 1.0}, "VFIAX": {"M": 1.0}, "^GSPC": {"M": 1.0},
     "QQQ": {"M": 1.1, "T": 0.9}, "XLK": {"M": 1.1, "T": 1.2}, "SOXX": {"M": 1.3, "T": 0.9, "S": 1.0},

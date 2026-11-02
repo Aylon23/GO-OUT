@@ -5,6 +5,7 @@ import { SymbolSearch } from "../components/SymbolSearch";
 import { PersonActionsPanel } from "../components/Actions";
 import { Book } from "../components/Book";
 import { Earnings } from "../components/Earnings";
+import { MemoPanel } from "../components/Memo";
 import { Impact, type RegimeChoice } from "../components/Impact";
 import { NewMoney } from "../components/NewMoney";
 import { Researched } from "../components/Researched";
@@ -162,6 +163,7 @@ function ScenarioLab() {
           <Impact r={impact} regime={impactRegime} setRegime={setImpactRegime} busy={impactBusy}
             onEdit={(e) => setEdits((xs) => [...xs.filter((x) => !(x.branch === e.branch && x.factor === e.factor)), e])} />
           <PersonActionsPanel body={{ ...JSON.parse(debounced), text, regime: impactRegime === "auto" ? null : impactRegime, edits }} />
+          <MemoPanel body={{ ...JSON.parse(debounced), text, regime: impactRegime === "auto" ? null : impactRegime, edits }} />
           {run && !run.empty && <Reverse run={run} />}
           <ModelCheckPanel />
           <p className="mt-12 max-w-[72ch] text-xs text-faint">
