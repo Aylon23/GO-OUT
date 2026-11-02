@@ -2,6 +2,7 @@ import { CaretDown, CaretUp, Plus } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useState } from "react";
 import { FileText, FileXls } from "@phosphor-icons/react";
+import { PeriodicReports } from "../components/PeriodicReports";
 import { ReportPanel } from "../components/ReportPanel";
 import { HoldingsImport } from "../components/HoldingsImport";
 import { ChartSkeleton, colorFor, InlineLegend, SeriesChart, type SeriesDef } from "../components/chart/SeriesChart";
@@ -63,6 +64,7 @@ export default function AllPortfolios() {
                 <button type="button" className="btn-secondary" onClick={() => setImporting((x) => !x)}><FileXls size={16} /> Import from Excel</button>
                 <NewPortfolio onCreated={async (id) => { await reloadPortfolios(); setPortfolio(id); go("transactions"); }} />
               </div>
+              <PeriodicReports />
             </>
           )}
         </div>

@@ -42,6 +42,10 @@ def _startup() -> None:
         from . import factors
 
         factors.start_nightly()
+    if os.environ.get("PORTFOLIO_NO_REPORTS") != "1":
+        from . import person_reports
+
+        person_reports.start_scheduler()
     if os.environ.get("PORTFOLIO_NO_INBOX") != "1":
         from . import specs
 

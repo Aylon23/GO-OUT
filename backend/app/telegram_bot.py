@@ -59,6 +59,17 @@ class TelegramClient:
         return data["result"]
 
 
+    def send_file(self, chat_id: str, data: bytes, filename: str, caption: str = "", photo: bool = False) -> dict:
+        """sendPhoto / sendDocument with a file from memory."""
+        method, field = ("sendPhoto", "photo") if photo else ("sendDocument", "document")
+        r = self.http.post(self.base + method, data={"chat_id": chat_id, "caption": caption[:1024]},
+                           files={field: (filename, data, "image/png" if photo else "application/pdf")})
+        out = r.json()
+        if not out.get("ok"):
+            raise RuntimeError(out.get("description") or f"Telegram error {r.status_code}")
+        return out["result"]
+
+
 def _money(v, ccy) -> str:
     if v is None:
         return "?"
@@ -290,8 +301,8 @@ class Bot:
         now = now or dt.datetime.now()
         with self.session_factory() as s:
             st = self.settings(s)
-            if not (st.weekly_report and st.telegram_chat_id):
-                return False
+            if not (st.weekly_report and st.telegram_chat_id) or st.report_auto_send:
+                return False  # the weekly image reports (person_reports) replace this text summary
             # Sundays from 09:00 local time, once per week
             if now.weekday() != 6 or now.hour < 9 or st.weekly_report_sent == now.date().isoformat():
                 return False

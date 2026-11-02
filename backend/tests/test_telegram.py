@@ -115,6 +115,12 @@ def test_reports_and_weekly_schedule(bot):
     b.handle(msg(42, "/calls"))
     assert "המלצות" in tg.texts()[-1]
     sunday = dt.datetime(2026, 11, 8, 10, 0)
+    with b.session_factory() as s:  # with the image reports on, this text summary steps aside
+        st = b.settings(s)
+        assert st.report_auto_send and not b.maybe_weekly(sunday)
+        st.report_auto_send = False
+        s.add(st)
+        s.commit()
     assert b.maybe_weekly(sunday) and "סיכום השבוע" in tg.texts()[-1]
     assert not b.maybe_weekly(sunday)  # once per Sunday
     assert not b.maybe_weekly(dt.datetime(2026, 11, 9, 10, 0))  # not on Monday

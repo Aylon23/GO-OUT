@@ -195,6 +195,15 @@ probabilities not adding up to 1, or low > mid > high out of order. Warnings don
 own price data and any factor that actually moved against the branch is flagged, moves larger than anything seen over
 that horizon, context older than 30 days, fewer than 2 analogs. The spec's own numbers are never changed.
 
+## Weekly and monthly reports
+
+Every Sunday (the week before) and on the 1st (the month before), while the app runs, it makes a phone-sized
+image card (1080x1350) and a short PDF for each person, plus a family summary: value, change in shekels and %, vs the
+S&P 500 and Nasdaq 100, best and weakest holdings with logos, dividends, trades, open recommendations, one line on what
+drove the period, and, if your book has scenarios, what its most likely one would do. Hebrew by default (Settings).
+Missed weeks or months are made on the next start. They go only to you: listed under All portfolios → Reports and sent
+to your Telegram chat (if connected), to forward yourself. The numbers are the app's own for the same dates.
+
 ## Stress tests, risk summary, memo, model accuracy
 
 - **Risk → Risk summary:** historical 1-week and 1-month 95% loss for today's holdings (VaR) and the average loss beyond

@@ -153,7 +153,10 @@ class Settings(SQLModel, table=True):
     weekly_report_sent: str = ""  # date of the last Sunday summary sent
     allow_short_hedges: bool = False
     inbox_dir: str = ""
-    memo_language: str = "he"  # he | en
+    memo_language: str = "he"  # he | en (memo and periodic reports)
+    report_last_weekly: str = ""  # period end of the last weekly reports generated
+    report_last_monthly: str = ""
+    report_auto_send: bool = True  # send new reports to my Telegram chat
     band_scale: float = 1.0  # widens scenario ranges when past outcomes fell outside them too often
     band_note: str = ""  # folder watched for researched files; empty = ./inbox next to the app  # protection ideas may include shorts and inverse funds
     anthropic_key: str = ""  # optional: lets Claude read scenarios; the free local rules work without it
@@ -227,6 +230,23 @@ class ScenarioPrediction(SQLModel, table=True):
     abs_error: Optional[float] = None
     inside: Optional[bool] = None
     scored_at: Optional[dt.datetime] = None
+
+
+class PersonReport(SQLModel, table=True):
+    """A generated weekly or monthly report (a person's, or the family summary), with its files."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = "weekly"  # weekly | monthly
+    portfolio_id: Optional[int] = None  # None = family summary
+    name: str = ""
+    period_start: dt.date
+    period_end: dt.date
+    lang: str = "he"
+    png: str = ""  # file names in data/reports
+    pdf: str = ""
+    data: str = "{}"
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    sent_at: Optional[dt.datetime] = None
 
 
 class Watch(SQLModel, table=True):

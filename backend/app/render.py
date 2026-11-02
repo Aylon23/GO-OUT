@@ -8,7 +8,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, features
 
 # Same palette as the app (sRGB approximations of the OKLCH tokens, light theme)
 BG = (247, 244, 239)
@@ -42,13 +42,30 @@ def is_rtl(text: str) -> bool:
     return bool(HEB.search(text or ""))
 
 
+# With libraqm, Pillow lays out right-to-left text itself (Linux and macOS builds usually); without it
+# (most Windows installs) the text is put into display order here. Exactly one of the two must happen.
+RAQM = features.check("raqm")
+
+
 def visual(text: str) -> str:
-    """Logical text -> display order (for right-to-left lines)."""
-    if not is_rtl(text):
+    """Logical text -> what to hand to Pillow for a right-to-left line."""
+    if not is_rtl(text) or RAQM:
         return text
     from bidi.algorithm import get_display
 
     return get_display(text)
+
+
+def _dir(text: str) -> dict:
+    return {"direction": "rtl", "language": "he"} if (RAQM and is_rtl(text)) else {}
+
+
+def measure(f: ImageFont.FreeTypeFont, text: str) -> float:
+    return f.getlength(visual(text), **_dir(text))
+
+
+def draw(d: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, f: ImageFont.FreeTypeFont, fill) -> None:
+    d.text(xy, visual(text), font=f, fill=fill, **_dir(text))
 
 
 def wrap(text: str, f: ImageFont.FreeTypeFont, width: int) -> list[str]:
@@ -58,7 +75,7 @@ def wrap(text: str, f: ImageFont.FreeTypeFont, width: int) -> list[str]:
         words, line = para.split(" "), ""
         for w in words:
             cand = (line + " " + w).strip()
-            if f.getlength(visual(cand)) <= width or not line:
+            if measure(f, cand) <= width or not line:
                 line = cand
             else:
                 out.append(line)
@@ -79,13 +96,12 @@ class Canvas:
         width = width or (self.w - 2 * self.m)
         lines = wrap(s, f, width)
         for ln in lines:
-            disp = visual(ln)
-            tw = f.getlength(disp)
+            tw = measure(f, ln)
             rtl = is_rtl(ln) or self.rtl
             x = (x0 if x0 is not None else self.m)
             if rtl:
                 x = (x0 + width if x0 is not None else self.w - self.m) - tw
-            self.d.text((x, self.y), disp, font=f, fill=color)
+            draw(self.d, (x, self.y), ln, f, color)
             self.y += int(size * 1.35)
         self.y += gap
         return len(lines)
@@ -99,8 +115,8 @@ class Canvas:
         f = font(size, bold)
         a, b = (right, left) if self.rtl else (left, right)
         ca, cb = (rcolor, lcolor) if self.rtl else (lcolor, rcolor)
-        self.d.text((self.m, self.y), visual(a), font=f, fill=ca)
-        self.d.text((self.w - self.m - f.getlength(visual(b)), self.y), visual(b), font=f, fill=cb)
+        draw(self.d, (self.m, self.y), a, f, ca)
+        draw(self.d, (self.w - self.m - measure(f, b), self.y), b, f, cb)
         self.y += int(size * 1.45)
 
     def logo(self, path: Path | None, letter: str, x: int, y: int, size: int) -> None:

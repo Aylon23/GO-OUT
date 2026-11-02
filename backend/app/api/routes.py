@@ -1099,6 +1099,78 @@ def scenario_journal_panel(session: Session = Depends(get_session)):
     return services._clean(scenario_journal.panel(session))
 
 
+# ---------------------------------------------------------------- periodic reports (image card + PDF)
+
+class ReportsIn(BaseModel):
+    kind: str = "weekly"
+    send: bool = False
+    lang: str | None = None
+
+
+@router.get("/reports/list")
+def reports_list(session: Session = Depends(get_session)):
+    from .. import person_reports
+
+    return person_reports.listing(session)
+
+
+@router.post("/reports/generate")
+def reports_generate(body: ReportsIn, session: Session = Depends(get_session)):
+    from .. import person_reports
+
+    if body.kind not in ("weekly", "monthly"):
+        _bad("Kind must be weekly or monthly.")
+    if body.lang not in (None, "he", "en"):
+        _bad("Language must be he or en.")
+    today = dt.date.today()
+    if body.kind == "weekly":
+        sunday = today - dt.timedelta(days=(today.weekday() + 1) % 7)
+        start, end = person_reports.week_period(sunday)
+    else:
+        start, end = person_reports.month_period(today.replace(day=1))
+    made = person_reports.generate(session, body.kind, start, end, body.lang)
+    errors = []
+    if body.send:
+        for r in made:
+            try:
+                person_reports.send(session, r)
+            except Exception as exc:
+                errors.append(str(exc))
+                break
+    return {"made": len(made), "period_start": start.isoformat(), "period_end": end.isoformat(), "send_errors": errors,
+            "reports": person_reports.listing(session)[: len(made)]}
+
+
+@router.get("/reports/file/{rid}.{ext}")
+def reports_file(rid: int, ext: str, session: Session = Depends(get_session)):
+    from fastapi.responses import FileResponse
+    from .. import person_reports
+    from ..models import PersonReport
+
+    r = session.get(PersonReport, rid)
+    if r is None or ext not in ("png", "pdf"):
+        _bad("Report not found.", 404)
+    path = person_reports.reports_dir() / (r.png if ext == "png" else r.pdf)
+    if not path.exists():
+        _bad("The file is missing; generate the report again.", 404)
+    return FileResponse(path, media_type="image/png" if ext == "png" else "application/pdf", filename=path.name)
+
+
+@router.post("/reports/{rid}/send")
+def reports_send(rid: int, session: Session = Depends(get_session)):
+    from .. import person_reports
+    from ..models import PersonReport
+
+    r = session.get(PersonReport, rid)
+    if r is None:
+        _bad("Report not found.", 404)
+    try:
+        person_reports.send(session, r)
+    except Exception as exc:
+        _bad(str(exc))
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- earnings
 
 @router.get("/earnings")
