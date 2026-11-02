@@ -47,7 +47,9 @@ def test_harmonic_pe_by_hand(client, session):
 def test_beta_and_pe_rows(client):
     client.post("/api/transactions?portfolio=1", json={"ticker": "LEV", "type": "BUY", "date": (TODAY - dt.timedelta(days=400)).isoformat(),
                                                        "quantity": 10, "price": 100, "currency": "USD"})
-    m = client.get("/api/metrics?portfolios=1&symbols=SPY,LEV&range=1Y").json()
+    r = client.get("/api/metrics?portfolios=1&symbols=SPY,LEV&range=1Y")
+    assert r.status_code == 200, r.text
+    m = r.json()
     rows = {r["key"]: r for r in m["rows"]}
     assert abs(rows["SPY"]["beta"] - 1.0) < 1e-9
     assert abs(rows["LEV"]["beta"] - 2.0) < 1e-6

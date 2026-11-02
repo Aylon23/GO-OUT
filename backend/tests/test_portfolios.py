@@ -83,3 +83,36 @@ def test_overview_lists_every_portfolio(client):
     assert abs(rows["My portfolio"]["cost_gain_pct"] - 0.5) < 1e-9
     assert "p1" in o["chart"]["perf"] and "SPY" in o["chart"]["perf"]
     assert abs(o["total_value"] - 6000) < 1e-6
+
+
+def test_routes_exist(client):
+    assert client.post("/api/omnibox", json={"text": "bought 1 AAPL"}).headers["content-type"].startswith("application/json")
+    assert client.get("/api/metrics?symbols=SPY").headers["content-type"].startswith("application/json")
+
+
+def test_sectioned_sheet_creates_portfolios(client):
+    # same shape as a family spreadsheet: a title row per portfolio, a header with an empty first
+    # column, holdings, a totals row, then a list of realized gains without quantities
+    csv = (
+        "Dad,,,\n"
+        ",cost rate,current rate,amount,cost value\n"
+        "AAPL,100,150,10,1000\n"
+        "SPY,150,200,4,600\n"
+        'סה"כ,,,,1600\n'
+        "tsla,-1565\n"
+        "qqq,1375\n"
+        "Keren,,,\n"
+        ",cost rate,current rate,amount\n"
+        "AAPL,120,150,5\n"
+    )
+    prev = client.post("/api/holdings/import?portfolio=1", files={"file": ("f.csv", csv)}).json()
+    assert prev["valid"] == 3 and prev["invalid"] == 0
+    assert {g["name"]: g["valid"] for g in prev["groups"]} == {"Dad": 2, "Keren": 1}
+    client.post("/api/holdings/import?portfolio=1&commit=true", files={"file": ("f.csv", csv)})
+    ps = {p["name"]: p for p in client.get("/api/portfolios").json()}
+    assert ps["Dad"]["transactions"] == 2 and ps["Keren"]["transactions"] == 1
+    assert ps["My portfolio"]["transactions"] == 0
+    # importing an updated file with replace=true does not duplicate
+    client.post("/api/holdings/import?portfolio=1&commit=true&replace=true", files={"file": ("f.csv", csv)})
+    ps = {p["name"]: p for p in client.get("/api/portfolios").json()}
+    assert ps["Dad"]["transactions"] == 2

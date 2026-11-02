@@ -75,10 +75,13 @@ export interface Overview {
   chart: { dates: string[]; perf: Record<string, (number | null)[]>; labels: Record<string, string> };
 }
 export interface HoldingImportRow {
-  line: number; ticker: string; errors: Record<string, string>; notes: string[]; quantity?: number; avg_price?: number; currency?: Ccy;
+  line: number; ticker: string; portfolio?: string | null; errors: Record<string, string>; notes: string[]; quantity?: number; avg_price?: number; currency?: Ccy;
   price?: number; price_date?: string; gain_pct?: number;
 }
-export interface HoldingImport { rows: HoldingImportRow[]; valid: number; invalid: number; committed: boolean; imported: number }
+export interface HoldingImport {
+  rows: HoldingImportRow[]; valid: number; invalid: number; committed: boolean; imported: number; portfolios: number; created: string[];
+  groups: { name: string; exists: boolean; rows: number; valid: number; holding_now: number }[];
+}
 
 export interface MetricRow {
   key: string; label: string; kind: "portfolio" | "symbol"; name?: string; note: string; beta: number | null;
@@ -197,10 +200,10 @@ export const api = {
     request<Metrics>("GET", `/api/metrics?${qs({ portfolios: portfolios.join(","), symbols: symbols.join(","), range })}`),
   overview: (range: string) => request<Overview>("GET", `/api/overview?${qs({ range })}`),
   lookback: (p: RangeParams) => request<Lookback>("GET", `/api/lookback?${qs({ ...p })}`),
-  importHoldings: (file: File, commit: boolean, asOf?: string) => {
+  importHoldings: (file: File, commit: boolean, asOf?: string, replace = false) => {
     const fd = new FormData();
     fd.append("file", file);
-    return request<HoldingImport>("POST", `/api/holdings/import?${qs({ commit, as_of: asOf })}`, fd);
+    return request<HoldingImport>("POST", `/api/holdings/import?${qs({ commit, as_of: asOf, replace })}`, fd);
   },
   clearAll: () => request<{ ok: boolean }>("DELETE", "/api/transactions"),
 };

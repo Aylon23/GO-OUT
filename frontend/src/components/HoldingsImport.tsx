@@ -8,7 +8,8 @@ import { ErrorLine, Signed, Skel } from "./ui";
 
 /** Import a list of current holdings (ticker, quantity, average price) from Excel or CSV. */
 export function HoldingsImport({ onClose }: { onClose: () => void }) {
-  const { portfolio, reloadPortfolios } = useApp();
+  const { portfolio, reloadPortfolios, go } = useApp();
+  const [replace, setReplace] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [asOf, setAsOf] = useState(today());
   const [res, setRes] = useState<HoldingImport | null>(null);
@@ -20,20 +21,27 @@ export function HoldingsImport({ onClose }: { onClose: () => void }) {
   async function run(f: File, commit: boolean) {
     setBusy(true); setErr(null);
     try {
-      const r = await api.importHoldings(f, commit, asOf);
-      if (commit) { setDone(r.imported); setRes(null); invalidate(); reloadPortfolios().catch(() => {}); } else setRes(r);
+      const r = await api.importHoldings(f, commit, asOf, replace);
+      if (commit) {
+        setDone(r.imported); setRes(null); invalidate();
+        await reloadPortfolios().catch(() => []);
+        if (r.portfolios > 1) go("all");
+      } else setRes(r);
     } catch (e) { setRes(null); setErr(e instanceof ApiError ? e.message : "Couldn't read the file."); }
     finally { setBusy(false); }
   }
 
+  const multi = !!res && res.groups.some((g) => g.name);
+  const anyExisting = !!res && res.groups.some((g) => g.exists && g.holding_now > 0);
   return (
     <section aria-label="Import holdings" className="fade-in mt-8 border-y border-line py-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Import holdings into {portfolio?.name ?? "this portfolio"}</h2>
+          <h2 className="text-lg font-semibold">Import holdings</h2>
           <p className="mt-1 max-w-[66ch] text-sm text-muted">
             An Excel or CSV file with a header row. Columns: <span className="font-mono text-xs text-text">ticker, quantity, avg_price, currency</span>{" "}
-            (Hebrew headers work too: סימול, כמות, שער ממוצע, מטבע). Tel Aviv tickers end in <span className="font-mono text-xs text-text">.TA</span>; prices in agorot are converted.
+            (Hebrew headers work too: סימול, כמות, שער ממוצע, מטבע). Excel "Stocks" cells work. Several tables, each under a title row with the
+            portfolio's name, import into those portfolios. Otherwise rows go into {portfolio?.name ?? "this portfolio"}.
           </p>
         </div>
         <button type="button" className="btn-ghost" onClick={onClose}>Close</button>
@@ -61,10 +69,26 @@ export function HoldingsImport({ onClose }: { onClose: () => void }) {
       {res && (
         <div className="mt-5">
           <p className="text-sm"><span className="font-medium">{res.valid}</span> ready{res.invalid > 0 && <>, <span className="font-medium text-loss">{res.invalid}</span> with errors (skipped)</>}.</p>
+          {multi && (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {res.groups.map((g) => (
+                <li key={g.name} className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-sm">
+                  <span className="font-medium">{g.name}</span> <span className="num text-muted">{g.valid}</span>
+                  <span className="text-xs text-faint"> · {g.exists ? (g.holding_now ? `exists, ${g.holding_now} transactions` : "exists") : "new"}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {anyExisting && (
+            <label className="mt-4 flex max-w-[66ch] items-start gap-2.5 text-sm">
+              <input type="checkbox" className="mt-1 accent-[var(--accent)]" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
+              <span>Replace what these portfolios hold now<span className="block text-xs text-muted">Use this when importing an updated file. Unticked, the rows are added on top of what is there.</span></span>
+            </label>
+          )}
           <div className="mt-3 max-h-[380px] overflow-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="sticky top-0 bg-bg text-xs text-muted"><tr className="border-b border-line">
-                <th className="py-2 pr-3 font-medium">Line</th><th className="py-2 pr-3 font-medium">Ticker</th>
+                <th className="py-2 pr-3 font-medium">Line</th>{multi && <th className="py-2 pr-3 font-medium">Portfolio</th>}<th className="py-2 pr-3 font-medium">Ticker</th>
                 <th className="py-2 pr-3 text-right font-medium">Quantity</th><th className="py-2 pr-3 text-right font-medium">Avg price</th>
                 <th className="py-2 pr-3 text-right font-medium">Price now</th><th className="py-2 pr-3 text-right font-medium">Gain</th><th className="py-2 font-medium">Status</th>
               </tr></thead>
@@ -74,6 +98,7 @@ export function HoldingsImport({ onClose }: { onClose: () => void }) {
                   return (
                     <tr key={r.line} className="border-b border-line align-top">
                       <td className="num py-2 pr-3 text-faint">{r.line}</td>
+                      {multi && <td className="py-2 pr-3">{r.portfolio}</td>}
                       <td className="py-2 pr-3 font-mono font-semibold">{r.ticker || "–"}</td>
                       <td className="num py-2 pr-3 text-right">{r.quantity !== undefined ? num(r.quantity, 4) : ""}</td>
                       <td className="num py-2 pr-3 text-right">{r.avg_price !== undefined ? money(r.avg_price, r.currency ?? "USD", { decimals: 2 }) : ""}</td>
@@ -90,7 +115,7 @@ export function HoldingsImport({ onClose }: { onClose: () => void }) {
           </div>
           <div className="mt-4 flex gap-2">
             <button type="button" className="btn-primary" disabled={!res.valid || busy} onClick={() => file && run(file, true)}>
-              Import {res.valid} holding{res.valid === 1 ? "" : "s"}
+              Import {res.valid} holding{res.valid === 1 ? "" : "s"}{multi && ` into ${res.groups.length} portfolios`}
             </button>
             <button type="button" className="btn-ghost" onClick={() => { setRes(null); setFile(null); if (input.current) input.current.value = ""; }}>Start over</button>
           </div>

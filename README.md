@@ -44,6 +44,57 @@ without network access:
 PORTFOLIO_PROVIDER=synthetic PORTFOLIO_DB=/tmp/synthetic.db ./start.sh
 ```
 
+## Several portfolios
+
+Use the switcher next to the app name to pick a portfolio, open **All portfolios**, or add one.
+Every page (Overview, Holdings, Risk, Compare, Transactions, What-if) shows the selected portfolio.
+**All portfolios** compares them side by side against SPY and QQQ.
+
+### Importing holdings from Excel
+
+**Import holdings** (on Transactions or All portfolios) takes an `.xlsx` or `.csv` with a header row:
+
+| ticker | quantity | avg_price | currency |
+|---|---|---|---|
+| QQQ | 60 | 561.30 | USD |
+| TEVA.TA | 300 | 45.10 | ILS |
+
+- Hebrew headers work too (סימול, כמות, שער ממוצע, מטבע), and so do `amount` / `cost rate`.
+- Excel "Stocks" cells (which show as `#VALUE!` outside Excel) are read from the file directly.
+- **Several portfolios in one sheet:** put each portfolio's table under a row with just its name.
+  Each table goes into the portfolio with that name (created if missing). Totals rows and lines
+  without a quantity are skipped.
+- Re-importing an updated file with **Replace what these portfolios hold now** swaps the holdings
+  instead of adding them twice.
+
+There are no purchase dates in a holdings list, so:
+- **Gain vs cost** uses your average price.
+- **Real performance** (time-weighted, vs SPY/QQQ) is tracked from the import date onward.
+- For longer ranges the app shows a clearly labeled **look-back**: today's holdings, same shares
+  the whole time, dividends reinvested. It answers "how has this mix done?", not "how did I do?".
+
+## Compare: beta and P/E
+
+The **Compare** page puts portfolios next to any stocks or indices you add (SPY, QQQ and XLK, the
+tech sector, by default):
+- **Beta vs SPY** from daily returns over the range, plus a rolling 6-month beta chart.
+- **P/E and forward P/E.** For a portfolio this is total value divided by total earnings (a weighted
+  harmonic mean); holdings without earnings are left out and listed. Yahoo only offers today's P/E
+  for free, so P/E is a snapshot, not a history. Indices use the ETF that tracks them.
+- Dividend yield, weighted.
+
+## Command box
+
+Press **Ctrl/⌘ K** and type a trade in Hebrew or English. The app fills in the rest and asks you to
+confirm before saving:
+
+- `קניתי 5 מניות של QQQ` → buy 5 QQQ at today's close, in the current portfolio
+- `אבא קנה SPY ב-1000 דולר` → buy $1,000 of SPY in the portfolio named אבא
+- `Keren sold 3 AAPL at 190 yesterday`
+- `הפקדתי 5000 שקל לתיק של Shir`
+
+It runs locally with simple rules (no AI service). Name the portfolio exactly as it appears in the app.
+
 ## How the numbers work
 
 | Rule | What the app does |

@@ -191,32 +191,96 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
 # ------------------------------------------------------------------ holdings import
 
 ALIASES = {
-    "ticker": ["ticker", "symbol", "סימול", "סימבול", "נייר", "שם נייר", "מניה", "name"],
-    "quantity": ["quantity", "qty", "shares", "כמות", "יחידות", "כמות יחידות"],
-    "avg_price": ["avg_price", "avg price", "average price", "avg cost", "avg_cost", "average cost", "cost", "price", "שער ממוצע", "שער קנייה", "מחיר ממוצע",
-                  "שער עלות", "מחיר קנייה", "עלות ממוצעת"],
+    "ticker": ["ticker", "symbol", "סימול", "סימבול", "נייר", "שם נייר", "מניה", "stock"],
+    "quantity": ["quantity", "qty", "shares", "amount", "units", "כמות", "יחידות", "כמות יחידות"],
+    "avg_price": ["avg_price", "avg price", "average price", "avg cost", "avg_cost", "average cost", "cost rate", "cost price",
+                  "cost", "price", "שער ממוצע", "שער קנייה", "מחיר ממוצע", "שער עלות", "מחיר קנייה", "עלות ממוצעת"],
     "currency": ["currency", "מטבע"],
+    "portfolio": ["portfolio", "תיק", "account", "חשבון"],
 }
+TOTAL_WORDS = {'סה"כ', "סה״כ", "total", "sum", "סיכום", "סהכ"}
+
+
+def _norm(h) -> str:
+    return re.sub(r"\s+", " ", str(h or "").strip().lower())
 
 
 def _header_map(headers: list[str]) -> dict[str, int]:
-    norm = [re.sub(r"\s+", " ", (h or "").strip().lower()) for h in headers]
+    norm = [_norm(h) for h in headers]
     out = {}
     for key, names in ALIASES.items():
         for i, h in enumerate(norm):
-            if h in names:
+            if h in names and i not in out.values():
                 out[key] = i
                 break
+    # a header row with an empty first column holding the tickers (Excel "Stocks" layout)
+    if "ticker" not in out and norm and norm[0] == "" and {"quantity", "avg_price"} <= out.keys():
+        out["ticker"] = 0
     return out
+
+
+def _excel_stock_tickers(data: bytes) -> dict[str, dict]:
+    """Excel's "Stocks" data type shows as #VALUE! outside Excel. The ticker, name and currency are
+    kept in the file's rich-data parts; map each such cell (e.g. "A3") to them."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    try:
+        z = zipfile.ZipFile(io.BytesIO(data))
+        names = set(z.namelist())
+        if "xl/richData/rdrichvalue.xml" not in names or "xl/metadata.xml" not in names:
+            return {}
+        ns = {"r": "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata",
+              "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        st_root = ET.fromstring(z.read("xl/richData/rdrichvaluestructure.xml"))
+        structs = [(s.get("t"), [k.get("n") for k in s.findall("r:k", ns)]) for s in st_root.findall("r:s", ns)]
+        rvs = []
+        for rv in ET.fromstring(z.read("xl/richData/rdrichvalue.xml")).findall("r:rv", ns):
+            t, keys = structs[int(rv.get("s"))]
+            rvs.append((t, dict(zip(keys, [v.text for v in rv.findall("r:v", ns)]))))
+        md = ET.fromstring(z.read("xl/metadata.xml"))
+        fut = [b for f in md.findall("m:futureMetadata", ns) if f.get("name") == "XLRICHVALUE" for b in f.findall("m:bk", ns)]
+        rvb = [int(b.find(".//r:rvb", ns).get("i")) for b in fut]
+        vmeta = [int(b.find("m:rc", ns).get("v")) for b in md.find("m:valueMetadata", ns).findall("m:bk", ns)]
+        sheet = next(n for n in sorted(names) if n.startswith("xl/worksheets/sheet"))
+        cells = re.findall(r'<c r="([A-Z]+[0-9]+)"[^>]*?vm="(\d+)"', z.read(sheet).decode("utf-8", "replace"))
+        out = {}
+        for ref, vm in cells:
+            t, d = rvs[rvb[vmeta[int(vm) - 1]]]
+            if t == "_linkedentity" and "%cvi" in d:
+                t, d = rvs[int(d["%cvi"])]
+            sym = (d.get("Ticker symbol") or "").strip()
+            if sym:
+                exch = d.get("Exchange abbreviation") or ""
+                sym = sym.replace(" ", "-")  # "BRK B" -> "BRK-B"
+                if exch in ("XTAE", "TASE") and not sym.endswith(".TA"):
+                    sym += ".TA"
+                out[ref] = {"ticker": sym, "name": d.get("Name") or "", "currency": d.get("Currency") or "",
+                            "type": d.get("Instrument type") or ""}
+        return out
+    except Exception:  # unusual files: fall back to plain cell values
+        return {}
 
 
 def read_table(filename: str, data: bytes) -> list[list[str]]:
     if filename.lower().endswith((".xlsx", ".xlsm")):
         from openpyxl import load_workbook
 
-        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        stocks = _excel_stock_tickers(data)
+        wb = load_workbook(io.BytesIO(data), read_only=False, data_only=True)
         ws = wb.worksheets[0]
-        return [["" if c is None else str(c) for c in row] for row in ws.iter_rows(values_only=True)]
+        rows = []
+        for row in ws.iter_rows():
+            vals = []
+            for c in row:
+                if c.coordinate in stocks:
+                    vals.append(stocks[c.coordinate]["ticker"])
+                else:
+                    vals.append("" if c.value is None else str(c.value))
+            rows.append(vals)
+        read_table.stock_meta = {v["ticker"]: v for v in stocks.values()}  # names for SymbolMeta
+        return rows
+    read_table.stock_meta = {}
     text = data.decode("utf-8-sig", errors="replace")
     return [row for row in csv.reader(io.StringIO(text))]
 
@@ -229,54 +293,120 @@ def _num(s: str) -> float | None:
         return None
 
 
-def parse_holdings(session: Session, rows: list[list[str]], as_of: dt.date) -> list[dict]:
-    """Validate a holdings list: ticker, quantity, average price, optional currency.
-    Tel Aviv prices given in agorot (about 100x the current price) are converted to shekels."""
-    rows = [r for r in rows if any((c or "").strip() for c in r)]
-    if not rows:
-        return []
-    hm = _header_map(rows[0])
-    missing = [k for k in ("ticker", "quantity", "avg_price") if k not in hm]
-    if missing:
-        raise ValueError("Missing columns: " + ", ".join(missing) + ". Use ticker, quantity, avg_price, currency.")
+def _sections(rows: list[list[str]]) -> list[tuple[str | None, dict, list[tuple[int, list[str]]]]]:
+    """Split a sheet into (portfolio name, header map, data rows). A lone text cell above a header
+    row names the portfolio; a sheet with one table and no title gives one unnamed section."""
     out = []
-    for n, r in enumerate(rows[1:], start=2):
-        get = lambda k: r[hm[k]] if k in hm and hm[k] < len(r) else ""
-        ticker = get("ticker").strip().upper()
-        res: dict = {"line": n, "ticker": ticker, "errors": {}, "notes": []}
-        qty, avg = _num(get("quantity")), _num(get("avg_price"))
-        if not ticker:
-            res["errors"]["ticker"] = "Missing ticker."
-        if qty is None or qty <= 0:
-            res["errors"]["quantity"] = "Enter a quantity above 0."
-        if avg is None or avg <= 0:
-            res["errors"]["avg_price"] = "Enter an average price above 0."
-        cur = (get("currency") or "").strip().upper().replace("ILA", "ILS").replace("NIS", "ILS").replace("₪", "ILS").replace("$", "USD")
-        if ticker and not res["errors"]:
-            try:
-                p = price_on(session, ticker, as_of)
-            except (NoPriceData, ValueError) as exc:
-                res["errors"]["ticker"] = str(exc)
-            else:
-                cur = cur if cur in ("USD", "ILS") else p["currency"] or guess_currency(ticker)
-                if ticker.endswith(".TA") and avg / p["close"] > 20:
-                    avg = avg / 100
-                    res["notes"].append("Average price looked like agorot, converted to shekels.")
-                res.update({"quantity": qty, "avg_price": avg, "currency": cur, "price": p["close"], "price_date": p["date"],
-                            "gain_pct": p["close"] / avg - 1})
-        out.append(res)
+    title = None
+    hm = None
+    cur: list = []
+    for n, r in enumerate(rows, start=1):
+        cells = [str(c or "").strip() for c in r]
+        filled = [c for c in cells if c]
+        if not filled:
+            continue
+        cand = _header_map(cells)
+        if {"quantity", "avg_price"} <= cand.keys() and "ticker" in cand:
+            if hm is not None:
+                out.append((title, hm, cur))
+            hm, cur = cand, []
+            if "portfolio" in cand:
+                title = None
+            continue
+        if len(filled) == 1 and _num(filled[0]) is None and len(filled[0]) <= 40 and filled[0].lower() not in TOTAL_WORDS:
+            if hm is not None:
+                out.append((title, hm, cur))
+                hm, cur = None, []
+            title = filled[0]
+            continue
+        if hm is not None:
+            cur.append((n, cells))
+    if hm is not None:
+        out.append((title, hm, cur))
     return out
 
 
-def import_holdings(session: Session, pid: int, rows: list[dict], as_of: dt.date) -> int:
-    """Each valid row becomes a BUY at that day's close, with the average price kept as cost basis."""
-    n = 0
+def parse_holdings(session: Session, rows: list[list[str]], as_of: dt.date) -> list[dict]:
+    """Validate holdings: ticker, quantity, average price, optional currency and portfolio.
+    Rows without a quantity (totals, notes, realized-gain lists) are skipped silently.
+    Tel Aviv prices given in agorot (about 100x the current price) are converted to shekels."""
+    sections = _sections([r for r in rows])
+    if not sections:
+        raise ValueError("Couldn't find the columns. Use a header row with ticker, quantity, avg_price (currency optional).")
+    out = []
+    price_cache: dict[str, dict | Exception] = {}
+    for title, hm, data in sections:
+        for n, r in data:
+            get = lambda k: r[hm[k]] if k in hm and hm[k] < len(r) else ""
+            ticker = get("ticker").strip().upper()
+            qty, avg = _num(get("quantity")), _num(get("avg_price"))
+            if not ticker or ticker.lower() in TOTAL_WORDS or ticker.startswith("#") or qty is None:
+                continue
+            res: dict = {"line": n, "ticker": ticker, "errors": {}, "notes": [], "portfolio": (get("portfolio").strip() or title)}
+            if qty <= 0:
+                res["errors"]["quantity"] = "Enter a quantity above 0."
+            if avg is None or avg <= 0:
+                res["errors"]["avg_price"] = "Enter an average price above 0."
+            cur = (get("currency") or "").strip().upper().replace("ILA", "ILS").replace("NIS", "ILS").replace("₪", "ILS").replace("$", "USD")
+            if not res["errors"]:
+                if ticker not in price_cache:
+                    try:
+                        price_cache[ticker] = price_on(session, ticker, as_of)
+                    except (NoPriceData, ValueError) as exc:
+                        price_cache[ticker] = exc
+                p = price_cache[ticker]
+                if isinstance(p, Exception):
+                    res["errors"]["ticker"] = str(p)
+                else:
+                    cur = cur if cur in ("USD", "ILS") else p["currency"] or guess_currency(ticker)
+                    if ticker.endswith(".TA") and avg / p["close"] > 20:
+                        avg = avg / 100
+                        res["notes"].append("Average price looked like agorot, converted to shekels.")
+                    res.update({"quantity": qty, "avg_price": avg, "currency": cur, "price": p["close"], "price_date": p["date"],
+                                "gain_pct": p["close"] / avg - 1})
+            out.append(res)
+    return out
+
+
+def import_holdings(session: Session, pid: int, rows: list[dict], as_of: dt.date, replace: bool = False) -> dict:
+    """Each valid row becomes a BUY at that day's close, with the average price kept as cost basis.
+    Rows naming a portfolio go there (created if needed); the rest go into `pid`.
+    `replace` clears those portfolios' transactions first, for re-importing an updated file."""
+    from .market.search import remember_selection
+
+    by_name = {p.name.strip().lower(): p for p in list_portfolios(session)}
+    targets: dict[int, list[dict]] = {}
+    created = []
     for r in rows:
         if r["errors"]:
             continue
-        session.add(Transaction(portfolio_id=pid, ticker=r["ticker"], type=TxType.BUY, date=dt.date.fromisoformat(r["price_date"]),
-                                quantity=r["quantity"], price=r["price"], currency=r["currency"],
-                                cost_price=r["avg_price"], note="Imported holding (average cost)"))
-        n += 1
+        name = (r.get("portfolio") or "").strip()
+        if name:
+            p = by_name.get(name.lower())
+            if p is None:
+                p = Portfolio(name=name[:60])
+                session.add(p)
+                session.commit()
+                session.refresh(p)
+                by_name[name.lower()] = p
+                created.append(p.name)
+            target = p.id
+        else:
+            target = pid
+        targets.setdefault(target, []).append(r)
+    meta = getattr(read_table, "stock_meta", {}) or {}
+    n = 0
+    for target, items in targets.items():
+        if replace:
+            session.exec(delete(Transaction).where(Transaction.portfolio_id == target))
+        for r in items:
+            m = meta.get(r["ticker"])
+            if m and m.get("name"):
+                remember_selection(session, {"symbol": r["ticker"], "name": m["name"].title() if m["name"].isupper() else m["name"],
+                                             "type": "ETF" if m.get("type") == "ETF" else "Stock", "currency": r["currency"]})
+            session.add(Transaction(portfolio_id=target, ticker=r["ticker"], type=TxType.BUY, date=dt.date.fromisoformat(r["price_date"]),
+                                    quantity=r["quantity"], price=r["price"], currency=r["currency"],
+                                    cost_price=r["avg_price"], note="Imported holding (average cost)"))
+            n += 1
     session.commit()
-    return n
+    return {"imported": n, "portfolios": len(targets), "created": created}

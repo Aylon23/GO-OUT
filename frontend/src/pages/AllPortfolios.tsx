@@ -1,6 +1,8 @@
 import { Plus } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useState } from "react";
+import { FileXls } from "@phosphor-icons/react";
+import { HoldingsImport } from "../components/HoldingsImport";
 import { ChartSkeleton, colorFor, InlineLegend, SeriesChart, type SeriesDef } from "../components/chart/SeriesChart";
 import { EmptyState, ErrorLine, InfoTip, Segmented, Signed, Skel } from "../components/ui";
 import { api, ApiError, type Overview, type OverviewRow } from "../lib/api";
@@ -10,7 +12,7 @@ import { useApp } from "../state";
 import { rangePhrase } from "./Dashboard";
 
 const CODES = ["1M", "3M", "YTD", "1Y", "3Y", "5Y", "MAX"];
-const pColor = (i: number) => `var(--p${(i % 5) + 1})`;
+const pColor = (i: number) => `var(--p${(i % 8) + 1})`;
 
 export default function AllPortfolios() {
   const { range, setRange, setPortfolio, go, reloadPortfolios } = useApp();
@@ -18,6 +20,7 @@ export default function AllPortfolios() {
   const q = useData(() => api.overview(code), `ov-${code}`);
   const d = q.data;
   const open = (r: OverviewRow, page: "dashboard" | "transactions" = "dashboard") => { setPortfolio(r.id); go(page); };
+  const [importing, setImporting] = useState(false);
 
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-10 md:px-8 md:pt-16">
@@ -25,7 +28,8 @@ export default function AllPortfolios() {
         <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
           <Headline d={d} code={code} />
           {d.rows.every((r) => r.empty) ? (
-            <EmptyState title="No holdings yet in any portfolio." body="Open a portfolio and import its holdings from Excel, or add purchases one by one.">
+            <EmptyState title="No holdings yet in any portfolio." body="Import an Excel file with your portfolios (one table per portfolio, under its name), or add a portfolio and fill it in.">
+              <button type="button" className="btn-primary" onClick={() => setImporting(true)}><FileXls size={16} /> Import from Excel</button>
               <NewPortfolio onCreated={async (id) => { await reloadPortfolios(); setPortfolio(id); go("transactions"); }} />
             </EmptyState>
           ) : (
@@ -46,10 +50,15 @@ export default function AllPortfolios() {
                 </p>
               </section>
               <PortfolioTable d={d} code={code} onOpen={open} />
+              <div className="mt-6 flex flex-wrap items-center gap-4">
+                <button type="button" className="btn-secondary" onClick={() => setImporting((x) => !x)}><FileXls size={16} /> Import from Excel</button>
+                <NewPortfolio onCreated={async (id) => { await reloadPortfolios(); setPortfolio(id); go("transactions"); }} />
+              </div>
             </>
           )}
         </div>
       )}
+      {importing && <HoldingsImport onClose={() => setImporting(false)} />}
     </div>
   );
 }

@@ -34,7 +34,7 @@ export default function Compare() {
   const colorOf = useMemo(() => {
     const idx = Object.fromEntries(portfolios.map((p, i) => [`p${p.id}`, i]));
     // portfolios get their own color, SPY and QQQ their fixed ones, anything else a dashed neutral line
-    return (r: { key: string }, _i: number) => (r.key in idx ? `var(--p${(idx[r.key] % 5) + 1})` : r.key === "SPY" || r.key === "QQQ" ? colorFor(r.key) : "var(--muted)");
+    return (r: { key: string }, _i: number) => (r.key in idx ? `var(--p${(idx[r.key] % 8) + 1})` : r.key === "SPY" || r.key === "QQQ" ? colorFor(r.key) : "var(--muted)");
   }, [portfolios]);
   const dashOf = (r: MetricRow) => {
     if (r.kind === "portfolio" || r.key === "SPY" || r.key === "QQQ") return undefined;
@@ -58,7 +58,7 @@ export default function Compare() {
               return (
                 <button key={p.id} type="button" aria-pressed={on} onClick={() => setPicked(on ? pids.filter((x) => x !== p.id) : [...pids, p.id])}
                   className={clsx("press flex h-8 items-center gap-2 rounded-sm border px-2.5 text-sm", on ? "border-line-strong bg-surface text-text" : "border-line text-faint hover:text-muted")}>
-                  <span className="h-2 w-2 rounded-full" style={{ background: on ? `var(--p${(i % 5) + 1})` : "var(--line-strong)" }} />{p.name}
+                  <span className="h-2 w-2 rounded-full" style={{ background: on ? `var(--p${(i % 8) + 1})` : "var(--line-strong)" }} />{p.name}
                 </button>
               );
             })}

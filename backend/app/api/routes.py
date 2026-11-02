@@ -368,8 +368,10 @@ def lookback(range: str = "1Y", start: str | None = None, end: str | None = None
 
 
 @router.post("/holdings/import")
-async def import_holdings(file: UploadFile = File(...), commit: bool = False, as_of: dt.date | None = None,
+async def import_holdings(file: UploadFile = File(...), commit: bool = False, replace: bool = False, as_of: dt.date | None = None,
                           pid: int = PID, session: Session = Depends(get_session)):
+    """Preview (commit=false) or import a holdings list. A file with several titled tables (one per
+    portfolio) imports into those portfolios by name, creating any that don't exist."""
     if not session.get(Portfolio, pid):
         _bad("Portfolio not found.", 404)
     day = as_of or dt.date.today()
@@ -381,13 +383,25 @@ async def import_holdings(file: UploadFile = File(...), commit: bool = False, as
     except Exception:
         _bad("Couldn't read that file. Save it as .xlsx or .csv and try again.")
     if not rows:
-        _bad("The file has no rows. The first row should be the column names.")
+        _bad("No holdings found. The file needs a header row with ticker, quantity and average price.")
     valid = [r for r in rows if not r["errors"]]
-    n = 0
+    existing = {p.name.strip().lower(): p for p in pf.list_portfolios(session)}
+    groups: dict[str, dict] = {}
+    for r in rows:
+        name = r.get("portfolio") or ""
+        g = groups.setdefault(name, {"name": name, "exists": (name.lower() in existing) if name else True, "rows": 0, "valid": 0, "holding_now": 0})
+        g["rows"] += 1
+        g["valid"] += 0 if r["errors"] else 1
+    for g in groups.values():
+        p = existing.get(g["name"].lower()) if g["name"] else session.get(Portfolio, pid)
+        if p:
+            g["holding_now"] = len(session.exec(select(Transaction.id).where(Transaction.portfolio_id == p.id)).all())
+    result = {"imported": 0, "portfolios": 0, "created": []}
     if commit:
-        n = pf.import_holdings(session, pid, rows, day)
+        result = pf.import_holdings(session, pid, rows, day, replace)
         services.bump_revision()
-    return {"rows": rows, "valid": len(valid), "invalid": len(rows) - len(valid), "committed": commit, "imported": n}
+    return {"rows": rows, "valid": len(valid), "invalid": len(rows) - len(valid), "committed": commit,
+            "groups": list(groups.values()), **result}
 
 
 @router.get("/metrics")

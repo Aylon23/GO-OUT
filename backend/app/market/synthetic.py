@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import re
 
 import numpy as np
 import pandas as pd
@@ -46,10 +47,19 @@ def _seed(ticker: str) -> int:
 
 
 class SyntheticProvider:
+    def _spec(self, ticker: str):
+        if ticker in CATALOG:
+            return CATALOG[ticker]
+        if re.match(r"^[A-Z]{1,5}(-[A-Z])?$", ticker):  # any plausible US ticker gets a made-up walk
+            rng = np.random.default_rng(_seed(ticker))
+            return (ticker, "NMS", "EQUITY", float(rng.uniform(20, 400)), float(rng.uniform(-0.05, 0.25)), float(rng.uniform(0.2, 0.5)), "2015-01-02", 0.0)
+        return None
+
     def _full(self, ticker: str) -> pd.DataFrame:
-        if ticker not in CATALOG:
+        spec = self._spec(ticker)
+        if spec is None:
             return pd.DataFrame(columns=HISTORY_COLUMNS)
-        name, exch, qt, p0, mu, sigma, first, dy = CATALOG[ticker]
+        name, exch, qt, p0, mu, sigma, first, dy = spec
         start = max(dt.date.fromisoformat(first), DISPLAY_START)
         end = dt.date.today()
         if ticker.endswith(".TA"):
@@ -101,9 +111,10 @@ class SyntheticProvider:
         return out[:max_results]
 
     def info(self, ticker: str) -> dict:
-        if ticker not in CATALOG:
+        spec = self._spec(ticker)
+        if spec is None:
             return {}
-        name, exch, qt, *_ = CATALOG[ticker]
+        name, exch, qt, *_ = spec
         pe = {"AAPL": 33.1, "MSFT": 36.4, "NVDA": 52.0, "INTC": -12.0, "GOOGL": 24.5, "AMZN": 41.0, "TSLA": 95.0, "VOO": 27.2,
               "SPY": 27.3, "QQQ": 34.8, "XLK": 39.5, "TEVA": 15.2, "TEVA.TA": 15.4, "VFIAX": 27.1}.get(ticker)
         return {"trailingPE": pe, "forwardPE": pe * 0.85 if pe and pe > 0 else None, "beta": 1.1, "trailingAnnualDividendYield": 0.006,
