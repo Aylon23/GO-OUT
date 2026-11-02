@@ -257,6 +257,10 @@ class SyntheticProvider:
                     out.append((d, timing))
         return out
 
+    def recent_bars(self, tickers: list[str]) -> dict[str, pd.DataFrame]:
+        start = dt.date.today() - dt.timedelta(days=6)
+        return {t: self.history(t, start) for t in tickers}
+
     def recent_closes(self, tickers: list[str]) -> dict[str, list[tuple[dt.date, float]]]:
         out = {}
         for t in tickers:

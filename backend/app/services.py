@@ -14,7 +14,7 @@ from sqlmodel import Session, select
 from .engine import risk
 from .engine.returns import base_index, end_index, range_start, range_xirr, rebased, shadow, twr
 from .engine.series import MarketData, PortfolioSeries, Tx, align, build_series, convert, fx_factor, holding_lots, split_factor_after, total_return_in_base
-from .market.cache import FX_TICKER, NoPriceData, currency_for, load_history, load_splits
+from .market.cache import FX_TICKER, NoPriceData, currency_for, data_version, load_history, load_splits, refresh_latest
 from .models import Settings, SymbolMeta, Transaction, TxType
 
 MAX_POINTS = 900
@@ -76,6 +76,13 @@ def fx_series(session: Session) -> pd.Series:
     from .engine.series import neutral_fx
 
     return neutral_fx(fx_history(session))
+
+
+def refresh_prices(session: Session) -> None:
+    """Latest prices for everything the family holds, the benchmarks and USD/ILS, in one batched
+    request (skipped if done in the last minute). Runs when a page loads."""
+    held = session.exec(select(Transaction.ticker).distinct()).all()
+    refresh_latest(session, [t for t in held if t] + get_settings(session).benchmark_list() + [FX_TICKER])
 
 
 def to_tx(t: Transaction) -> Tx:
@@ -141,8 +148,9 @@ class Context:
         self.missing: dict[str, str] = {}
         if not self.txs:
             return  # empty portfolio: no market data needed
+        refresh_prices(session)
         self.load_market()
-        key = (_rev, pid, self.base, self.settings.auto_dividends, tuple(self.bench_md), dt.date.today())
+        key = (_rev, data_version(), pid, self.base, self.settings.auto_dividends, tuple(self.bench_md), dt.date.today())
         hit = _built.get(key)
         if hit:
             self.series, self.market, self.missing = hit
@@ -161,6 +169,8 @@ class Context:
                 self.txs, self.market, self.fx, self.base, self.settings.auto_dividends,
                 extra_frames=[m.frame for m in self.bench_md.values()],
             )
+            if len(_built) > 50:  # older price versions are never asked for again
+                _built.clear()
             _built[key] = (self.series, self.market, self.missing)
         for t in self.missing:
             self.warnings.append(f"No current price for {t}. Showing its last known value.")

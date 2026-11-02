@@ -34,6 +34,9 @@ class MarketProvider(Protocol):
     def info(self, ticker: str) -> dict:
         """Name, sector, country, currency, exchange, quoteType. Missing keys are fine."""
 
+    def recent_bars(self, tickers: list[str]) -> dict[str, pd.DataFrame]:
+        """Optional: the last few daily bars for many tickers in one request."""
+
     def recent_closes(self, tickers: list[str]) -> dict[str, list[tuple[dt.date, float]]]:
         """Last few daily closes for each ticker (raw units), oldest first."""
 
@@ -132,6 +135,29 @@ class YahooProvider:
                 t = t.tz_convert("America/New_York")
             out.append((t.date(), "after_close" if t.hour >= 12 else "before_open"))
         return sorted(set(out))
+
+    def recent_bars(self, tickers: list[str]) -> dict[str, pd.DataFrame]:
+        """The last few daily bars (today's is the live price while the market is open) for many
+        tickers in one request."""
+        out: dict[str, pd.DataFrame] = {}
+        if not tickers:
+            return out
+        try:
+            df = self.yf.download(
+                tickers, period="5d", interval="1d", auto_adjust=False, actions=True, group_by="ticker",
+                progress=False, threads=True, multi_level_index=True,
+            )
+        except Exception as exc:
+            raise ProviderError(str(exc)) from exc
+        if df is None or df.empty:
+            return out
+        for t in tickers:
+            try:
+                sub = df[t] if isinstance(df.columns, pd.MultiIndex) else df
+            except KeyError:
+                continue
+            out[t] = _frame_from_yahoo(sub.dropna(how="all"))
+        return out
 
     def recent_closes(self, tickers: list[str]) -> dict[str, list[tuple[dt.date, float]]]:
         out: dict[str, list[tuple[dt.date, float]]] = {}

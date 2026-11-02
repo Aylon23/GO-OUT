@@ -257,6 +257,7 @@ A symbol without a logo shows its letter. To fix a wrong or missing logo, upload
 | Rule | What the app does |
 |---|---|
 | Tel Aviv prices | Yahoo quotes `.TA` listings in agorot. Prices are divided by 100 on the way in (indices like `^TA125.TA` excluded). |
+| Latest prices | Every page load (or refresh) re-reads the latest prices of everything the family holds, the benchmarks and USD/ILS in one batched Yahoo request, at most once a minute. While a market is open, today's price is the live one, not the one saved at the open. |
 | Currency | Stock performance only, currency effects excluded. Every return (TWR, XIRR, benchmarks, risk, scenarios, stress tests) is measured in each security's own trading currency (US in USD, `.TA` in ILS); portfolio and family returns are value-weighted averages of those. Amounts are shown in USD by default; Settings → "Display amounts in" (USD/ILS) converts the shown amount at today's rate (`ILS=X`) and never changes a percentage. |
 | Splits | Quantities are multiplied by every split after the trade date, so a 10-for-1 split never breaks history. Prices you see for old dates are "as traded". |
 | Dividends | Logged DIVIDEND transactions count as cash. For holdings with no logged dividends, cash dividends from the price feed are added automatically (toggle in Settings). Benchmarks use total return (`Adj Close`). |

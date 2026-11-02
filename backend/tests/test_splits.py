@@ -48,7 +48,7 @@ def test_cache_rescales_old_rows_when_new_split_arrives(session, fake):
     df = load_history(session, "ABC")
     assert list(df["close"]) == [100.0, 105.0, 106.0]
     assert load_splits(session, "ABC") == [(dt.date(2024, 1, 4), 4.0)]
-    # only the missing range was requested the second time
-    assert fake.calls[-1] == ("ABC", dt.date(2024, 1, 3))
+    # the second time only recent bars were requested: from a week before the last cached day
+    assert fake.calls[-1] == ("ABC", dt.date(2024, 1, 3) - dt.timedelta(days=7))
     # price on the first day is reported as traded (pre-split)
     assert price_on(session, "ABC", dt.date(2024, 1, 2))["close"] == 400.0
