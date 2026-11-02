@@ -15,7 +15,7 @@ from .engine.returns import base_index, range_start, rebased
 from .engine.series import align, fx_factor, total_return_in_base
 from .market.cache import NoPriceData, currency_for, guess_currency, price_on
 from .models import Portfolio, Transaction, TxType
-from .services import Context, _clean, _f, _sample_positions, cost_summary, market_data, open_positions
+from .services import Context, _clean, _f, _sample_positions, cost_summary, market_data, open_positions, realized_summary
 
 # ------------------------------------------------------------------ CRUD
 
@@ -25,7 +25,7 @@ def list_portfolios(session: Session) -> list[Portfolio]:
 
 
 def portfolio_dict(p: Portfolio, n_tx: int = 0) -> dict:
-    return {"id": p.id, "name": p.name, "note": p.note, "transactions": n_tx}
+    return {"id": p.id, "name": p.name, "note": p.note, "aliases": p.aliases or "", "transactions": n_tx}
 
 
 def delete_portfolio(session: Session, pid: int) -> None:
@@ -157,6 +157,7 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
         bench = {k: float(v.iloc[e] / v.iloc[b] - 1) if v.iloc[b] > 0 else None for k, v in ctx.bench_prices().items()}
         row.update({
             "value": _f(s.value.iloc[e]),
+            "realized": _f(realized_summary(ctx)["total"]),
             "cost_gain": _f(cost["gain"]),
             "cost_gain_pct": _f(cost["gain_pct"]),
             "today_pct": _f(s.ret.iloc[e]) if e > 0 else None,
@@ -207,6 +208,7 @@ ALIASES = {
     "currency": ["currency", "מטבע"],
     "portfolio": ["portfolio", "תיק", "account", "חשבון"],
 }
+REALIZED_NAMES = {"COSTCO": "COST", "GOOGLE": "GOOGL", "BRK": "BRK-B"}
 TOTAL_WORDS = {'סה"כ', "סה״כ", "total", "sum", "סיכום", "סהכ"}
 
 
@@ -349,6 +351,16 @@ def parse_holdings(session: Session, rows: list[list[str]], as_of: dt.date) -> l
             get = lambda k: r[hm[k]] if k in hm and hm[k] < len(r) else ""
             ticker = get("ticker").strip().upper()
             qty, avg = _num(get("quantity")), _num(get("avg_price"))
+            filled = [c for c in r if str(c).strip()]
+            if qty is None and len(filled) == 2 and _num(filled[1]) is not None and _num(filled[0]) is None \
+                    and filled[0].strip().lower() not in TOTAL_WORDS and not filled[0].startswith("#"):
+                # "tsla | -1565": profit already taken on a closed trade
+                label = filled[0].strip()
+                m = re.match(r"^([A-Za-z.\-^]+)\s*(.*)$", label)
+                tk = (m[1] if m else label).upper().replace(".", "-") if m else label.upper()
+                out.append({"line": n, "kind": "realized", "ticker": REALIZED_NAMES.get(tk, tk), "amount": _num(filled[1]),
+                            "note": (m[2] if m else "").strip(), "portfolio": title, "errors": {}, "notes": []})
+                continue
             if not ticker or ticker.lower() in TOTAL_WORDS or ticker.startswith("#") or qty is None:
                 continue
             res: dict = {"line": n, "ticker": ticker, "errors": {}, "notes": [], "portfolio": (get("portfolio").strip() or title)}
@@ -383,6 +395,8 @@ def import_holdings(session: Session, pid: int, rows: list[dict], as_of: dt.date
     `replace` clears those portfolios' transactions first, for re-importing an updated file."""
     from .market.search import remember_selection
 
+    from .models import RealizedEntry
+
     by_name = {p.name.strip().lower(): p for p in list_portfolios(session)}
     targets: dict[int, list[dict]] = {}
     created = []
@@ -405,10 +419,16 @@ def import_holdings(session: Session, pid: int, rows: list[dict], as_of: dt.date
         targets.setdefault(target, []).append(r)
     meta = getattr(read_table, "stock_meta", {}) or {}
     n = 0
+    realized_n = 0
     for target, items in targets.items():
         if replace:
             session.exec(delete(Transaction).where(Transaction.portfolio_id == target))
+            session.exec(delete(RealizedEntry).where(RealizedEntry.portfolio_id == target))
         for r in items:
+            if r.get("kind") == "realized":
+                session.add(RealizedEntry(portfolio_id=target, ticker=r["ticker"], amount=r["amount"], currency="USD", note=r.get("note", "")))
+                realized_n += 1
+                continue
             m = meta.get(r["ticker"])
             if m and m.get("name"):
                 remember_selection(session, {"symbol": r["ticker"], "name": m["name"].title() if m["name"].isupper() else m["name"],
@@ -418,4 +438,4 @@ def import_holdings(session: Session, pid: int, rows: list[dict], as_of: dt.date
                                     cost_price=r["avg_price"], note="Imported holding (average cost)"))
             n += 1
     session.commit()
-    return {"imported": n, "portfolios": len(targets), "created": created}
+    return {"imported": n, "realized_imported": realized_n, "portfolios": len(targets), "created": created}

@@ -86,19 +86,36 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
     t = " " + re.sub(r"\s+", " ", original) + " "
     out: dict = {"text": original, "missing": [], "warnings": []}
 
-    # 1. portfolio by name (longest name first, so "אבא שלי" wins over "אבא")
+    # 1. portfolios by name, any number of them ("קרן, שיר ואבא"), or everyone ("כולם")
     portfolios = sorted(session.exec(select(Portfolio)).all(), key=lambda p: -len(p.name))
-    pid = default_pid
-    for p in portfolios:
-        name = re.escape(p.name.strip())
-        m = re.search(rf"(?<![\w֐-׿])(?:של |לתיק של |בתיק של |לתיק |בתיק |[ולבהש])?{name}(?![\w֐-׿])", t, flags=re.I)
+    matched: list[Portfolio] = []
+    # every name and nickname, longest first, so "קרן ועידו" wins over "קרן"
+    names = sorted(((n.strip(), p) for p in portfolios for n in [p.name, *(p.aliases or "").split(",")] if n.strip()),
+                   key=lambda x: -len(x[0]))
+    for n, p in names:
+        if p in matched:
+            continue
+        m = re.search(rf"(?<![\w\u0590-\u05FF])(?:של |לתיק של |בתיק של |לתיק |בתיק |[ולבהש])?{re.escape(n)}(?![\w\u0590-\u05FF])", t, flags=re.I)
         if m:
-            pid = p.id
+            matched.append(p)
             t = t[: m.start()] + " " + t[m.end():]
-            break
-    out["portfolio_id"] = pid
-    port = session.get(Portfolio, pid)
-    out["portfolio_name"] = port.name if port else ""
+    everyone = re.search(r"(?<![\w\u0590-\u05FF])(?:כולם|לכולם|כל התיקים|בכל התיקים|everyone|all portfolios|all of them)(?![\w\u0590-\u05FF])", t, flags=re.I)
+    if everyone:
+        t = t[: everyone.start()] + " " + t[everyone.end():]
+    out["everyone"] = bool(everyone)
+    out["portfolio_matched"] = bool(matched) or bool(everyone)
+    if everyone:
+        targets = list(reversed(portfolios))  # in id order
+    elif matched:
+        targets = sorted(matched, key=lambda p: p.id)
+    else:
+        targets = [p for p in portfolios if p.id == default_pid]
+    out["portfolio_id"] = targets[0].id if targets else default_pid
+    out["portfolio_name"] = targets[0].name if targets else ""
+    out["_targets"] = [(p.id, p.name) for p in targets]
+    sell_all = re.search(r"(?<![\w\u0590-\u05FF])(?:הכל|את הכל|all|everything)(?![\w\u0590-\u05FF])", t, flags=re.I)
+    if sell_all:
+        t = t[: sell_all.start()] + " " + t[sell_all.end():]
 
     # 2. type
     words = re.findall(r"[^\s]+", t)
@@ -215,7 +232,7 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
                 amt = convert(amount, amount_ccy, cur, rate)
                 out["warnings"].append(f"Converted {amount:,.0f} {amount_ccy} at that day's rate.")
             qty = round(amt / price, 6)
-        if qty is None:
+        if qty is None and not (typ_s == "SELL" and (sell_all or out["everyone"])):
             out["missing"].append("quantity")
         out["quantity"] = qty
         out["price"] = price
@@ -225,4 +242,70 @@ def parse(session: Session, text: str, default_pid: int, today: dt.date | None =
         out["currency"] = amount_ccy or (currency_for(session, ticker) if ticker else "ILS")
         if amount is None:
             out["missing"].append("amount")
+    out["targets"] = _targets(session, out, out.pop("_targets"), bool(sell_all))
+    if out["targets"] and all(x["skip"] for x in out["targets"]) and "quantity" not in out["missing"]:
+        out["missing"].append("position")
     return out
+
+
+def _targets(session: Session, d: dict, targets: list[tuple[int, str]], sell_all: bool) -> list[dict]:
+    """One line per portfolio. Selling with no quantity ("כולם מכרו TSLA") sells each whole position;
+    portfolios that do not hold it are skipped."""
+    from .services import Context, open_positions
+
+    out = []
+    for pid, name in targets:
+        row = {"portfolio_id": pid, "portfolio_name": name, "quantity": d.get("quantity"), "held": None, "skip": False, "reason": ""}
+        if d["type"] == "SELL" and d.get("ticker"):
+            try:
+                held = open_positions(Context(session, pid)).get(d["ticker"], 0.0)
+            except Exception:
+                held = 0.0
+            row["held"] = held
+            if held <= 0:
+                row.update(skip=True, reason="doesn't hold it")
+            elif row["quantity"] is None or sell_all:
+                row["quantity"] = held
+            elif row["quantity"] > held + 1e-9:
+                row.update(skip=True, reason=f"holds only {held:g}")
+        out.append(row)
+    return out
+
+
+def commit(session: Session, d: dict, log_call: bool = True, thesis: str = "") -> dict:
+    """Save a confirmed draft: one transaction per portfolio, and (optionally) the recommendation."""
+    from .calls import create_call
+    from .models import Transaction
+    from .transactions import TxError, TxIn, validate
+
+    if d.get("missing"):
+        raise ValueError("The draft is incomplete: " + ", ".join(d["missing"]))
+    rec_id = None
+    if log_call and d["type"] in ("BUY", "SELL") and d.get("ticker"):
+        rec_id = create_call(session, d["ticker"], d["type"], dt.date.fromisoformat(d["date"]), thesis or d.get("text", "")).id
+    saved, failed = [], []
+    for tg in d.get("targets") or [{"portfolio_id": d["portfolio_id"], "portfolio_name": d["portfolio_name"], "quantity": d.get("quantity"), "skip": False}]:
+        if tg.get("skip"):
+            failed.append({"portfolio": tg["portfolio_name"], "error": tg.get("reason") or "skipped"})
+            continue
+        trade = d["type"] in ("BUY", "SELL")
+        data = TxIn(ticker=d.get("ticker") or "", type=d["type"], date=dt.date.fromisoformat(d["date"]),
+                    quantity=(tg["quantity"] or 0) if trade else 0, price=d.get("price") or 0, currency=d.get("currency") or "USD",
+                    fees=0, note=(d.get("text") or "")[:200])
+        existing = list(session.exec(select(Transaction).where(Transaction.portfolio_id == tg["portfolio_id"])).all())
+        try:
+            data = validate(session, data, existing)
+        except TxError as exc:
+            failed.append({"portfolio": tg["portfolio_name"], "error": " ".join(exc.errors.values())})
+            continue
+        tx = Transaction(**data.model_dump(), portfolio_id=tg["portfolio_id"], rec_id=rec_id)
+        session.add(tx)
+        session.commit()
+        saved.append({"portfolio": tg["portfolio_name"], "quantity": tx.quantity})
+    if rec_id and not saved:  # nothing followed the call: do not keep it
+        from .models import Recommendation
+
+        session.delete(session.get(Recommendation, rec_id))
+        session.commit()
+        rec_id = None
+    return {"saved": saved, "failed": failed, "rec_id": rec_id}

@@ -30,6 +30,7 @@ class Portfolio(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     note: str = ""
+    aliases: str = ""  # other names for the command box and the bot, comma separated ("קרן, keren")
     created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
 
 
@@ -48,6 +49,7 @@ class Transaction(SQLModel, table=True):
     # history). The BUY itself is recorded at that day's close so performance starts from
     # market value; this field keeps the real cost basis for gain/loss.
     cost_price: Optional[float] = None
+    rec_id: Optional[int] = Field(default=None, index=True)  # the recommendation this trade followed
 
     @property
     def amount(self) -> float:
@@ -95,6 +97,32 @@ class SymbolMeta(SQLModel, table=True):
     info_fetched: bool = False
 
 
+class Recommendation(SQLModel, table=True):
+    """A call you made ("buy AVGO", "sell TSLA"), followed by one or more portfolios."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ticker: str = Field(index=True)
+    action: str = "BUY"  # BUY or SELL
+    date: dt.date
+    price: Optional[float] = None  # close on that date, filled in when created
+    thesis: str = ""
+    target: Optional[float] = None
+    closed_date: Optional[dt.date] = None  # a BUY call ends when you call SELL on the same ticker
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+
+
+class RealizedEntry(SQLModel, table=True):
+    """Profit or loss already taken, from records without full trade history (e.g. a spreadsheet)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    portfolio_id: int = Field(index=True)
+    ticker: str = ""
+    amount: float = 0.0
+    currency: str = "USD"
+    date: Optional[dt.date] = None
+    note: str = ""
+
+
 class Fundamentals(SQLModel, table=True):
     """Valuation figures from Yahoo, refreshed at most once a day."""
 
@@ -118,6 +146,10 @@ class Settings(SQLModel, table=True):
     risk_free: float = 0.04
     theme: str = "system"
     auto_dividends: bool = True
+    telegram_token: str = ""
+    telegram_chat_id: str = ""  # the only chat the bot listens to, set by pairing
+    telegram_pair_code: str = ""
+    weekly_report: bool = True
 
     def benchmark_list(self) -> list[str]:
         return [b.strip().upper() for b in self.benchmarks.split(",") if b.strip()]

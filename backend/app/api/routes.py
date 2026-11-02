@@ -309,6 +309,7 @@ def delete_all(pid: int = PID, session: Session = Depends(get_session)):
 class PortfolioIn(BaseModel):
     name: str
     note: str = ""
+    aliases: str = ""
 
 
 def _clean_name(name: str) -> str:
@@ -318,6 +319,10 @@ def _clean_name(name: str) -> str:
     if len(name) > 60:
         _bad("Keep the name under 60 characters.")
     return name
+
+
+def _clean_aliases(a: str) -> str:
+    return ", ".join(dict.fromkeys(x.strip() for x in (a or "").split(",") if x.strip()))[:200]
 
 
 @router.get("/portfolios")
@@ -330,7 +335,7 @@ def list_portfolios(session: Session = Depends(get_session)):
 
 @router.post("/portfolios")
 def create_portfolio(body: PortfolioIn, session: Session = Depends(get_session)):
-    p = Portfolio(name=_clean_name(body.name), note=body.note.strip())
+    p = Portfolio(name=_clean_name(body.name), note=body.note.strip(), aliases=_clean_aliases(body.aliases))
     session.add(p)
     session.commit()
     session.refresh(p)
@@ -342,7 +347,7 @@ def update_portfolio(pid: int, body: PortfolioIn, session: Session = Depends(get
     p = session.get(Portfolio, pid)
     if not p:
         _bad("Portfolio not found.", 404)
-    p.name, p.note = _clean_name(body.name), body.note.strip()
+    p.name, p.note, p.aliases = _clean_name(body.name), body.note.strip(), _clean_aliases(body.aliases)
     session.add(p)
     session.commit()
     return pf.portfolio_dict(p)
@@ -384,23 +389,30 @@ async def import_holdings(file: UploadFile = File(...), commit: bool = False, re
         _bad("Couldn't read that file. Save it as .xlsx or .csv and try again.")
     if not rows:
         _bad("No holdings found. The file needs a header row with ticker, quantity and average price.")
-    valid = [r for r in rows if not r["errors"]]
+    realized_rows = [r for r in rows if r.get("kind") == "realized"]
+    rows_h = [r for r in rows if r.get("kind") != "realized"]
+    valid = [r for r in rows_h if not r["errors"]]
     existing = {p.name.strip().lower(): p for p in pf.list_portfolios(session)}
     groups: dict[str, dict] = {}
     for r in rows:
         name = r.get("portfolio") or ""
-        g = groups.setdefault(name, {"name": name, "exists": (name.lower() in existing) if name else True, "rows": 0, "valid": 0, "holding_now": 0})
+        g = groups.setdefault(name, {"name": name, "exists": (name.lower() in existing) if name else True, "rows": 0, "valid": 0,
+                                     "holding_now": 0, "realized_lines": 0, "realized_total": 0.0})
+        if r.get("kind") == "realized":
+            g["realized_lines"] += 1
+            g["realized_total"] += r["amount"] or 0
+            continue
         g["rows"] += 1
         g["valid"] += 0 if r["errors"] else 1
     for g in groups.values():
         p = existing.get(g["name"].lower()) if g["name"] else session.get(Portfolio, pid)
         if p:
             g["holding_now"] = len(session.exec(select(Transaction.id).where(Transaction.portfolio_id == p.id)).all())
-    result = {"imported": 0, "portfolios": 0, "created": []}
+    result = {"imported": 0, "realized_imported": 0, "portfolios": 0, "created": []}
     if commit:
         result = pf.import_holdings(session, pid, rows, day, replace)
         services.bump_revision()
-    return {"rows": rows, "valid": len(valid), "invalid": len(rows) - len(valid), "committed": commit,
+    return {"rows": rows_h, "realized": realized_rows, "valid": len(valid), "invalid": len(rows_h) - len(valid), "committed": commit,
             "groups": list(groups.values()), **result}
 
 
@@ -425,6 +437,93 @@ def omnibox(body: OmniIn, pid: int = PID, session: Session = Depends(get_session
     if not body.text.strip():
         _bad("Type what you bought or sold.")
     return ob.parse(session, body.text[:300], pid)
+
+
+class OmniCommitIn(BaseModel):
+    draft: dict
+    log_call: bool = True
+    thesis: str = ""
+
+
+@router.post("/omnibox/commit")
+def omnibox_commit(body: OmniCommitIn, session: Session = Depends(get_session)):
+    """Save a confirmed draft into every portfolio it names, and log the call."""
+    from .. import omnibox as ob
+
+    try:
+        out = ob.commit(session, body.draft, body.log_call, body.thesis)
+    except (ValueError, NoPriceData) as exc:
+        _bad(str(exc))
+    services.bump_revision()
+    return out
+
+
+# ---------------------------------------------------------------- recommendations
+
+class CallIn(BaseModel):
+    ticker: str
+    action: str = "BUY"
+    date: dt.date
+    thesis: str = ""
+    target: float | None = None
+
+
+@router.get("/calls")
+def list_calls(session: Session = Depends(get_session)):
+    from .. import calls
+
+    return _wrap(calls.calls_payload, session)
+
+
+@router.post("/calls")
+def create_call(body: CallIn, session: Session = Depends(get_session)):
+    from .. import calls
+
+    try:
+        rec = calls.create_call(session, body.ticker, body.action, body.date, body.thesis, body.target)
+    except NoPriceData as exc:
+        _bad(str(exc), 404)
+    except ValueError as exc:
+        _bad(str(exc), 422)
+    return {"id": rec.id}
+
+
+@router.put("/calls/{rec_id}")
+def update_call(rec_id: int, body: CallIn, session: Session = Depends(get_session)):
+    from ..models import Recommendation
+
+    rec = session.get(Recommendation, rec_id)
+    if not rec:
+        _bad("Recommendation not found.", 404)
+    rec.thesis, rec.target = body.thesis.strip(), body.target
+    session.add(rec)
+    session.commit()
+    return {"ok": True}
+
+
+@router.delete("/calls/{rec_id}")
+def delete_call(rec_id: int, session: Session = Depends(get_session)):
+    """Removes the recommendation only; the trades stay in the portfolios."""
+    from ..models import Recommendation
+
+    rec = session.get(Recommendation, rec_id)
+    if not rec:
+        _bad("Recommendation not found.", 404)
+    for t in session.exec(select(Transaction).where(Transaction.rec_id == rec_id)).all():
+        t.rec_id = None
+        session.add(t)
+    session.delete(rec)
+    session.commit()
+    return {"ok": True}
+
+
+@router.get("/report")
+def report(period: str = "week", all: bool = False, pid: int = PID, session: Session = Depends(get_session)):
+    from .. import reports
+
+    if all:
+        return _wrap(reports.all_report, session, period)
+    return _wrap(reports.portfolio_report, session, pid, period)
 
 
 @router.get("/health")

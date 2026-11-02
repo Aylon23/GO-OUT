@@ -161,6 +161,29 @@ def cost_summary(ctx: Context) -> dict:
 
 
 
+def realized_summary(ctx: Context) -> dict:
+    """Profit already taken: sales recorded here (average-cost method) plus realized lines imported
+    from a spreadsheet. Returns the total and a per-ticker breakdown, in the base currency."""
+    from .models import RealizedEntry
+
+    per: dict[str, float] = {}
+    if ctx.series is not None:
+        for t in ctx.series.holding_value.columns:
+            r = holding_lots(ctx.txs, t, ctx.market[t].splits, ctx.fx, ctx.base)["realized_base"]
+            if abs(r) > 1e-9:
+                per[t] = per.get(t, 0.0) + r
+    entries = ctx.session.exec(select(RealizedEntry).where(RealizedEntry.portfolio_id == ctx.pid)).all()
+    if entries:
+        if ctx.fx is None:
+            ctx.fx = fx_series(ctx.session)
+        for e in entries:
+            day = e.date or dt.date.today()
+            rate = float(align(ctx.fx, [day]).iloc[0])
+            amt = convert(e.amount, e.currency, ctx.base, rate)
+            per[e.ticker or "Other"] = per.get(e.ticker or "Other", 0.0) + amt
+    return {"total": sum(per.values()), "by_ticker": per}
+
+
 def empty_payload(ctx: Context) -> dict:
     return {"empty": True, "base": ctx.base, "benchmarks": list(ctx.bench_md), "warnings": ctx.warnings}
 
@@ -200,6 +223,7 @@ def portfolio_payload(session: Session, code: str = "1Y", start: str | None = No
     req = dt.date.fromisoformat(start) if code.upper() == "CUSTOM" and start else range_start(
         code if code.upper() != "CUSTOM" else "MAX", cal[e], first_trade)
     cost = cost_summary(ctx)
+    realized = realized_summary(ctx)
     has_cost_basis = any(t.cost_price for t in ctx.txs)
     payload = {
         "empty": False,
@@ -212,6 +236,7 @@ def portfolio_payload(session: Session, code: str = "1Y", start: str | None = No
             "cost_gain": _f(cost["gain"]),
             "cost_gain_pct": _f(cost["gain_pct"]),
             "has_cost_basis": has_cost_basis,
+            "realized": _f(realized["total"]),
             "value": _f(actual_end),
             "invested": _f(s.invested.iloc[e]),
             "total_gain": _f(actual_end - s.invested.iloc[e]),
@@ -330,6 +355,9 @@ def holdings_payload(session: Session, code: str = "1Y", start: str | None = Non
         total_start = sum(start_vals.values())
         for r in held:
             r["contribution"] = _f(((r["value"] or 0) - start_vals[r["ticker"]]) / total_start) if total_start else None
+    realized = realized_summary(ctx)
+    for r in rows:
+        r["realized"] = _f(realized["by_ticker"].get(r["ticker"]))
     open_rows = [r for r in rows if not r["closed"]]
     ranked = sorted([r for r in rows if r["range_return"] is not None], key=lambda r: r["range_return"])
     sectors: dict[str, float] = {}
@@ -343,6 +371,8 @@ def holdings_payload(session: Session, code: str = "1Y", start: str | None = Non
         "base": ctx.base,
         "range": {"code": code.upper(), "start": s.dates[b].isoformat(), "end": s.dates[e].isoformat()},
         "lookback_basis": lookback_basis,
+        "realized": _f(realized["total"]),
+        "realized_other": [{"ticker": k, "amount": _f(v)} for k, v in realized["by_ticker"].items() if k not in tickers],
         "total": _f(total),
         "cash": _f(s.cash.iloc[e]),
         "rows": sorted(rows, key=lambda r: -(r["value"] or 0)),

@@ -23,17 +23,31 @@ def get_engine():
 
 
 def migrate(engine) -> None:
-    """Add columns introduced after the first release, and make sure portfolio 1 exists."""
+    """Bring an existing database up to date: add any column the models have and the file lacks
+    (new features keep old data), and make sure portfolio 1 exists."""
     from sqlalchemy import text
 
     with engine.begin() as conn:
-        cols = {r[1] for r in conn.execute(text('PRAGMA table_info("transaction")'))}
-        if "portfolio_id" not in cols:
-            conn.execute(text('ALTER TABLE "transaction" ADD COLUMN portfolio_id INTEGER NOT NULL DEFAULT 1'))
-        if "cost_price" not in cols:
-            conn.execute(text('ALTER TABLE "transaction" ADD COLUMN cost_price FLOAT'))
-        if not conn.execute(text("SELECT 1 FROM portfolio WHERE id = 1")).first():
-            conn.execute(text("INSERT INTO portfolio (id, name, note, created_at) VALUES (1, 'My portfolio', '', CURRENT_TIMESTAMP)"))
+        for table in SQLModel.metadata.sorted_tables:
+            have = {r[1] for r in conn.execute(text(f'PRAGMA table_info("{table.name}")'))}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                ddl = col.type.compile(dialect=engine.dialect)
+                default = col.default.arg if col.default is not None and not callable(col.default.arg) else None
+                if isinstance(default, bool):
+                    default = int(default)
+                if default is None and not col.nullable:
+                    default = 0 if ddl.upper() in ("INTEGER", "FLOAT", "BOOLEAN") else ""
+                clause = f" DEFAULT {default!r}" if default is not None else ""
+                null = " NOT NULL" if not col.nullable and default is not None else ""
+                conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {ddl}{null}{clause}'))
+    from .models import Portfolio
+
+    with Session(engine) as s:
+        if s.get(Portfolio, 1) is None:  # through the model, so new columns get their defaults
+            s.add(Portfolio(id=1, name="My portfolio"))
+            s.commit()
 
 
 def set_engine(engine) -> None:
