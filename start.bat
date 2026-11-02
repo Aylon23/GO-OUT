@@ -73,6 +73,12 @@ if not exist "frontend\node_modules\.bin\vite.cmd" (
   popd
 )
 
+rem Stop a server left running from an earlier start (for example after an update),
+rem otherwise the new one cannot use the same ports.
+for %%P in (8000 5173) do (
+  for /f "tokens=5" %%I in ('netstat -ano ^| findstr /r /c:":%%P .*LISTENING"') do taskkill /PID %%I /F >nul 2>nul
+)
+
 echo.
 echo Starting the app. Your browser opens in a few seconds.
 echo Keep this window open while you use the app. Close it to stop.
