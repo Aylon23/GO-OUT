@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
@@ -524,6 +525,58 @@ def report(period: str = "week", all: bool = False, pid: int = PID, session: Ses
     if all:
         return _wrap(reports.all_report, session, period)
     return _wrap(reports.portfolio_report, session, pid, period)
+
+
+# ---------------------------------------------------------------- telegram
+
+class TelegramIn(BaseModel):
+    token: str | None = None
+    weekly_report: bool | None = None
+
+
+def _telegram_dict(st) -> dict:
+    from .. import telegram_bot
+
+    return {"configured": bool(st.telegram_token), "paired": bool(st.telegram_chat_id), "pair_code": st.telegram_pair_code,
+            "weekly_report": st.weekly_report, **telegram_bot.status()}
+
+
+@router.get("/telegram")
+def telegram_get(session: Session = Depends(get_session)):
+    return _telegram_dict(services.get_settings(session))
+
+
+@router.put("/telegram")
+def telegram_put(body: TelegramIn, session: Session = Depends(get_session)):
+    from .. import telegram_bot
+
+    st = services.get_settings(session)
+    if body.weekly_report is not None:
+        st.weekly_report = body.weekly_report
+    if body.token is not None:
+        token = body.token.strip()
+        if token and not re.match(r"^\d+:[A-Za-z0-9_-]{30,}$", token):
+            _bad("That doesn't look like a bot token. It has the form 123456789:AAE... (from @BotFather).")
+        st.telegram_token = token
+        st.telegram_chat_id = ""
+        st.telegram_pair_code = telegram_bot.new_pair_code() if token else ""
+        telegram_bot.start(token)
+    session.add(st)
+    session.commit()
+    return _telegram_dict(st)
+
+
+@router.post("/telegram/pair")
+def telegram_new_code(session: Session = Depends(get_session)):
+    """Unpair the current chat and make a new code."""
+    from .. import telegram_bot
+
+    st = services.get_settings(session)
+    st.telegram_chat_id = ""
+    st.telegram_pair_code = telegram_bot.new_pair_code()
+    session.add(st)
+    session.commit()
+    return _telegram_dict(st)
 
 
 @router.get("/health")

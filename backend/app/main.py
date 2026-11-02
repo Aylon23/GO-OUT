@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -21,6 +22,16 @@ DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 @app.on_event("startup")
 def _startup() -> None:
     get_engine()
+    # start the Telegram bot if one is set up
+    from sqlmodel import Session
+
+    from . import telegram_bot
+    from .services import get_settings
+
+    with Session(get_engine()) as s:
+        token = get_settings(s).telegram_token
+    if token and os.environ.get("PORTFOLIO_NO_BOT") != "1":
+        telegram_bot.start(token)
 
 
 if DIST.exists():

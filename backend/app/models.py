@@ -150,6 +150,7 @@ class Settings(SQLModel, table=True):
     telegram_chat_id: str = ""  # the only chat the bot listens to, set by pairing
     telegram_pair_code: str = ""
     weekly_report: bool = True
+    weekly_report_sent: str = ""  # date of the last Sunday summary sent
 
     def benchmark_list(self) -> list[str]:
         return [b.strip().upper() for b in self.benchmarks.split(",") if b.strip()]
