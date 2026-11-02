@@ -1,10 +1,11 @@
+import clsx from "clsx";
 import { X } from "@phosphor-icons/react";
 import { useState } from "react";
 import { Avatar } from "../components/Avatar";
 import { SymbolSearch } from "../components/SymbolSearch";
-import { ErrorLine, Segmented } from "../components/ui";
+import { ErrorLine, Segmented, Skel } from "../components/ui";
 import { api, ApiError, type PortfolioInfo, type Settings as S } from "../lib/api";
-import { invalidate } from "../lib/hooks";
+import { invalidate, useData } from "../lib/hooks";
 import { useApp } from "../state";
 
 export default function Settings() {
@@ -20,8 +21,11 @@ export default function Settings() {
       <h1 className="text-xl font-semibold">Settings</h1>
       {err && <ErrorLine message={err} />}
       <dl className="mt-8">
-        <Item title="Portfolios" help="Each portfolio has its own holdings and results. Deleting one removes its transactions.">
+        <Item title="Portfolios" help="Each portfolio has its own holdings and results. Nicknames let you write “קרן קנתה 5 AVGO”. Deleting a portfolio removes its transactions.">
           <PortfolioList />
+        </Item>
+        <Item title="Telegram" help="Add trades and get reports from your phone. Works while the app is running on this computer.">
+          <TelegramSetup />
         </Item>
         <Item title="Base currency" help="Everything is converted into this currency using each day's exchange rate.">
           <Segmented label="Base currency" value={settings.base_currency} onChange={(v) => save({ base_currency: v })} options={[{ value: "ILS", label: "₪ Shekel" }, { value: "USD", label: "$ Dollar" }]} />
@@ -86,15 +90,17 @@ function PortfolioList() {
 function PortfolioRow({ p, canDelete, onChange }: { p: PortfolioInfo; canDelete: boolean; onChange: () => void }) {
   const [name, setName] = useState(p.name);
   const [note, setNote] = useState(p.note);
+  const [aliases, setAliases] = useState(p.aliases);
   const [confirm, setConfirm] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const dirty = name !== p.name || note !== p.note;
-  const save = async () => { setErr(null); try { await api.updatePortfolio(p.id, name, note); onChange(); } catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't save."); } };
+  const dirty = name !== p.name || note !== p.note || aliases !== p.aliases;
+  const save = async () => { setErr(null); try { await api.updatePortfolio(p.id, name, note, aliases); onChange(); } catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't save."); } };
   return (
     <li className="border-b border-line py-3 first:pt-0">
-      <div className="grid gap-2 sm:grid-cols-[1fr_1.3fr_auto] sm:items-center">
+      <div className="grid gap-2 sm:grid-cols-[1fr_1.3fr_auto] sm:items-start">
         <input aria-label="Portfolio name" className="field h-8 text-sm font-medium" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
         <input aria-label="Note" className="field h-8 text-sm" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+        <input aria-label="Nicknames" dir="auto" className="field h-8 text-sm sm:col-span-2" placeholder="Nicknames for Ctrl+K and Telegram, e.g. קרן" value={aliases} onChange={(e) => setAliases(e.target.value)} />
         <div className="flex justify-end gap-1">
           {dirty && <button type="button" className="btn-secondary h-8" onClick={save}>Save</button>}
           {canDelete && (confirm ? (
@@ -123,5 +129,64 @@ function NewPortfolioRow({ onCreated }: { onCreated: () => void }) {
       <button type="submit" className="btn-secondary h-8 shrink-0" disabled={!name.trim()}>Add</button>
       {err && <p className="error-text">{err}</p>}
     </form>
+  );
+}
+
+function TelegramSetup() {
+  const q = useData(api.telegram, "telegram");
+  const t = q.data;
+  const [token, setToken] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  // the bot starts in the background; check again shortly after a change
+  const refreshSoon = () => setTimeout(() => q.reload(), 2500);
+  if (!t) return <Skel className="h-20 w-full" />;
+  const saveToken = async (value: string) => {
+    setBusy(true); setErr(null);
+    try { await api.saveTelegram({ token: value }); setToken(""); q.reload(); refreshSoon(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't save."); } finally { setBusy(false); }
+  };
+  if (!t.configured) {
+    return (
+      <div className="max-w-[460px] text-sm">
+        <ol className="list-decimal space-y-1 pl-5 text-muted">
+          <li>In Telegram, open <span className="font-medium text-text">@BotFather</span> and send <span className="font-mono text-xs text-text">/newbot</span>.</li>
+          <li>Pick a name. BotFather replies with a token like <span className="font-mono text-xs text-text">123456789:AAE…</span>.</li>
+          <li>Paste it here.</li>
+        </ol>
+        <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); saveToken(token); }}>
+          <input aria-label="Bot token" className="field h-8 font-mono text-xs" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Bot token" autoComplete="off" />
+          <button type="submit" className="btn-secondary h-8 shrink-0" disabled={!token.trim() || busy}>Connect</button>
+        </form>
+        {err && <p className="error-text">{err}</p>}
+      </div>
+    );
+  }
+  return (
+    <div className="max-w-[460px] space-y-3 text-sm">
+      <p className="flex items-center gap-2">
+        <span className={clsx("h-2 w-2 rounded-full", t.running && !t.error ? "bg-gain" : "bg-loss")} aria-hidden />
+        {t.running && !t.error ? <>Running{t.username && <> as <span className="font-medium">@{t.username}</span></>}</> : "Not running"}
+        <button type="button" className="link ml-auto text-xs" onClick={() => q.reload()}>Check again</button>
+      </p>
+      {t.error && <p className="text-xs text-loss">{t.error}</p>}
+      {t.paired ? (
+        <p className="text-muted">Connected to your Telegram. Write to the bot, for example “קרן קנתה 5 AVGO”, or send <span className="font-mono text-xs text-text">/help</span>.</p>
+      ) : (
+        <div className="rounded-md bg-sunken p-3">
+          <p>Send this to {t.username ? <span className="font-medium">@{t.username}</span> : "your bot"} in Telegram:</p>
+          <p className="mt-1 select-all font-mono text-base font-semibold">/start {t.pair_code}</p>
+          <p className="mt-1 text-xs text-muted">Only the chat that sends this code can use the bot. <button type="button" className="link text-xs" onClick={() => q.reload()}>I sent it</button></p>
+        </div>
+      )}
+      <label className="flex items-center gap-2">
+        <input type="checkbox" className="accent-[var(--accent)]" checked={t.weekly_report} onChange={async (e) => { await api.saveTelegram({ weekly_report: e.target.checked }); q.reload(); }} />
+        Send me a summary every Sunday morning
+      </label>
+      <div className="flex flex-wrap gap-3 text-xs">
+        {t.paired && <button type="button" className="link text-xs" onClick={async () => { await api.newPairCode(); q.reload(); }}>Connect a different chat</button>}
+        <button type="button" className="link text-xs" onClick={() => saveToken("")}>Disconnect the bot</button>
+      </div>
+    </div>
   );
 }

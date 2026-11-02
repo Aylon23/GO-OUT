@@ -21,7 +21,7 @@ export interface Series {
   perf: Record<string, (number | null)[]>;
   drawdown: Record<string, (number | null)[]>;
 }
-export interface PortfolioInfo { id: number; name: string; note: string; transactions: number }
+export interface PortfolioInfo { id: number; name: string; note: string; aliases: string; transactions: number }
 
 export interface Portfolio {
   empty: boolean;
@@ -30,7 +30,7 @@ export interface Portfolio {
   warnings: string[];
   range: { code: string; start: string; end: string; first_date: string; tracking_since: string; short_history: boolean };
   summary: {
-    cost_gain: number; cost_gain_pct: number | null; has_cost_basis: boolean;
+    cost_gain: number; cost_gain_pct: number | null; has_cost_basis: boolean; realized: number | null;
     value: number; invested: number; total_gain: number; range_gain: number; today_change: number; today_pct: number;
     twr: number; xirr: number | null; benchmarks: { symbol: string; twr: number | null }[]; start_value: number;
   };
@@ -40,9 +40,11 @@ export interface Portfolio {
 export interface HoldingRow {
   ticker: string; name: string; type: string; sector: string; currency: Ccy; quantity: number; avg_cost: number; price: number;
   value: number; weight: number; unrealized: number; unrealized_pct: number | null; range_return: number | null; contribution: number; closed: boolean;
+  realized: number | null;
 }
 export interface Holdings {
   empty: boolean; base: Ccy; range: { code: string; start: string; end: string }; lookback_basis?: boolean; total: number; cash: number;
+  realized: number | null; realized_other: { ticker: string; amount: number }[];
   rows: HoldingRow[]; best: string[]; worst: string[]; sectors: { sector: string; weight: number }[]; concentrated: string[];
 }
 export interface HoldingDetail {
@@ -66,7 +68,7 @@ export interface Lookback {
   series: Series;
 }
 export interface OverviewRow {
-  id: number; name: string; note: string; empty: boolean; value?: number; cash?: number; cost_gain?: number; cost_gain_pct?: number | null;
+  id: number; name: string; note: string; empty: boolean; value?: number; cash?: number; cost_gain?: number; cost_gain_pct?: number | null; realized?: number | null;
   today_pct?: number | null; tracking_since?: string; holdings?: number;
   period_start?: string; short_history?: boolean; return?: number | null; bench?: Record<string, number | null>;
 }
@@ -79,8 +81,9 @@ export interface HoldingImportRow {
   price?: number; price_date?: string; gain_pct?: number;
 }
 export interface HoldingImport {
-  rows: HoldingImportRow[]; valid: number; invalid: number; committed: boolean; imported: number; portfolios: number; created: string[];
-  groups: { name: string; exists: boolean; rows: number; valid: number; holding_now: number }[];
+  rows: HoldingImportRow[]; realized: { line: number; ticker: string; amount: number; note: string; portfolio: string | null }[];
+  valid: number; invalid: number; committed: boolean; imported: number; realized_imported: number; portfolios: number; created: string[];
+  groups: { name: string; exists: boolean; rows: number; valid: number; holding_now: number; realized_lines: number; realized_total: number }[];
 }
 
 export interface MetricRow {
@@ -96,7 +99,21 @@ export interface Metrics {
 export interface OmniDraft {
   text: string; type: TxType; ticker: string; quantity: number | null; price: number | null; currency: Ccy; date: string;
   portfolio_id: number; portfolio_name: string; price_source?: "close" | "you"; missing: string[]; warnings: string[];
+  portfolio_matched: boolean; everyone: boolean;
+  targets: { portfolio_id: number; portfolio_name: string; quantity: number | null; held: number | null; skip: boolean; reason: string }[];
 }
+export interface OmniResult { saved: { portfolio: string; quantity: number }[]; failed: { portfolio: string; error: string }[]; rec_id: number | null }
+export interface CallRow {
+  id: number; ticker: string; action: "BUY" | "SELL"; date: string; price: number | null; thesis: string; target: number | null;
+  closed_date: string | null; portfolios: string[]; return: number | null; spy: number | null; edge: number | null; worked: boolean | null;
+  days: number | null; error: string | null; to_target?: number | null;
+}
+export interface ScoreBlock {
+  count: number; scored: number; worked: number; hit_rate: number | null; avg_edge: number | null; median_edge: number | null;
+  best: { id: number; ticker: string; edge: number } | null; worst: { id: number; ticker: string; edge: number } | null;
+}
+export interface Calls { base: Ccy; reference: string; rows: CallRow[]; scorecard: { all: ScoreBlock; buy: ScoreBlock; sell: ScoreBlock; avg_days_held: number | null } }
+export interface TelegramStatus { configured: boolean; paired: boolean; pair_code: string; weekly_report: boolean; running: boolean; error: string; username: string }
 
 export interface Settings { base_currency: Ccy; benchmarks: string[]; risk_free: number; theme: "light" | "dark" | "system"; auto_dividends: boolean }
 export interface Swap {
@@ -175,6 +192,15 @@ export const api = {
   createTx: (t: Tx) => request<Tx>("POST", "/api/transactions", t),
   createTxIn: (portfolioId: number, t: Tx) => request<Tx>("POST", `/api/transactions?portfolio=${portfolioId}`, t),
   omnibox: (text: string, signal?: AbortSignal) => request<OmniDraft>("POST", "/api/omnibox", { text }, signal),
+  omniCommit: (draft: OmniDraft, logCall: boolean) => request<OmniResult>("POST", "/api/omnibox/commit", { draft, log_call: logCall }),
+  calls: () => request<Calls>("GET", "/api/calls"),
+  createCall: (c: { ticker: string; action: string; date: string; thesis: string; target: number | null }) => request<{ id: number }>("POST", "/api/calls", c),
+  updateCall: (id: number, c: { ticker: string; action: string; date: string; thesis: string; target: number | null }) => request<{ ok: boolean }>("PUT", `/api/calls/${id}`, c),
+  deleteCall: (id: number) => request<{ ok: boolean }>("DELETE", `/api/calls/${id}`),
+  report: (period: string, all = false) => request<{ text: string }>("GET", `/api/report?${qs({ period, all })}`),
+  telegram: () => request<TelegramStatus>("GET", "/api/telegram"),
+  saveTelegram: (b: { token?: string; weekly_report?: boolean }) => request<TelegramStatus>("PUT", "/api/telegram", b),
+  newPairCode: () => request<TelegramStatus>("POST", "/api/telegram/pair"),
   updateTx: (id: number, t: Tx) => request<Tx>("PUT", `/api/transactions/${id}`, t),
   deleteTx: (id: number) => request<{ ok: boolean }>("DELETE", `/api/transactions/${id}`),
   importCsv: (file: File, commit: boolean) => {
@@ -194,7 +220,7 @@ export const api = {
   demo: () => request<{ loaded: number }>("POST", "/api/demo"),
   portfolios: () => request<PortfolioInfo[]>("GET", "/api/portfolios"),
   createPortfolio: (name: string, note = "") => request<PortfolioInfo>("POST", "/api/portfolios", { name, note }),
-  updatePortfolio: (id: number, name: string, note: string) => request<PortfolioInfo>("PUT", `/api/portfolios/${id}`, { name, note }),
+  updatePortfolio: (id: number, name: string, note: string, aliases = "") => request<PortfolioInfo>("PUT", `/api/portfolios/${id}`, { name, note, aliases }),
   deletePortfolio: (id: number) => request<{ ok: boolean }>("DELETE", `/api/portfolios/${id}`),
   metrics: (portfolios: number[], symbols: string[], range: string) =>
     request<Metrics>("GET", `/api/metrics?${qs({ portfolios: portfolios.join(","), symbols: symbols.join(","), range })}`),

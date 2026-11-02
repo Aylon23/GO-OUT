@@ -21,6 +21,7 @@ export function CommandPalette() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [inputKey, setInputKey] = useState(0);
+  const [logCall, setLogCall] = useState(true);
   const command = looksLikeCommand(query);
   const debounced = useDebounced(command ? query : "", 350);
 
@@ -47,17 +48,18 @@ export function CommandPalette() {
     if (!draft || !ready || busy) return;
     setBusy(true); setErr(null);
     try {
-      await api.createTxIn(draft.portfolio_id, {
-        ticker: draft.ticker, type: draft.type, date: draft.date, quantity: draft.quantity ?? 0, price: draft.price ?? 0,
-        currency: draft.currency, fees: 0, note: draft.text.slice(0, 200),
-      });
-      setDone(`Added to ${draft.portfolio_name}: ${describe(draft)}`);
+      const out = await api.omniCommit(draft, logCall);
+      const parts = [];
+      if (out.saved.length) parts.push(`Added to ${out.saved.map((x) => x.portfolio).join(", ")}: ${describe(draft)}`);
+      if (out.failed.length) parts.push(`Not added: ${out.failed.map((f) => `${f.portfolio} (${f.error})`).join("; ")}`);
+      if (out.rec_id) parts.push("Saved as a recommendation.");
+      setDone(parts.join(" "));
       setDraft(null); setQuery(""); setInputKey((k) => k + 1);
       invalidate(); reloadPortfolios().catch(() => {});
     } catch (e) {
       setErr(e instanceof ApiError ? Object.values(e.fields).join(" ") || e.message : "Couldn't save.");
     } finally { setBusy(false); }
-  }, [draft, ready, busy, reloadPortfolios]);
+  }, [draft, ready, busy, reloadPortfolios, logCall]);
 
   const onQuery = useCallback((q: string) => { setQuery(q); if (q) setDone(null); }, []);
   if (!paletteOpen) return null;
@@ -68,7 +70,7 @@ export function CommandPalette() {
         <SymbolSearch key={inputKey} variant="list" size="lg" autoFocus placeholder="Search a stock, or type: bought 5 QQQ"
           onEscape={() => setPaletteOpen(false)} onQueryChange={onQuery} suppressResults={command} onSubmitQuery={save}
           onSelect={(s) => { setPaletteOpen(false); openQuickView(s); }} />
-        {command && <DraftCard draft={draft} pending={debounced !== query} err={err} busy={busy} ready={ready} onSave={save} />}
+        {command && <DraftCard draft={draft} pending={debounced !== query} err={err} busy={busy} ready={ready} onSave={save} logCall={logCall} setLogCall={setLogCall} />}
         {done && !command && (
           <p className="flex items-center gap-2 border-b border-line px-4 py-3 text-sm" role="status"><Check size={16} className="text-gain" />{done}</p>
         )}
@@ -84,8 +86,12 @@ export function CommandPalette() {
 
 function describe(d: OmniDraft) {
   if (d.type === "BUY" || d.type === "SELL") {
-    const total = (d.quantity ?? 0) * (d.price ?? 0);
-    return `${TYPE_WORD[d.type]} ${num(d.quantity, 4)} ${d.ticker} at ${money(d.price, d.currency, { decimals: 2 })} = ${money(total, d.currency)} on ${dateLong(d.date)}`;
+    const live = d.targets.filter((t) => !t.skip);
+    const same = live.every((t) => t.quantity === live[0]?.quantity);
+    const q = live.length && same ? live[0].quantity : d.quantity;
+    if (live.length > 1 && !same) return `${TYPE_WORD[d.type]} ${d.ticker} at ${money(d.price, d.currency, { decimals: 2 })} on ${dateLong(d.date)}`;
+    const total = (q ?? 0) * (d.price ?? 0);
+    return `${TYPE_WORD[d.type]} ${num(q, 4)} ${d.ticker} at ${money(d.price, d.currency, { decimals: 2 })} = ${money(total, d.currency)} on ${dateLong(d.date)}${live.length > 1 ? " each" : ""}`;
   }
   if (d.type === "DIVIDEND") return `Dividend of ${money(d.price, d.currency)} from ${d.ticker || "?"} on ${dateLong(d.date)}`;
   return `${TYPE_WORD[d.type]} ${money(d.price, d.currency)} on ${dateLong(d.date)}`;
@@ -95,10 +101,12 @@ const MISSING: Record<string, string> = {
   ticker: "Which stock? Add a ticker like QQQ or a name like אפל.",
   quantity: "How many? Add shares (“5 מניות”) or an amount (“ב-1000 דולר”).",
   amount: "How much? Add an amount like “5000 שקל”.",
+  position: "None of these portfolios holds it.",
 };
 
-function DraftCard({ draft, pending, err, busy, ready, onSave }: {
+function DraftCard({ draft, pending, err, busy, ready, onSave, logCall, setLogCall }: {
   draft: OmniDraft | null; pending: boolean; err: string | null; busy: boolean; ready: boolean; onSave: () => void;
+  logCall: boolean; setLogCall: (v: boolean) => void;
 }) {
   return (
     <div className="border-b border-line px-4 py-4" aria-live="polite">
@@ -111,9 +119,21 @@ function DraftCard({ draft, pending, err, busy, ready, onSave }: {
             <div className="min-w-0 flex-1">
               <p className="num text-base">{draft.missing.length ? <span className="text-muted">{TYPE_WORD[draft.type]} {draft.ticker || "…"}</span> : describe(draft)}</p>
               <p className="mt-1 text-sm text-muted">
-                Into <span className="font-medium text-text">{draft.portfolio_name}</span>
+                Into {draft.targets.filter((t) => !t.skip).map((t, i) => (
+                  <span key={t.portfolio_id}>{i > 0 && ", "}<span className="font-medium text-text">{t.portfolio_name}</span>
+                    {draft.type === "SELL" && t.quantity != null && <span className="num"> ({num(t.quantity, 4)})</span>}</span>))}
                 {draft.price_source === "close" && " · price is that day's close"}
               </p>
+              {draft.targets.filter((t) => t.skip).map((t) => (
+                <p key={t.portfolio_id} className="mt-1 text-xs text-faint">Skips {t.portfolio_name}: {t.reason}.</p>
+              ))}
+              {!draft.portfolio_matched && <p className="mt-1 text-xs text-faint">No portfolio named, so it goes to the one you have open. Add a name or a nickname (Settings) to choose.</p>}
+              {(draft.type === "BUY" || draft.type === "SELL") && (
+                <label className="mt-2 flex items-center gap-2 text-sm text-muted">
+                  <input type="checkbox" className="accent-[var(--accent)]" checked={logCall} onChange={(e) => setLogCall(e.target.checked)} />
+                  Save as my recommendation
+                </label>
+              )}
               {draft.missing.map((m) => <p key={m} className="mt-2 text-sm text-loss">{MISSING[m]}</p>)}
               {draft.warnings.map((w) => <p key={w} className="mt-1 text-xs text-faint">{w}</p>)}
             </div>

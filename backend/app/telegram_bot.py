@@ -62,7 +62,7 @@ class TelegramClient:
 def _money(v, ccy) -> str:
     if v is None:
         return "?"
-    return f"{'$' if ccy == 'USD' else '₪'}{v:,.2f}"
+    return f"\u2066{'$' if ccy == 'USD' else '₪'}{v:,.2f}\u2069"
 
 
 def describe(d: dict) -> str:
@@ -180,12 +180,12 @@ class Bot:
                 return
             lines = [f"🎯 {c['count']} המלצות · {c['worked']} מתוך {c['scored']} הצליחו מול ה-S&P"]
             if c["avg_edge"] is not None:
-                lines.append(f"יתרון ממוצע: {c['avg_edge'] * 100:+.1f} נקודות")
+                lines.append(f"יתרון ממוצע: \u2066{c['avg_edge'] * 100:+.1f}\u2069 נקודות")
             for r in data["rows"][:8]:
                 if r["edge"] is None:
                     continue
                 mark = "✅" if r["worked"] else "🔻"
-                lines.append(f"{mark} {TYPE_HE[r['action']]} {r['ticker']} ({r['date']}): {r['return'] * 100:+.1f}% מול S&P {r['spy'] * 100:+.1f}%")
+                lines.append(f"{mark} {TYPE_HE[r['action']]} {r['ticker']} ({r['date']}): \u2066{r['return'] * 100:+.1f}%\u2069 מול S&P \u2066{r['spy'] * 100:+.1f}%\u2069")
             self.send(chat, "\n".join(lines))
             return
         if cmd in ("/portfolios", "/tikim"):
@@ -196,7 +196,7 @@ class Bot:
             for r in o["rows"]:
                 if r["empty"]:
                     continue
-                lines.append(f"• {r['name']}: {_money(r['value'], o['base'])} · מול עלות {(r['cost_gain_pct'] or 0) * 100:+.1f}%")
+                lines.append(f"• {r['name']}: {_money(r['value'], o['base'])} · מול עלות \u2066{(r['cost_gain_pct'] or 0) * 100:+.1f}%\u2069")
             self.send(chat, "\n".join(lines) or "אין עדיין תיקים עם אחזקות.")
             return
         # free text: a trade

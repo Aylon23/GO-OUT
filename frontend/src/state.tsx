@@ -2,8 +2,8 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useS
 import { api, type PortfolioInfo, type RangeParams, setApiPortfolio, type Settings, type SymbolItem } from "./lib/api";
 import { invalidate } from "./lib/hooks";
 
-export type Route = "all" | "dashboard" | "holdings" | "risk" | "compare" | "transactions" | "whatif" | "settings";
-const ROUTES: Route[] = ["all", "dashboard", "holdings", "risk", "compare", "transactions", "whatif", "settings"];
+export type Route = "all" | "dashboard" | "holdings" | "risk" | "compare" | "calls" | "transactions" | "whatif" | "settings";
+const ROUTES: Route[] = ["all", "dashboard", "holdings", "risk", "compare", "calls", "transactions", "whatif", "settings"];
 
 const readPortfolio = (): number => {
   try {

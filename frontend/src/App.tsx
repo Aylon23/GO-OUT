@@ -2,6 +2,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { QuickView } from "./components/QuickView";
 import { TopBar } from "./components/TopBar";
 import AllPortfolios from "./pages/AllPortfolios";
+import Calls from "./pages/Calls";
 import Compare from "./pages/Compare";
 import Dashboard from "./pages/Dashboard";
 import Holdings from "./pages/Holdings";
@@ -18,6 +19,7 @@ function Routes() {
     case "holdings": return <Holdings />;
     case "risk": return <Risk />;
     case "compare": return <Compare />;
+    case "calls": return <Calls />;
     case "transactions": return <Transactions />;
     case "whatif": return <WhatIf />;
     case "settings": return <Settings />;

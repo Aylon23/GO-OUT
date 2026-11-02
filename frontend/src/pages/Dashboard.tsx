@@ -1,4 +1,5 @@
-import { UploadSimple } from "@phosphor-icons/react";
+import { FileText, UploadSimple } from "@phosphor-icons/react";
+import { ReportPanel } from "../components/ReportPanel";
 import clsx from "clsx";
 import { useState } from "react";
 import { ChartSkeleton } from "../components/chart/SeriesChart";
@@ -50,6 +51,7 @@ function SecondaryLine({ p }: { p: Portfolio }) {
     s.has_cost_basis
       ? <span key="g" className="inline-flex items-center gap-1"><InfoTip text="Market value of open positions minus what they cost, using the average price you entered.">Gain vs cost</InfoTip> <Signed value={s.cost_gain} className="font-medium">{money(s.cost_gain, b, { signed: true, decimals: 0 })} ({pct(s.cost_gain_pct, 1)})</Signed></span>
       : <span key="g">Total gain <Signed value={s.total_gain} className="font-medium">{money(s.total_gain, b, { signed: true, decimals: 0 })}</Signed></span>,
+    ...(s.realized && Math.abs(s.realized) >= 0.5 ? [<span key="r" className="inline-flex items-center gap-1"><InfoTip text="Profit or loss already taken on shares you sold, including realized lines imported from your spreadsheet.">Realized</InfoTip> <Signed value={s.realized} className="font-medium">{money(s.realized, b, { signed: true, decimals: 0 })}</Signed></span>] : []),
     <span key="t">Today <Signed value={s.today_change} className="font-medium">{money(s.today_change, b, { signed: true, decimals: 0 })} ({pct(s.today_pct)})</Signed></span>,
     <span key="x" className="inline-flex items-center gap-1">
       <InfoTip text="XIRR: your personal annual return, counting when you added or took out money.">XIRR</InfoTip>
@@ -141,7 +143,8 @@ function DashSkeleton() {
 }
 
 export default function Dashboard() {
-  const { range } = useApp();
+  const { range, portfolio } = useApp();
+  const [report, setReport] = useState(false);
   const key = JSON.stringify(range);
   const q = useData(() => api.portfolio(range), `p-${key}`);
   const p = q.data;
@@ -151,7 +154,10 @@ export default function Dashboard() {
   return (
     <Page>
       <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
-        <Headline p={p} />
+        <div className="flex items-start justify-between gap-4">
+          <Headline p={p} />
+          <button type="button" className="btn-ghost shrink-0" onClick={() => setReport(true)}><FileText size={16} /> Report</button>
+        </div>
         <SecondaryLine p={p} />
         {p.range.short_history && (
           <p className="mt-3 max-w-[72ch] text-xs text-faint">
@@ -164,6 +170,7 @@ export default function Dashboard() {
         </section>
         <ShadowRows p={p} />
       </div>
+      {report && <ReportPanel all={false} title={`Report: ${portfolio?.name ?? ""}`} onClose={() => setReport(false)} />}
     </Page>
   );
 }

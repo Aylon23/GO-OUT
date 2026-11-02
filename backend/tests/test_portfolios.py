@@ -134,3 +134,11 @@ def test_sectioned_sheet_creates_portfolios(client):
     client.post("/api/holdings/import?portfolio=1&commit=true&replace=true", files={"file": ("f.csv", csv)})
     ps = {p["name"]: p for p in client.get("/api/portfolios").json()}
     assert ps["Dad"]["transactions"] == 2
+
+
+def test_deleted_default_portfolio_stays_deleted(client):
+    from app import db
+    client.post("/api/portfolios", json={"name": "Dad"})
+    assert client.delete("/api/portfolios/1").status_code == 200
+    db.migrate(db.get_engine())  # what happens on every app start
+    assert [p["name"] for p in client.get("/api/portfolios").json()] == ["Dad"]

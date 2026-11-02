@@ -44,8 +44,11 @@ def migrate(engine) -> None:
                 conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {ddl}{null}{clause}'))
     from .models import Portfolio
 
+    from sqlmodel import select
+
     with Session(engine) as s:
-        if s.get(Portfolio, 1) is None:  # through the model, so new columns get their defaults
+        # only on a brand-new database: a portfolio the user deleted must stay deleted
+        if s.exec(select(Portfolio)).first() is None:
             s.add(Portfolio(id=1, name="My portfolio"))
             s.commit()
 

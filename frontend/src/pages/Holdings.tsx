@@ -75,6 +75,15 @@ export default function Holdings() {
               <span className="text-muted">Cash</span>
               <span className="num">{money(d.cash, d.base, { decimals: 0 })}</span>
             </div>
+            {d.realized != null && Math.abs(d.realized) >= 0.5 && (
+              <div className="flex items-center justify-between border-b border-line py-3 text-sm">
+                <span className="text-muted">
+                  Realized gains
+                  {d.realized_other.length > 0 && <span className="ml-2 text-xs text-faint">incl. {d.realized_other.map((x) => `${x.ticker} ${money(x.amount, d.base, { signed: true, decimals: 0 })}`).join(", ")}</span>}
+                </span>
+                <Signed value={d.realized} className="font-medium">{money(d.realized, d.base, { signed: true, decimals: 0 })}</Signed>
+              </div>
+            )}
           </div>
           {d.rows.some((r) => r.closed) && (
             <button type="button" className="link mt-4 text-sm" onClick={() => setShowClosed((s) => !s)}>{showClosed ? "Hide closed positions" : "Show closed positions"}</button>
@@ -99,7 +108,8 @@ function Row({ r, base, onOpen }: { r: HoldingRow; base: string; onOpen: () => v
           <span className="num ml-auto font-medium">{money(r.value, base, { decimals: 0 })}</span>
         </div>
         <Kv k="Weight" v={pct(r.weight, 1, false)} />
-        <Kv k="Unrealized" v={<Signed value={r.unrealized}>{money(r.unrealized, base, { signed: true, decimals: 0 })} ({pct(r.unrealized_pct, 1)})</Signed>} />
+        {r.closed ? <Kv k="Realized" v={<Signed value={r.realized}>{money(r.realized, base, { signed: true, decimals: 0 })}</Signed>} />
+          : <Kv k="Unrealized" v={<Signed value={r.unrealized}>{money(r.unrealized, base, { signed: true, decimals: 0 })} ({pct(r.unrealized_pct, 1)})</Signed>} />}
         <Kv k="Return" v={<Signed value={r.range_return}>{pct(r.range_return, 1)}</Signed>} />
         <Kv k="Contribution" v={<Signed value={r.contribution}>{pp(r.contribution, 2)}</Signed>} />
         <Kv k="Quantity" v={num(r.quantity, 4)} />
@@ -130,10 +140,17 @@ function DesktopRow({ r, base }: { r: HoldingRow; base: string }) {
         <span className="h-1 w-12 overflow-hidden rounded-full bg-sunken" aria-hidden><span className="block h-full rounded-full bg-muted" style={{ width: `${Math.min(100, (r.weight ?? 0) * 100)}%` }} /></span>
         <span className="num w-12 text-right">{pct(r.weight, 1, false)}</span>
       </span>
-      <span className="text-right leading-5">
-        <Signed value={r.unrealized} className="block">{money(r.unrealized, base, { signed: true, decimals: 0 })}</Signed>
-        <Signed value={r.unrealized_pct} className="block text-xs">{pct(r.unrealized_pct, 1)}</Signed>
-      </span>
+      {r.closed ? (
+        <span className="text-right leading-5">
+          <Signed value={r.realized} className="block">{money(r.realized, base, { signed: true, decimals: 0 })}</Signed>
+          <span className="block text-xs text-faint">realized</span>
+        </span>
+      ) : (
+        <span className="text-right leading-5">
+          <Signed value={r.unrealized} className="block">{money(r.unrealized, base, { signed: true, decimals: 0 })}</Signed>
+          <Signed value={r.unrealized_pct} className="block text-xs">{pct(r.unrealized_pct, 1)}</Signed>
+        </span>
+      )}
       <Signed value={r.range_return} className="text-right">{pct(r.range_return, 1)}</Signed>
       <Signed value={r.contribution} className="text-right">{pp(r.contribution, 2)}</Signed>
     </div>

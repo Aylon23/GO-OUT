@@ -1,7 +1,8 @@
 import { Plus } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useState } from "react";
-import { FileXls } from "@phosphor-icons/react";
+import { FileText, FileXls } from "@phosphor-icons/react";
+import { ReportPanel } from "../components/ReportPanel";
 import { HoldingsImport } from "../components/HoldingsImport";
 import { ChartSkeleton, colorFor, InlineLegend, SeriesChart, type SeriesDef } from "../components/chart/SeriesChart";
 import { EmptyState, ErrorLine, InfoTip, Segmented, Signed, Skel } from "../components/ui";
@@ -21,12 +22,16 @@ export default function AllPortfolios() {
   const d = q.data;
   const open = (r: OverviewRow, page: "dashboard" | "transactions" = "dashboard") => { setPortfolio(r.id); go(page); };
   const [importing, setImporting] = useState(false);
+  const [report, setReport] = useState(false);
 
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-10 md:px-8 md:pt-16">
       {q.error && !d ? <ErrorLine message={q.error.message} onRetry={q.reload} /> : !d ? <OverviewSkeleton /> : (
         <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
-          <Headline d={d} code={code} />
+          <div className="flex items-start justify-between gap-4">
+            <Headline d={d} code={code} />
+            {!d.rows.every((r) => r.empty) && <button type="button" className="btn-ghost shrink-0" onClick={() => setReport(true)}><FileText size={16} /> Report</button>}
+          </div>
           {d.rows.every((r) => r.empty) ? (
             <EmptyState title="No holdings yet in any portfolio." body="Import an Excel file with your portfolios (one table per portfolio, under its name), or add a portfolio and fill it in.">
               <button type="button" className="btn-primary" onClick={() => setImporting(true)}><FileXls size={16} /> Import from Excel</button>
@@ -59,6 +64,7 @@ export default function AllPortfolios() {
         </div>
       )}
       {importing && <HoldingsImport onClose={() => setImporting(false)} />}
+      {report && <ReportPanel all title="Report: all portfolios" onClose={() => setReport(false)} />}
     </div>
   );
 }
@@ -88,6 +94,7 @@ function Headline({ d, code }: { d: Overview; code: string }) {
   const beat = live.filter((r) => (r.return as number) > (r.bench!.SPY as number)).length;
   const n = d.rows.length;
   const gain = d.rows.reduce((s, r) => s + (r.cost_gain ?? 0), 0);
+  const realized = d.rows.reduce((s, r) => s + (r.realized ?? 0), 0);
   const allShort = live.length > 0 && live.every((r) => r.short_history);
   return (
     <>
@@ -99,6 +106,7 @@ function Headline({ d, code }: { d: Overview; code: string }) {
       </h1>
       <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
         <span>Gain vs average cost <Signed value={gain} className="font-medium">{money(gain, d.base, { signed: true, decimals: 0 })}</Signed></span>
+        {Math.abs(realized) >= 0.5 && <span className="inline-flex items-center gap-2"><span aria-hidden className="text-faint">·</span>Realized <Signed value={realized} className="font-medium">{money(realized, d.base, { signed: true, decimals: 0 })}</Signed></span>}
       </p>
     </>
   );

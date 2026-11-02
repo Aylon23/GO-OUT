@@ -83,6 +83,37 @@ tech sector, by default):
   for free, so P/E is a snapshot, not a history. Indices use the ETF that tracks them.
 - Dividend yield, weighted.
 
+## Recommendations (Calls)
+
+Every buy or sell you add with Ctrl/⌘ K or from Telegram can be saved as a **recommendation**, linked
+to every portfolio that followed it. You can also log one by hand on the **Calls** page.
+
+- A buy call is measured from the close on its date until today, or until you call "sell" on the
+  same ticker. **Edge** = its total return minus the S&P 500 (SPY) over exactly the same days.
+- A sell call is measured after the date: it worked if the stock then did worse than the S&P 500.
+- The scorecard shows how many calls beat the S&P, the average edge, best, worst and holding time.
+
+## Realized gains
+
+Sales you record are counted with the average-cost method. Lines like `tsla | -1565` under a
+portfolio in your spreadsheet (a ticker and one amount, no quantity) are imported as realized gains.
+
+## Reports
+
+**Report** on a portfolio (or on All portfolios) gives a short Hebrew summary for the week, month or
+year, ready to copy into WhatsApp. The Telegram bot can send the all-portfolios summary every Sunday.
+
+## Telegram bot
+
+Settings → Telegram: create a bot with @BotFather, paste its token, then send `/start CODE` (the code
+shown in Settings) to your bot. Only that chat can use it. Then, from your phone:
+
+- `קרן קנתה 5 AVGO` → a draft with buttons: add and save as a recommendation, add only, or cancel
+- `/report`, `/report קרן`, `/month`, `/calls`, `/portfolios`, `/help`
+
+The bot asks Telegram for new messages, so it works from a home computer with no setup, but only
+while the app is running. To have it always on, run the app on a small always-on machine or server.
+
 ## Command box
 
 Press **Ctrl/⌘ K** and type a trade in Hebrew or English. The app fills in the rest and asks you to
@@ -93,7 +124,11 @@ confirm before saving:
 - `Keren sold 3 AAPL at 190 yesterday`
 - `הפקדתי 5000 שקל לתיק של Shir`
 
-It runs locally with simple rules (no AI service). Name the portfolio exactly as it appears in the app.
+It runs locally with simple rules (no AI service). Name the portfolio as it appears in the app, or by a
+nickname set in Settings (e.g. Keren = קרן). Several at once work too:
+
+- `קרן, שיר ואבא קנו 3 NVDA` → one recommendation, three trades
+- `כולם מכרו TSLA` → sells the whole position in every portfolio that holds it
 
 ## How the numbers work
 

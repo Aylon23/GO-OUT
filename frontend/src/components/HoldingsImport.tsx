@@ -68,13 +68,14 @@ export function HoldingsImport({ onClose }: { onClose: () => void }) {
       {busy && !res && <div className="mt-4 space-y-2"><Skel className="h-4 w-full" /><Skel className="h-4 w-full" /><Skel className="h-4 w-2/3" /></div>}
       {res && (
         <div className="mt-5">
-          <p className="text-sm"><span className="font-medium">{res.valid}</span> ready{res.invalid > 0 && <>, <span className="font-medium text-loss">{res.invalid}</span> with errors (skipped)</>}.</p>
+          <p className="text-sm"><span className="font-medium">{res.valid}</span> ready{res.invalid > 0 && <>, <span className="font-medium text-loss">{res.invalid}</span> with errors (skipped)</>}{res.realized.length > 0 && <>, plus {res.realized.length} realized-gain lines</>}.</p>
           {multi && (
             <ul className="mt-3 flex flex-wrap gap-2">
               {res.groups.map((g) => (
                 <li key={g.name} className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-sm">
                   <span className="font-medium">{g.name}</span> <span className="num text-muted">{g.valid}</span>
                   <span className="text-xs text-faint"> · {g.exists ? (g.holding_now ? `exists, ${g.holding_now} transactions` : "exists") : "new"}</span>
+                  {g.realized_lines > 0 && <span className="block text-xs text-faint">+ {g.realized_lines} realized lines ({money(g.realized_total, "USD", { signed: true, decimals: 0 })})</span>}
                 </li>
               ))}
             </ul>
