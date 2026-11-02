@@ -90,6 +90,11 @@ export interface Metrics {
   rows: MetricRow[]; warnings: string[]; rolling: { dates: string[]; series: Record<string, (number | null)[]> };
 }
 
+export interface OmniDraft {
+  text: string; type: TxType; ticker: string; quantity: number | null; price: number | null; currency: Ccy; date: string;
+  portfolio_id: number; portfolio_name: string; price_source?: "close" | "you"; missing: string[]; warnings: string[];
+}
+
 export interface Settings { base_currency: Ccy; benchmarks: string[]; risk_free: number; theme: "light" | "dark" | "system"; auto_dividends: boolean }
 export interface Swap {
   base: Ccy; ticker: string; replacement: string; real_value: number; hypo_value: number; diff: number; diff_pct: number | null; since: string; trades: number;
@@ -165,6 +170,8 @@ export const api = {
       "GET", `/api/symbol/${encodeURIComponent(symbol)}/chart?${qs({ range })}`),
   transactions: () => request<Tx[]>("GET", "/api/transactions"),
   createTx: (t: Tx) => request<Tx>("POST", "/api/transactions", t),
+  createTxIn: (portfolioId: number, t: Tx) => request<Tx>("POST", `/api/transactions?portfolio=${portfolioId}`, t),
+  omnibox: (text: string, signal?: AbortSignal) => request<OmniDraft>("POST", "/api/omnibox", { text }, signal),
   updateTx: (id: number, t: Tx) => request<Tx>("PUT", `/api/transactions/${id}`, t),
   deleteTx: (id: number) => request<{ ok: boolean }>("DELETE", `/api/transactions/${id}`),
   importCsv: (file: File, commit: boolean) => {

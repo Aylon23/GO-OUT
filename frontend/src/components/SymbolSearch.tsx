@@ -19,11 +19,15 @@ interface Props {
   id?: string;
   onEscape?: () => void;
   invalid?: boolean;
+  /** Command palette: watch the text, hide the symbol list, and take over Enter. */
+  onQueryChange?: (q: string) => void;
+  suppressResults?: boolean;
+  onSubmitQuery?: () => void;
 }
 
 interface Section { title: string | null; items: SymbolItem[] }
 
-export function SymbolSearch({ onSelect, placeholder = "Search by ticker or company", autoFocus, variant = "popover", size = "md", exclude = [], label, id, onEscape, invalid }: Props) {
+export function SymbolSearch({ onSelect, placeholder = "Search by ticker or company", autoFocus, variant = "popover", size = "md", exclude = [], label, id, onEscape, invalid, onQueryChange, suppressResults, onSubmitQuery }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(variant === "list");
   const [active, setActive] = useState(0);
@@ -35,7 +39,8 @@ export function SymbolSearch({ onSelect, placeholder = "Search by ticker or comp
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [selectErr, setSelectErr] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
-  const debounced = useDebounced(query, 250);
+  const debounced = useDebounced(suppressResults ? "" : query, 250);
+  useEffect(() => { onQueryChange?.(query); }, [query, onQueryChange]);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
@@ -118,7 +123,11 @@ export function SymbolSearch({ onSelect, placeholder = "Search by ticker or comp
   function onKey(e: React.KeyboardEvent) {
     if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setActive((a) => Math.min(a + 1, flat.length - 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); const it = flat[active]; if (it && open) choose(it); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (suppressResults) { onSubmitQuery?.(); return; }
+      const it = flat[active]; if (it && open) choose(it);
+    }
     else if (e.key === "Escape") {
       if (variant === "popover" && open) { e.stopPropagation(); setOpen(false); }
       else onEscape?.();
@@ -179,6 +188,7 @@ export function SymbolSearch({ onSelect, placeholder = "Search by ticker or comp
           autoFocus={autoFocus}
           autoComplete="off"
           spellCheck={false}
+          dir="auto"
           value={query}
           placeholder={placeholder}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); setResults(null); }}
@@ -200,7 +210,7 @@ export function SymbolSearch({ onSelect, placeholder = "Search by ticker or comp
       </div>
       {selectErr && <p className="error-text px-1" role="alert">{selectErr}</p>}
       {selecting && <span className="sr-only">Loading symbol</span>}
-      {open && list}
+      {open && !suppressResults && list}
     </div>
   );
 }

@@ -16,7 +16,7 @@
   .num { font-variant-numeric: tabular-nums; }
   .press { transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
   .press:active { transform: scale(0.98); }
-  .btn { @apply press inline-flex h-9 items-center justify-center gap-2 rounded-sm px-4 text-sm font-medium; }
+  .btn { @apply press inline-flex h-9 items-center justify-center gap-2 rounded-sm px-4 text-sm font-medium disabled:pointer-events-none disabled:opacity-50; }
   .btn-primary { @apply btn bg-accent text-accent-text hover:opacity-90; }
   .btn-secondary { @apply btn border border-line-strong bg-surface text-text hover:bg-hover; }
   .btn-ghost { @apply btn px-2 text-muted hover:bg-hover hover:text-text; }

@@ -399,6 +399,20 @@ def metrics(portfolios: str = "", symbols: str = "SPY,QQQ,XLK", range: str = "1Y
     return _wrap(mx.metrics_payload, session, pids, syms, range)
 
 
+class OmniIn(BaseModel):
+    text: str
+
+
+@router.post("/omnibox")
+def omnibox(body: OmniIn, pid: int = PID, session: Session = Depends(get_session)):
+    """Turn a sentence like "קניתי 5 מניות של QQQ" into a draft transaction (not saved)."""
+    from .. import omnibox as ob
+
+    if not body.text.strip():
+        _bad("Type what you bought or sold.")
+    return ob.parse(session, body.text[:300], pid)
+
+
 @router.get("/health")
 def health():
     return {"ok": True}
