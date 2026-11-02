@@ -4,7 +4,7 @@ register: product
 
 ## Users
 One person: a passive, long-term investor who holds a handful of US stocks and ETFs and a few
-Tel Aviv listings, thinks in shekels, and buys a few times a year. Not a trader. Comfortable with
+Tel Aviv listings, thinks in shekels and dollars, and buys a few times a year. Not a trader. Comfortable with
 "index fund" and "return", unsure about "Sharpe" and "beta".
 
 ## Scene

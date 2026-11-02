@@ -2,17 +2,14 @@
 
 Factors are weekly total returns (Friday to Friday) of liquid ETFs:
   market SPY · size IWM−SPY · value IWD−IWF · momentum MTUM−SPY · quality QUAL−SPY · rates TLT ·
-  oil USO · dollar UUP · shekel ILS=X (shekels per dollar) · gold GLD · sector: own sector ETF − SPY.
+  oil USO · gold GLD · sector: own sector ETF − SPY.
 Style and sector factors are measured against the S&P 500 so the market beta keeps its meaning.
 
-Each holding is regressed on the factors over up to 3 years (156 weeks) in its own currency, and
-shown two ways:
-- "usd": the holding's return in dollars (security level);
-- "ils": the holding's return in shekels (portfolio level). For a US stock this is its dollar return
-  plus the USD/ILS move, so its shekel beta is its dollar one + 1: when the dollar weakens against
-  the shekel, a shekel-based investor in US stocks loses.
-The regression is ridge-shrunk toward the holding's sector ETF (market 1, own sector 1). Under a year of history the pull is strong and the holding is marked
-"short history". Nothing after the estimation date is ever used.
+Each holding is regressed on the factors over up to 3 years (156 weeks) in its own trading currency (US stocks
+and ETFs in dollars, .TA in shekels): stock performance only, no currency effect. Portfolio betas are the
+value-weighted average of the holdings' betas.
+The regression is ridge-shrunk toward the holding's sector ETF (market 1, own sector 1). Under a year of history
+the pull is strong and the holding is marked "short history". Nothing after the estimation date is ever used.
 """
 from __future__ import annotations
 
@@ -27,7 +24,7 @@ import pandas as pd
 from sqlmodel import Session, select
 
 from .engine import stress
-from .market.cache import NoPriceData, currency_for, load_history
+from .market.cache import NoPriceData, load_history
 from .models import FactorExposure
 from .scenario_library import SECTOR_PROXY
 
@@ -40,7 +37,7 @@ LAMBDA = 1.0  # strength of the prior (0 = plain least squares)
 # How far a holding's beta may plausibly sit from its sector ETF's (prior standard deviation).
 # Tight where a factor moves little week to week, so noise can't masquerade as exposure.
 PRIOR_SD = {"market": 0.5, "size": 0.5, "value": 0.5, "momentum": 0.5, "quality": 0.5, "rates": 0.3, "oil": 0.25,
-            "dollar": 0.3, "shekel": 0.2, "gold": 0.25}
+            "gold": 0.25}
 SECTOR_SD = 0.5
 SHORT_PULL = 0.25  # under a year of history the prior is up to 4x tighter (16x the weight), easing off by one year
 LOW_R2 = 0.3
@@ -61,10 +58,6 @@ FACTORS: list[dict] = [
      "when": "If long bonds fall 10% (long rates up about 0.6%)", "shock": -0.10},
     {"id": "oil", "label": "Oil", "he": "נפט", "build": ("USO",), "tip": "Crude oil (USO). Positive = gains when oil rises; airlines are usually negative.",
      "when": "If oil rises 20%", "shock": 0.20},
-    {"id": "dollar", "label": "Dollar", "he": "דולר", "build": ("UUP",), "tip": "The US dollar against major currencies (UUP), apart from its move against the shekel.",
-     "when": "If the dollar rises 5% against major currencies", "shock": 0.05},
-    {"id": "shekel", "label": "USD/ILS", "he": "דולר-שקל", "build": ("ILS=X",), "tip": "Shekels per dollar. For an Israeli investor in US stocks this is a big part of return and risk: when the dollar weakens against the shekel, US holdings lose value in shekels.",
-     "when": "If the dollar weakens 5% against the shekel", "shock": -0.05},
     {"id": "gold", "label": "Gold", "he": "זהב", "build": ("GLD",), "tip": "Gold (GLD).",
      "when": "If gold rises 10%", "shock": 0.10},
 ]
@@ -84,7 +77,7 @@ def _prices(session: Session, symbol: str, as_of: dt.date) -> pd.Series | None:
         df = load_history(session, symbol)
     except NoPriceData:
         return None
-    col = "close" if symbol == "ILS=X" else "adj_close"
+    col = "close" if symbol.startswith("^") else "adj_close"
     p = df[col].astype(float)
     p = p[p.index <= as_of]  # never look past the estimation date
     return p if len(p) >= 10 else None
@@ -121,23 +114,16 @@ def factor_returns(session: Session, as_of: dt.date) -> pd.DataFrame:
 
 
 def holding_returns(session: Session, symbol: str, as_of: dt.date) -> dict[str, pd.Series]:
-    """Weekly returns of one holding in dollars and in shekels."""
+    """Weekly total returns of one holding in its own trading currency: {"local": series}."""
     p = _prices(session, symbol, as_of)
-    fx = _prices(session, "ILS=X", as_of)
-    if p is None or fx is None:
+    if p is None:
         return {}
-    ccy = currency_for(session, symbol)
-    cal = sorted(set(p.index) | set(fx.index))
-    p_c = p.reindex(cal).ffill()
-    fx_c = fx.reindex(cal).ffill().bfill()
-    keep = p_c.notna()
-    p_c, fx_c = p_c[keep], fx_c[keep]
-    usd = p_c / fx_c if ccy == "ILS" else p_c
-    ils = p_c if ccy == "ILS" else p_c * fx_c
-    W = stress.weekly_returns({"usd": usd, "ils": ils})
+    W = stress.weekly_returns({"local": p})
+    if "local" not in W:
+        return {}
     cut = pd.Timestamp(as_of) - pd.Timedelta(weeks=WINDOW_WEEKS + 1)
     W = W[W.index > cut]
-    return {"usd": W["usd"].dropna(), "ils": W["ils"].dropna()} if "usd" in W else {}
+    return {"local": W["local"].dropna()}
 
 
 # ------------------------------------------------------------------ estimation
@@ -153,9 +139,8 @@ def sector_of(session: Session, symbol: str) -> str | None:
     return SECTOR_PROXY.get(m.sector or "")
 
 
-def prior(view: str, ccy: str, sector: str | None, cols: list[str]) -> np.ndarray:
-    """What the holding is assumed to look like before its own data: its sector ETF, measured in
-    the holding's own currency (so no currency effect)."""
+def prior(sector: str | None, cols: list[str]) -> np.ndarray:
+    """What the holding is assumed to look like before its own data: its sector ETF."""
     b = dict.fromkeys(cols, 0.0)
     b["market"] = 1.0
     if sector and f"sector_{sector}" in b:
@@ -196,32 +181,20 @@ def fit(y: pd.Series, X: pd.DataFrame, b0: np.ndarray) -> dict:
 
 
 def estimate(session: Session, symbol: str, as_of: dt.date) -> dict[str, dict]:
-    """{"usd": {...}, "ils": {...}} for one symbol, using only data up to as_of.
-
-    The holding is regressed once, in its own currency. The other view follows exactly from
-    r_ils = r_usd + r_usdils (to first order): a dollar asset's shekel beta is its dollar
-    shekel beta + 1, a shekel asset's dollar shekel beta is its shekel one − 1. Fitting both
-    views separately would only add noise to a relationship that is an identity."""
+    """{"local": {...}} for one symbol, using only data up to as_of, in its own trading currency."""
     F = factor_returns(session, as_of)
     sector = sector_of(session, symbol)
     cols = [c for c in BASE_IDS if c in F.columns]
     if sector and f"sector_{sector}" in F.columns and symbol != sector:
         cols.append(f"sector_{sector}")
-    ccy = currency_for(session, symbol)
-    native = "ils" if ccy == "ILS" else "usd"
     if not cols:  # no factor prices at all (offline, first start): no exposures yet
-        empty = {"betas": {}, "r2": None, "resid_vol": None, "weeks": 0, "short_history": True, "sector": sector or ""}
-        return {"usd": dict(empty), "ils": dict(empty, betas={"shekel": 1.0} if native == "usd" else {})}
-    other = "usd" if native == "ils" else "ils"
+        return {"local": {"betas": {}, "r2": None, "resid_vol": None, "weeks": 0, "short_history": True, "sector": sector or ""}}
     R = holding_returns(session, symbol, as_of)
-    b0 = prior(native, ccy, sector, cols)
-    y = R.get(native)
+    b0 = prior(sector, cols)
+    y = R.get("local")
     res = fit(y, F[cols], b0) if y is not None else {"betas": dict(zip(cols, b0.tolist())), "r2": None, "resid_vol": None, "weeks": 0, "short_history": True}
     res["sector"] = sector or ""
-    derived = {**res, "betas": dict(res["betas"])}
-    if "shekel" in derived["betas"]:
-        derived["betas"]["shekel"] += 1.0 if other == "ils" else -1.0
-    return {native: res, other: derived}
+    return {"local": res}
 
 
 def exposures(session: Session, symbols: list[str], as_of: dt.date | None = None, refresh: bool = False) -> dict[str, dict]:
@@ -234,9 +207,9 @@ def exposures(session: Session, symbols: list[str], as_of: dt.date | None = None
     rows = session.exec(select(FactorExposure).where(FactorExposure.symbol.in_(symbols))).all() if symbols else []
     have = {(r.symbol, r.view): r for r in rows}
     for s in symbols:
-        u, i = have.get((s, "usd")), have.get((s, "ils"))
-        if not refresh and u and i and u.as_of == as_of:
-            out[s] = {v: _row_dict(r) for v, r in (("usd", u), ("ils", i))}
+        u = have.get((s, "local"))
+        if not refresh and u and u.as_of == as_of:
+            out[s] = {"local": _row_dict(u)}
             continue
         est = estimate(session, s, as_of)
         for view, res in est.items():
@@ -258,47 +231,43 @@ def _row_dict(r: FactorExposure) -> dict:
 
 # ------------------------------------------------------------------ portfolios
 
-def aggregate(holdings: list[tuple[float, dict]], cash_weight: float, cash_shekel_beta: float) -> dict[str, float]:
-    """Value-weighted betas. holdings: (weight, betas). Cash has no exposure except its currency."""
+def aggregate(holdings: list[tuple[float, dict]]) -> dict[str, float]:
+    """Value-weighted betas. holdings: (weight, betas). Cash has no exposure (currency moves are left out)."""
     out: dict[str, float] = {}
     for w, b in holdings:
         for k, v in b.items():
             out[k] = out.get(k, 0.0) + w * v
-    if cash_weight:
-        out["shekel"] = out.get("shekel", 0.0) + cash_weight * cash_shekel_beta
     return out
 
 
 def payload(session: Session, as_of: dt.date | None = None) -> dict:
-    """Exposures for the family and each portfolio, in shekels, with per-holding detail."""
+    """Exposures for the family and each portfolio (stock performance only), with per-holding detail."""
     from . import services
     from .scenarios import books
 
     ports, family = books(session, None)
-    base = services.get_settings(session).base_currency
     syms = [h.symbol for h in family.holdings]
     exp = exposures(session, syms, as_of)
-    cash_beta = 1.0 if base == "USD" else 0.0  # cash in dollars moves with USD/ILS when counted in shekels
 
     def book(b) -> dict:
         rows = []
         for h in b.holdings:
             e = exp[h.symbol]
             w = h.value / b.value
-            r2 = e["ils"]["r2"]
+            r2 = e["local"]["r2"]
             rows.append({"symbol": h.symbol, "name": h.name, "weight": w, "value": h.value,
-                         "betas": e["ils"]["betas"], "betas_usd": e["usd"]["betas"], "r2": r2, "r2_usd": e["usd"]["r2"],
-                         "resid_vol": e["ils"]["resid_vol"], "weeks": e["ils"]["weeks"], "short_history": e["ils"]["short_history"],
-                         "low_confidence": r2 is None or r2 < LOW_R2, "sector": e["ils"]["sector"]})
+                         "betas": e["local"]["betas"], "r2": r2,
+                         "resid_vol": e["local"]["resid_vol"], "weeks": e["local"]["weeks"], "short_history": e["local"]["short_history"],
+                         "low_confidence": r2 is None or r2 < LOW_R2, "sector": e["local"]["sector"]})
         cash_w = max(0.0, (b.value - sum(h.value for h in b.holdings)) / b.value) if b.value else 0.0
-        betas = aggregate([(r["weight"], r["betas"]) for r in rows], cash_w, cash_beta)
+        betas = aggregate([(r["weight"], r["betas"]) for r in rows])
         return {"id": b.pid, "name": b.name, "value": b.value, "cash_weight": cash_w, "betas": betas,
                 "holdings": sorted(rows, key=lambda r: -r["value"])}
 
     out_books = [book(family)] + [book(b) for b in ports] if family.holdings else []
     if out_books:
         out_books[0]["name"] = "Family" if len(ports) > 1 else ports[0].name
-    return {"as_of": (as_of or dt.date.today()).isoformat(), "window_weeks": WINDOW_WEEKS, "currency": "ILS",
+    return {"as_of": (as_of or dt.date.today()).isoformat(), "window_weeks": WINDOW_WEEKS, "basis": "local",
             "factors": [{k: f[k] for k in ("id", "label", "he", "tip", "when", "shock")} for f in FACTORS],
             "sectors": {f"sector_{e}": SECTOR_LABEL[e] for e in SECTOR_ETFS}, "low_r2": LOW_R2, "books": out_books}
 

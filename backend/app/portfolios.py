@@ -166,8 +166,6 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
         spark_idx = rebased(idx, b0, e)
         pos = _sample_positions(0, len(spark_idx) - 1) if len(spark_idx) else []
         spark = [_f(spark_idx.iloc[i]) for i in pos[:: max(1, len(pos) // 40)]] if len(spark_idx) else []
-        fx_now = float(ctx.fx.iloc[-1]) if ctx.fx is not None and len(ctx.fx) else None
-        to_usd = 1.0 if ctx.base == "USD" else (1.0 / fx_now if fx_now else None)
         row.update({
             "value": _f(s.value.iloc[e]),
             "realized": _f(realized_summary(ctx)["total"]),
@@ -186,7 +184,7 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
             "since_vs_spy": _f(since_ret - since_spy) if since_spy is not None and since_ret is not None else None,
             "trading_days": int(e - b0),
             "spark": spark,
-            "cost_gain_usd": _f(cost["gain"] * to_usd) if to_usd else None,
+            "cost_gain_amt": _f(cost["gain"]),  # in the display currency
             "last_activity": max(t.date for t in ctx.txs).isoformat(),
         })
         contexts.append(ctx)
@@ -238,8 +236,6 @@ def insights(session: Session, contexts: list, names: dict[int, str]) -> list[di
     if not contexts:
         return []
     base = contexts[0].base
-    fx_now = float(contexts[0].fx.iloc[-1]) if contexts[0].fx is not None and len(contexts[0].fx) else None
-    to_usd = 1.0 if base == "USD" else (1.0 / fx_now if fx_now else 1.0)
     gain: dict[str, float] = {}
     holders: dict[str, list[str]] = {}
     value: dict[str, float] = {}
@@ -258,7 +254,7 @@ def insights(session: Session, contexts: list, names: dict[int, str]) -> list[di
             value[t] = value.get(t, 0.0) + v
             holders.setdefault(t, []).append(names.get(c.pid, str(c.pid)))
             if t not in c.missing:
-                gain[t] = gain.get(t, 0.0) + position_gain(c, t)["gain_base"] * to_usd
+                gain[t] = gain.get(t, 0.0) + position_gain(c, t)["gain_base"]
             meta = metas.get(t)
             w = v / total if total > 0 else 0.0
             if meta is None or (meta.type or "") not in ("ETF", "Fund"):
@@ -282,8 +278,8 @@ def insights(session: Session, contexts: list, names: dict[int, str]) -> list[di
         n = clean_name(metas[t].name, t) if t in metas and metas[t].name else t
         return f" ({n})" if n and n.upper() != t else ""
 
-    def usd(v: float) -> str:
-        return f"{'+' if v > 0 else '−'}${abs(v):,.0f}"
+    def usd(v: float) -> str:  # an amount in the display currency
+        return f"{'+' if v > 0 else '−'}{'$' if base == 'USD' else '₪'}{abs(v):,.0f}"
 
     if gain:
         best = max(gain, key=gain.get)

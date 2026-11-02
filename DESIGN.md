@@ -59,7 +59,7 @@ Weights: 400 body, 500 labels/buttons, 600 tickers and emphasis. Headline senten
 key figures at 600. No serif, no gradient text, letter-spacing −0.015em on 24px and up.
 
 Number formatting (`src/lib/format.ts`): currency symbol + thousands separators; percentages to
-1 decimal in prose and 2 in tables; signed values always show + or −. Compact form (₪1.2M) only in
+1 decimal in prose and 2 in tables; signed values always show + or −. Compact form ($1.2M) only in
 the headline sentence.
 
 ## Spacing

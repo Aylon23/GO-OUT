@@ -112,7 +112,7 @@ interface Pick { item: SymbolItem; weight: string }
 
 export function CustomSim() {
   const { settings } = useApp();
-  const base = settings?.base_currency ?? "ILS";
+  const base = settings?.base_currency ?? "USD";
   const [picks, setPicks] = useState<Pick[]>([]);
   const [start, setStart] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() - 5); return d.toISOString().slice(0, 10); });
   const [initial, setInitial] = useState("10000");

@@ -4,7 +4,7 @@ the numbers from its own price data.
 - History per company: for each of the last 8 reports, the reaction-day move (previous close to the close
   of the first session after the report), the 5- and 20-trading-day moves from the same previous close,
   and whether the first-day direction held for 20 days.
-- Family impact: who holds it and the shekel P&L of the report move; related holdings (listed in the brief,
+- Family impact: who holds it and the P&L of the report move (in the display currency, no currency effect); related holdings (listed in the brief,
   or in the same sector) with their expected move from their weekly-return beta to the company.
 - Prediction journal: the outlook's direction is scored after 5 and 20 trading days from the reaction close.
 """
@@ -143,28 +143,28 @@ def history(session: Session, symbol: str, before: dt.date, k: int = HISTORY) ->
 # ------------------------------------------------------------------ family impact
 
 def family_impact(session: Session, symbol: str, reaction: float | None, related: list[str]) -> dict:
-    """Holders' shekel P&L from the report move, and expected moves of related family holdings."""
+    """Holders' P&L from the report move (display currency), and expected moves of related family holdings."""
     from .factors import holding_returns, sector_of
     from .scenarios import books
 
     ports, family = books(session, None)
     base = services.get_settings(session).base_currency
     fx = services.fx_series(session)
-    to_ils = float(fx.iloc[-1]) if base == "USD" and len(fx) else 1.0
+    to_amt = 1.0  # amounts in the display currency
     holders, exposure = [], 0.0
     for b in ports:
         h = next((x for x in b.holdings if x.symbol == symbol), None)
         if h is None:
             continue
-        value_ils = h.value * to_ils
-        exposure += value_ils
+        value_amt = h.value * to_amt
+        exposure += value_amt
         # today's value is after the move: the move's P&L is value x r / (1 + r)
-        pnl = value_ils * reaction / (1 + reaction) if reaction is not None else None
-        holders.append({"id": b.pid, "name": b.name, "value_ils": value_ils, "pnl_ils": pnl, "weight": h.value / b.value})
+        pnl = value_amt * reaction / (1 + reaction) if reaction is not None else None
+        holders.append({"id": b.pid, "name": b.name, "value_amt": value_amt, "pnl_amt": pnl, "weight": h.value / b.value})
     related_rows = []
     if reaction is not None:
         today = dt.date.today()
-        rc = holding_returns(session, symbol, today).get("usd")
+        rc = holding_returns(session, symbol, today).get("local")
         sec = sector_of(session, symbol)
         for h in family.holdings:
             if h.symbol == symbol:
@@ -173,7 +173,7 @@ def family_impact(session: Session, symbol: str, reaction: float | None, related
             same_sector = sec is not None and sector_of(session, h.symbol) == sec
             if not (listed or same_sector) or rc is None:
                 continue
-            rh = holding_returns(session, h.symbol, today).get("usd")
+            rh = holding_returns(session, h.symbol, today).get("local")
             if rh is None:
                 continue
             df = pd.concat([rh, rc], axis=1, join="inner").dropna().tail(104)
@@ -184,11 +184,11 @@ def family_impact(session: Session, symbol: str, reaction: float | None, related
             if abs(move) < 0.001:
                 continue
             related_rows.append({"symbol": h.symbol, "name": h.name, "why": "listed in the brief" if listed else "same sector",
-                                 "beta": beta, "expected_move": move, "expected_ils": h.value * to_ils * move,
+                                 "beta": beta, "expected_move": move, "expected_amt": h.value * to_amt * move,
                                  "holders": [b.name for b in ports if any(x.symbol == h.symbol for x in b.holdings)]})
-    related_rows.sort(key=lambda r: r["expected_ils"])
-    total = sum(x["pnl_ils"] for x in holders if x["pnl_ils"] is not None)
-    return {"holders": holders, "exposure_ils": exposure, "pnl_ils": total if holders else None, "related": related_rows}
+    related_rows.sort(key=lambda r: r["expected_amt"])
+    total = sum(x["pnl_amt"] for x in holders if x["pnl_amt"] is not None)
+    return {"holders": holders, "exposure_amt": exposure, "pnl_amt": total if holders else None, "related": related_rows}
 
 
 # ------------------------------------------------------------------ import and journal
@@ -321,7 +321,7 @@ def brief_payload(session: Session, day: dt.date | None = None) -> dict:
                       "bigger_than_share": percentile, "impact": impact,
                       "journal": {"score_5d": it.score_5d, "score_20d": it.score_20d, "score": it.score, "move_5d": it.move_5d, "move_20d": it.move_20d},
                       "rank": TOP100.index(sym) if sym in TOP100 else len(TOP100)})
-    cards.sort(key=lambda x: (-x["impact"]["exposure_ils"], x["rank"]))
+    cards.sort(key=lambda x: (-x["impact"]["exposure_amt"], x["rank"]))
     return {"date": day.isoformat(), "dates": ds, "companies": cards, "last_trading_day": last}
 
 

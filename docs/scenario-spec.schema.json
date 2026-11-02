@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Aylon23/GO-OUT/docs/scenario-spec.schema.json",
   "title": "Scenario Spec",
-  "description": "A researched scenario, written outside the app (Claude chat or a scheduled task) and imported. Moves are in percent (-12.5 means -12.5%) over the horizon. Factor ids match the app's factor model.",
+  "description": "A researched scenario, written outside the app (Claude chat or a scheduled task) and imported. Moves are in percent (-12.5 means -12.5%) over the horizon, each in the asset's own currency: the app measures stock performance only, so there are no currency factors. Factor ids match the app's factor model.",
   "type": "object",
   "required": ["spec_version", "kind", "id", "title", "created_at", "author", "question", "horizon", "summary", "branches", "confidence"],
   "additionalProperties": false,
@@ -54,7 +54,7 @@
   },
   "$defs": {
     "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
-    "factor_id": { "enum": ["market", "size", "value", "momentum", "quality", "rates", "oil", "dollar", "shekel", "gold"] },
+    "factor_id": { "enum": ["market", "size", "value", "momentum", "quality", "rates", "oil", "gold"] },
     "sector_etf": { "enum": ["XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC"] },
     "range": {
       "type": "object",

@@ -32,21 +32,21 @@ def fam(session):
 def test_options_long_only_and_capped(fam):
     out = actions.actions(fam.session, EXAMPLE, n=2000)
     assert [p["name"] for p in out["people"]] and set(out["rank_expected"]) == {p["id"] for p in out["people"]}
-    fam_value = sum(p["value_ils"] for p in out["people"])
+    fam_value = sum(p["value_amt"] for p in out["people"])
     for p in out["people"]:
         kinds = [o["kind"] for o in p["options"]]
         assert kinds[-1] == "nothing" and len(kinds) <= 4
         assert set(kinds) <= {"trim", "rebalance", "add", "cash", "nothing"}
         for o in p["options"]:
-            assert o["amount"] <= 0.5 * p["value_ils"] + 1e-6 and o["amount"] <= fam_value + 1e-6
-            assert o["share_of_portfolio"] == pytest.approx(o["amount"] / p["value_ils"])
-            assert o["cost_ils"] >= 0
+            assert o["amount"] <= 0.5 * p["value_amt"] + 1e-6 and o["amount"] <= fam_value + 1e-6
+            assert o["share_of_portfolio"] == pytest.approx(o["amount"] / p["value_amt"])
+            assert o["cost_amt"] >= 0
             if o["kind"] in ("trim", "rebalance", "cash"):  # selling into cash never raises the largest weight
                 assert o["top_weight_after"] <= o["top_weight_before"] + 1e-9
             if o["kind"] != "nothing":
-                assert o["benefit_ils"] > 0
+                assert o["benefit_amt"] > 0
     # ranking by bad case is by the 5th percentile
-    bad = {p["id"]: p["bad_ils"] for p in out["people"]}
+    bad = {p["id"]: p["bad_amt"] for p in out["people"]}
     assert out["rank_bad"] == sorted(bad, key=bad.get)
 
 
@@ -56,13 +56,13 @@ def test_message_has_only_numbers_from_the_result(fam):
         msg = p["message"]
         allowed = {"1", "20"}  # "1 מתוך 20"
         allowed |= {str(i) for i in range(1, 6)}  # option numbers
-        for v in (p["median_ils"], p["bad_ils"]):
-            allowed.add(actions.ils_he(v).split(" ")[0])
+        for v in (p["median_amt"], p["bad_amt"]):
+            allowed.add(actions.amt_he(v, p["currency"]).split(" ")[0])
         for v in (p["median"],):
             allowed.add(actions.pct_he(v).rstrip("%"))
         for o in p["options"]:
-            allowed |= {actions.ils_he(o["amount"]).split(" ")[0], actions.ils_he(o["benefit_ils"]).split(" ")[0],
-                        actions.ils_he(o["cost_ils"]).split(" ")[0], actions.pct_he(o["share_of_portfolio"]).rstrip("%")}
+            allowed |= {actions.amt_he(o["amount"], p["currency"]).split(" ")[0], actions.amt_he(o["benefit_amt"], p["currency"]).split(" ")[0],
+                        actions.amt_he(o["cost_amt"], p["currency"]).split(" ")[0], actions.pct_he(o["share_of_portfolio"]).rstrip("%")}
             if o["kind"] == "rebalance":
                 allowed.add(f"{o['target'] * 100:.0f}")
         for sym in [h["symbol"] for h in p["drivers_holdings"]] + [o.get("symbol", "") for o in p["options"]]:
@@ -87,7 +87,9 @@ def test_new_money_ranking_is_stable_and_robust_first(fam):
     flags = [r["robust"] for r in a["rows"]]
     assert flags == sorted(flags, reverse=True)  # robust candidates first
     top = a["rows"][0]
-    assert top["expected_ils"] == pytest.approx(20000 * top["expected"])
+    # 20,000 ₪ is shown in the display currency (USD) at today's rate; the percentage is unchanged
+    assert a["amount_amt"] == pytest.approx(20000 / services.fx_series(fam.session).iloc[-1])
+    assert top["expected_amt"] == pytest.approx(a["amount_amt"] * top["expected"])
     assert set(top["by_scenario"]) == {"normal", EXAMPLE["id"]}
     person = actions.new_money(fam.session, 20000, "ILS", person=fam.pid2, n=500)
     assert all("weight_after" in r for r in person["rows"])

@@ -69,7 +69,7 @@ export function PortfolioChart({ series, base, labels = {}, animateKey, rangeCon
         ) : <SeriesChart ariaLabel={desc} dates={series.dates} series={defs} format={format} short={short} end={end} baseline={baseline} animateKey={`${animateKey}-${view}`} height={340} />}
       </div>
       <p className="mt-2 text-xs text-faint">
-        {note ?? (view === "performance" ? `Time-weighted, so deposits and withdrawals don't move the line. Benchmarks include dividends. All in ${base === "USD" ? "dollars" : "shekels"}.`
+        {note ?? (view === "performance" ? `Time-weighted, so deposits and withdrawals don't move the line. Benchmarks include dividends. Stock performance only, currency effects excluded.`
           : view === "drawdown" ? "How far each line sat below its previous high."
           : "Net deposits step up when money goes in and down when it comes out.")}
       </p>

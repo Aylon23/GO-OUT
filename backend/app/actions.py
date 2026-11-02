@@ -26,9 +26,9 @@ REBALANCE_TO = 0.15
 CASH_SHARE = 0.25
 LONG_HEDGES = ["TLT", "IEF", "GLD"]
 FACTOR_HE = {"market": "שוק המניות", "size": "מניות קטנות", "value": "ערך מול צמיחה", "momentum": "מומנטום", "quality": "איכות",
-             "rates": "אג״ח ארוכות", "oil": "נפט", "dollar": "הדולר", "shekel": "שער הדולר-שקל", "gold": "זהב"}
+             "rates": "אג״ח ארוכות", "oil": "נפט", "gold": "זהב"}
 FACTOR_EN = {"market": "the stock market", "size": "small caps", "value": "value vs growth", "momentum": "momentum", "quality": "quality",
-             "rates": "long bonds", "oil": "oil", "dollar": "the dollar", "shekel": "USD/ILS", "gold": "gold"}
+             "rates": "long bonds", "oil": "oil", "gold": "gold"}
 
 
 def _fname(f: str, he: bool = False) -> str:
@@ -56,7 +56,7 @@ def actions(session: Session, spec: dict, regime: str | None = None, edits: list
     if res.get("empty"):
         return {"empty": True}
     base = res["base_currency"]
-    to_ils = res["usd_ils"] if base == "USD" else 1.0
+    to_amt = 1.0  # amounts are already in the display currency
     ports, family = books(session, None)
     syms = [h.symbol for h in family.holdings]
     probs = np.array([b["probability"] for b in res["branches"]])
@@ -79,11 +79,11 @@ def actions(session: Session, spec: dict, regime: str | None = None, edits: list
     for b in ports:
         stats = next(x for x in res["blended"] if x["id"] == b.pid)
         key = str(b.pid)
-        value_ils = b.value * to_ils
-        held = {h.symbol: h.value * to_ils for h in b.holdings}
+        value_amt = b.value * to_amt
+        held = {h.symbol: h.value * to_amt for h in b.holdings}
         invested = sum(held.values())
-        cash_ils = value_ils - invested
-        cap = min(CAP_SHARE * value_ils, family.value * to_ils)
+        cash_amt = value_amt - invested
+        cap = min(CAP_SHARE * value_amt, family.value * to_amt)
 
         def inv_move(moves: np.ndarray) -> float:
             return sum(v * moves[idx[s]] for s, v in held.items()) / invested if invested > 0 else 0.0
@@ -92,9 +92,9 @@ def actions(session: Session, spec: dict, regime: str | None = None, edits: list
 
         def add(kind: str, title: str, amount: float, after: dict[str, float], effect_exp: float, effect_other: float, **extra):
             amount = min(amount, cap)
-            conc0, conc1 = concentration(held, value_ils), concentration(after, value_ils)
-            options.append({"kind": kind, "title": title, "amount": amount, "share_of_portfolio": amount / value_ils,
-                            "benefit_ils": effect_exp, "cost_ils": max(0.0, -effect_other), "other_ils": effect_other,
+            conc0, conc1 = concentration(held, value_amt), concentration(after, value_amt)
+            options.append({"kind": kind, "title": title, "amount": amount, "share_of_portfolio": amount / value_amt,
+                            "benefit_amt": effect_exp, "cost_amt": max(0.0, -effect_other), "other_amt": effect_other,
                             "top_weight_before": conc0["top_weight"], "top_weight_after": conc1["top_weight"],
                             "effective_before": conc0["effective"], "effective_after": conc1["effective"], **extra})
 
@@ -104,7 +104,7 @@ def actions(session: Session, spec: dict, regime: str | None = None, edits: list
             amt = min(held[s] / 2, cap)
             after = {**held, s: held[s] - amt}
             add("trim", f"Trim {s} by half", amt, after, amt * -expected[idx[s]] + amt * cash_exp, amt * -other[idx[s]] + amt * other_cash, symbol=s)
-        over = {s: v - REBALANCE_TO * value_ils for s, v in held.items() if v > REBALANCE_TO * value_ils and expected[idx[s]] < -0.001}
+        over = {s: v - REBALANCE_TO * value_amt for s, v in held.items() if v > REBALANCE_TO * value_amt and expected[idx[s]] < -0.001}
         if over:
             amt = min(sum(over.values()), cap)
             sc = amt / sum(over.values())
@@ -120,7 +120,7 @@ def actions(session: Session, spec: dict, regime: str | None = None, edits: list
         if best_add and invested > 0:
             a, gain = best_add
             loss_exp = -sum(v * expected[idx[s]] for s, v in held.items())
-            amt = min(max(loss_exp, 0) / gain if gain > 0 else 0, cap) or min(0.1 * value_ils, cap)
+            amt = min(max(loss_exp, 0) / gain if gain > 0 else 0, cap) or min(0.1 * value_amt, cap)
             amt = min(amt, cap)
             frac = amt / invested
             after = {**{s: v * (1 - frac) for s, v in held.items()}, a: held.get(a, 0) + amt}
@@ -129,15 +129,15 @@ def actions(session: Session, spec: dict, regime: str | None = None, edits: list
             amt = min(CASH_SHARE * invested, cap)
             after = {s: v * (1 - amt / invested) for s, v in held.items()}
             add("cash", "Raise cash: sell a quarter of every holding", amt, after, amt * (cash_exp - inv_move(expected)), amt * (other_cash - inv_move(other)))
-        options = [o for o in options if o["benefit_ils"] > 0]
-        options.sort(key=lambda o: -(o["benefit_ils"] - 0.5 * o["cost_ils"]))
+        options = [o for o in options if o["benefit_amt"] > 0]
+        options.sort(key=lambda o: -(o["benefit_amt"] - 0.5 * o["cost_amt"]))
         options = options[:3]
-        c0 = concentration(held, value_ils)
-        options.append({"kind": "nothing", "title": "Do nothing", "amount": 0.0, "share_of_portfolio": 0.0, "benefit_ils": 0.0, "cost_ils": 0.0,
-                        "other_ils": 0.0, "top_weight_before": c0["top_weight"], "top_weight_after": c0["top_weight"],
+        c0 = concentration(held, value_amt)
+        options.append({"kind": "nothing", "title": "Do nothing", "amount": 0.0, "share_of_portfolio": 0.0, "benefit_amt": 0.0, "cost_amt": 0.0,
+                        "other_amt": 0.0, "top_weight_before": c0["top_weight"], "top_weight_after": c0["top_weight"],
                         "effective_before": c0["effective"], "effective_after": c0["effective"]})
         hrows = res["holdings"].get(key, [])
-        drivers_h = [h for h in hrows if h["change_ils"] < 0][:2] if stats["median"] < 0 else sorted(hrows, key=lambda h: -h["change_ils"])[:2]
+        drivers_h = [h for h in hrows if h["change_amt"] < 0][:2] if stats["median"] < 0 else sorted(hrows, key=lambda h: -h["change_amt"])[:2]
         drivers_f = res["drivers"].get(key, [])
         drivers_f = drivers_f[:2] if stats["median"] < 0 else sorted(drivers_f, key=lambda d: -d["effect"])[:2]
         if stats["median"] < 0:
@@ -145,22 +145,22 @@ def actions(session: Session, spec: dict, regime: str | None = None, edits: list
                     f"{', mostly through ' + ' and '.join(_fname(d['factor']) for d in drivers_f) if drivers_f else ''}.")
         else:
             line = f"{b.name} comes out ahead here, mainly from {' and '.join(h['symbol'] for h in drivers_h) or 'the holdings overall'}."
-        person = {"id": b.pid, "name": b.name, "value_ils": value_ils, "expected_ils": stats["mean"] * value_ils, "expected": stats["mean"],
-                  "median_ils": stats["median_ils"], "median": stats["median"], "bad_ils": stats["p5_ils"], "bad": stats["p5"],
-                  "drivers_holdings": [{"symbol": h["symbol"], "change_ils": h["change_ils"], "move": h["move"]} for h in drivers_h],
+        person = {"id": b.pid, "name": b.name, "currency": base, "value_amt": value_amt, "expected_amt": stats["mean"] * value_amt, "expected": stats["mean"],
+                  "median_amt": stats["median_amt"], "median": stats["median"], "bad_amt": stats["p5_amt"], "bad": stats["p5"],
+                  "drivers_holdings": [{"symbol": h["symbol"], "change_amt": h["change_amt"], "move": h["move"]} for h in drivers_h],
                   "drivers_factors": drivers_f, "line": line, "options": options, "other_label": other_label}
         person["message"] = draft_message(person, spec)
         people.append(person)
-    by_expected = [p["id"] for p in sorted(people, key=lambda p: p["expected_ils"])]
-    by_bad = [p["id"] for p in sorted(people, key=lambda p: p["bad_ils"])]
+    by_expected = [p["id"] for p in sorted(people, key=lambda p: p["expected_amt"])]
+    by_bad = [p["id"] for p in sorted(people, key=lambda p: p["bad_amt"])]
     return {"empty": False, "title": spec.get("title", ""), "title_he": spec.get("title_he", ""), "horizon": spec.get("horizon"),
             "people": people, "rank_expected": by_expected, "rank_bad": by_bad, "other_label": other_label}
 
 
 # ------------------------------------------------------------------ the message draft
 
-def ils_he(v: float) -> str:
-    return f"{abs(v):,.0f} ₪"
+def amt_he(v: float, currency: str = "USD") -> str:
+    return f"{abs(v):,.0f} {'$' if currency == 'USD' else '₪'}"
 
 
 def pct_he(v: float) -> str:
@@ -172,9 +172,9 @@ def draft_message(p: dict, spec: dict) -> str:
     title = spec.get("title_he") or spec.get("title") or "התרחיש"
     lines = [f"היי {p['name']},", f"בדקתי מה יקרה לתיק שלך אם יתממש התרחיש \"{title}\"."]
     if p["median"] < 0:
-        lines.append(f"בתרחיש הסביר התיק יורד בכ-{ils_he(p['median_ils'])} ({pct_he(p['median'])}), ובמקרה רע (1 מתוך 20) הירידה יכולה להגיע ל-{ils_he(p['bad_ils'])}.")
+        lines.append(f"בתרחיש הסביר התיק יורד בכ-{amt_he(p['median_amt'], p.get('currency', 'USD'))} ({pct_he(p['median'])}), ובמקרה רע (1 מתוך 20) הירידה יכולה להגיע ל-{amt_he(p['bad_amt'], p.get('currency', 'USD'))}.")
     else:
-        lines.append(f"בתרחיש הסביר התיק עולה בכ-{ils_he(p['median_ils'])} ({pct_he(p['median'])}). במקרה רע (1 מתוך 20) השינוי הוא {'-' if p['bad_ils'] < 0 else '+'}{ils_he(p['bad_ils'])}.")
+        lines.append(f"בתרחיש הסביר התיק עולה בכ-{amt_he(p['median_amt'], p.get('currency', 'USD'))} ({pct_he(p['median'])}). במקרה רע (1 מתוך 20) השינוי הוא {'-' if p['bad_amt'] < 0 else '+'}{amt_he(p['bad_amt'], p.get('currency', 'USD'))}.")
     if p["drivers_holdings"]:
         names = " ו-".join(h["symbol"] for h in p["drivers_holdings"])
         via = " ו".join(_fname(d["factor"], he=True) for d in p["drivers_factors"])
@@ -185,8 +185,8 @@ def draft_message(p: dict, spec: dict) -> str:
         he = {"trim": lambda o: f"לממש חצי מ-{o['symbol']}", "rebalance": lambda o: f"להקטין את {', '.join(o['symbols'])} ל-{o['target'] * 100:.0f}% מהתיק",
               "add": lambda o: f"להעביר חלק ל-{o['symbol']}", "cash": lambda o: "להגדיל מזומן (רבע מכל החזקה)"}
         for i, o in enumerate(opts, 1):
-            lines.append(f"{i}. {he[o['kind']](o)}: בערך {ils_he(o['amount'])} ({pct_he(o['share_of_portfolio'])} מהתיק). חוסך כ-{ils_he(o['benefit_ils'])} אם זה קורה"
-                         + (f", ועולה כ-{ils_he(o['cost_ils'])} אם זה הולך לכיוון השני." if o["cost_ils"] > 0.5 else "."))
+            lines.append(f"{i}. {he[o['kind']](o)}: בערך {amt_he(o['amount'], p.get('currency', 'USD'))} ({pct_he(o['share_of_portfolio'])} מהתיק). חוסך כ-{amt_he(o['benefit_amt'], p.get('currency', 'USD'))} אם זה קורה"
+                         + (f", ועולה כ-{amt_he(o['cost_amt'], p.get('currency', 'USD'))} אם זה הולך לכיוון השני." if o["cost_amt"] > 0.5 else "."))
         lines.append(f"{len(opts) + 1}. לא לעשות כלום.")
     else:
         lines.append("לא נראה שצריך לעשות משהו כרגע.")
@@ -243,7 +243,8 @@ def new_money(session: Session, amount: float, currency: str = "ILS", person: in
               scenarios: list[dict] | None = None, weights: dict[str, float] | None = None, n: int = 3000, seed: int = impact.SEED) -> dict:
     base = services.get_settings(session).base_currency
     fx = impact._fx_now(session)
-    amount_ils = amount * fx if currency == "USD" else amount
+    # the amount in the display currency, at today's rate (no currency effect on any return)
+    amount_amt = amount if currency == base else (amount * fx if currency == "USD" else amount / fx)
     cands = candidates(session)
     exp = factors.exposures(session, cands)
     specs = saved_specs(session) if scenarios is None else scenarios
@@ -274,10 +275,10 @@ def new_money(session: Session, amount: float, currency: str = "ILS", person: in
         ok = sum(1 for m in meds if m >= ROBUST_FLOOR)
         rows.append({"symbol": c, "score": score, "robust_count": ok, "branches": len(meds), "robust": ok >= 2 * len(meds) / 3,
                      "expected": sum(total_w[k] * sc[k]["median"] for k in sc) / wsum,
-                     "worst_p5": min(per[c]["p5s"]), "expected_ils": amount_ils * sum(total_w[k] * sc[k]["median"] for k in sc) / wsum,
-                     "bad_ils": amount_ils * min(per[c]["p5s"]),
+                     "worst_p5": min(per[c]["p5s"]), "expected_amt": amount_amt * sum(total_w[k] * sc[k]["median"] for k in sc) / wsum,
+                     "bad_amt": amount_amt * min(per[c]["p5s"]),
                      "by_scenario": {k: v["median"] for k, v in sc.items()},
-                     "low_confidence": (exp[c]["ils"]["r2"] or 0) < factors.LOW_R2, "short_history": exp[c]["ils"]["short_history"]})
+                     "low_confidence": (exp[c]["local"]["r2"] or 0) < factors.LOW_R2, "short_history": exp[c]["local"]["short_history"]})
     rows.sort(key=lambda r: (-r["robust"], -r["robust_count"] / max(r["branches"], 1), -r["score"]))
     note = None
     if not specs:
@@ -287,11 +288,11 @@ def new_money(session: Session, amount: float, currency: str = "ILS", person: in
         if ports:
             b = ports[0]
             held = {h.symbol: h.value for h in b.holdings}
-            add_base = amount_ils / (fx if base == "USD" else 1.0)
+            add_base = amount_amt
             for r in rows:
                 after = {**held, r["symbol"]: held.get(r["symbol"], 0) + add_base}
                 r["weight_after"] = after[r["symbol"]] / (b.value + add_base)
-    return {"amount": amount, "currency": currency, "amount_ils": amount_ils, "person": person,
+    return {"amount": amount, "currency": currency, "amount_amt": amount_amt, "person": person,
             "scenarios": [{"id": c["id"], "title": c["title"], "weight": total_w[c["id"]] / wsum} for c in cols],
             "rows": rows, "top": rows[:10], "note": note, "seed": seed, "n": n,
             "method": f"Each candidate is simulated under every scenario ({n:,} draws, seed {seed}) and under normal conditions. "

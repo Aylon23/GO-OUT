@@ -137,7 +137,7 @@ def parse_rules(text: str, companies: dict[str, str]) -> dict:
 
     shocks: dict[str, dict] = {}
     notes: list[str] = []
-    has_shekel = any(h[2] == "ILS=X" for h in hits)
+    currency_named = False
     carry_inv = False  # "yields of bonds rise": the rate word with no verb hands its meaning on
     for i, ((a, b, sym, inv), (before, after)) in enumerate(zip(hits, windows)):
         word = t[a:b].strip()
@@ -160,10 +160,9 @@ def parse_rules(text: str, companies: dict[str, str]) -> dict:
             move = abs(n) * d if n is not None else None
             shocks[sym] = {"symbol": sym, "kind": "stock", "direction": d, "move": move, "word": word, "event": kind}
             continue
-        if sym == "UUP" and has_shekel:
-            sym, inv = "ILS=X", False  # "the dollar strengthens against the shekel" = USD/ILS up
-        elif sym == "ILS=X" and _has_any(t, ["דולר", "dollar"]):
-            continue  # the dollar's own clause carries the move
+        if sym in ("ILS=X", "UUP"):
+            currency_named = True  # currency moves are left out: stock performance only
+            continue
         if carry_inv and sym == "TLT":
             inv = True
         carry_inv = False
@@ -191,4 +190,6 @@ def parse_rules(text: str, companies: dict[str, str]) -> dict:
         if prev and prev.get("move") is not None and move is None:
             continue
         shocks[sym] = {"symbol": sym, "kind": "factor", "direction": d, "move": move, "word": word}
+    if currency_named:
+        notes.append("Currency moves are left out: the app measures stock performance only, in each stock's own currency.")
     return {"themes": themes, "shocks": list(shocks.values()), "notes": notes}

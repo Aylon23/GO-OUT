@@ -1,7 +1,7 @@
 """Weekly and monthly reports per person, and a family summary, as a phone-sized image card and a short PDF.
 
 The numbers come from the same functions as the app's screens for the same date range (portfolio and
-holdings payloads with a custom range), converted to shekels at the end-of-period rate. Reports are made
+holdings payloads with a custom range): stock performance only, amounts in the display currency. Reports are made
 every Sunday (the week before) and on the 1st (the month before) while the app runs; missed ones are made on
 the next start. They go to me only: listed in the app and sent to my Telegram chat. Never to anyone else.
 """
@@ -75,21 +75,24 @@ def person_data(session: Session, pid: int, start: dt.date, end: dt.date, top_sc
     base = pp["base"]
     fx = services.fx_series(session)
     fx_end = float(fx[fx.index <= end].iloc[-1]) if len(fx[fx.index <= end]) else float(fx.iloc[-1])
-    to_ils = fx_end if base == "USD" else 1.0
+    to_amt = 1.0  # amounts in the display currency (today's rate only converts how they're shown)
     s = pp["summary"]
     bench = {b["symbol"]: b["twr"] for b in s["benchmarks"]}
     rows = [r for r in hp["rows"] if r.get("contribution") is not None and not r["closed"]]
     rows.sort(key=lambda r: r["contribution"])
     start_value = s["start_value"] or 0.0
     top = [{"symbol": r["ticker"], "name": r["name"], "return": r["range_return"], "contribution": r["contribution"],
-            "change_ils": r["contribution"] * start_value * to_ils} for r in reversed(rows[-3:]) if r["contribution"] > 0]
+            "change_amt": r["contribution"] * start_value * to_amt} for r in reversed(rows[-3:]) if r["contribution"] > 0]
     bottom = [{"symbol": r["ticker"], "name": r["name"], "return": r["range_return"], "contribution": r["contribution"],
-               "change_ils": r["contribution"] * start_value * to_ils} for r in rows[:3] if r["contribution"] < 0]
+               "change_amt": r["contribution"] * start_value * to_amt} for r in rows[:3] if r["contribution"] < 0]
     txs = session.exec(select(Transaction).where(Transaction.portfolio_id == pid, Transaction.date >= start, Transaction.date <= end)
                        .order_by(Transaction.date)).all()
     trades = [{"date": t.date.isoformat(), "type": t.type.value if hasattr(t.type, "value") else t.type, "ticker": t.ticker,
                "quantity": t.quantity, "price": t.price, "currency": t.currency} for t in txs if (t.type.value if hasattr(t.type, "value") else t.type) in ("BUY", "SELL")]
-    divs = sum((t.price or 0) * (fx_end if t.currency == "USD" else 1.0) for t in txs if (t.type.value if hasattr(t.type, "value") else t.type) == "DIVIDEND")
+    def conv(amount: float, ccy: str) -> float:
+        return amount if ccy == base else (amount * fx_end if ccy == "USD" else amount / fx_end)
+
+    divs = sum(conv(t.price or 0, t.currency) for t in txs if (t.type.value if hasattr(t.type, "value") else t.type) == "DIVIDEND")
     # dividends paid automatically from the price feed (when that setting is on): shares held on the day x amount
     import bisect
 
@@ -106,7 +109,7 @@ def person_data(session: Session, pid: int, start: dt.date, end: dt.date, top_sc
             for day, amt in d[(d.index >= start) & (d.index <= end) & (d > 0)].items():
                 i = bisect.bisect_right(dates, day) - 1
                 if i >= 0:
-                    auto += float(amt) * float(q[t].iloc[i]) * (fx_end if md.currency == "USD" else 1.0)
+                    auto += conv(float(amt) * float(q[t].iloc[i]), md.currency)
     recs = [r for r in call_rows(session) if r["closed_date"] is None and p.name in r["portfolios"]]
     change = s["range_gain"]
     twr = s["twr"]
@@ -114,10 +117,10 @@ def person_data(session: Session, pid: int, start: dt.date, end: dt.date, top_sc
     driver = None
     if lead is not None:
         driver = {"symbol": lead["symbol"], "contribution": lead["contribution"], "sp500": bench.get("SPY")}
-    out = {"id": pid, "name": p.name, "start": start.isoformat(), "end": end.isoformat(), "base": base, "to_ils": to_ils,
-           "value_ils": s["value"] * to_ils, "change_ils": change * to_ils if change is not None else None, "return": twr,
+    out = {"id": pid, "name": p.name, "start": start.isoformat(), "end": end.isoformat(), "base": base, "to_amt": to_amt,
+           "value_amt": s["value"] * to_amt, "change_amt": change * to_amt if change is not None else None, "return": twr,
            "sp500": bench.get("SPY"), "nasdaq": bench.get("QQQ"), "top": top, "bottom": bottom,
-           "dividends_ils": divs + auto, "trades": trades, "recommendations": [{"ticker": r["ticker"], "action": r["action"], "return": r["return"],
+           "dividends_amt": divs + auto, "trades": trades, "recommendations": [{"ticker": r["ticker"], "action": r["action"], "return": r["return"],
                                                                                   "edge": r["edge"], "worked": r["worked"]} for r in recs],
            "driver": driver, "range": pp["range"]}
     if top_scenario:
@@ -126,7 +129,7 @@ def person_data(session: Session, pid: int, start: dt.date, end: dt.date, top_sc
 
 
 def top_scenario_effects(session: Session) -> dict | None:
-    """The book's most likely scenario and its effect on each person (median, in shekels)."""
+    """The book's most likely scenario and its effect on each person (median, display currency)."""
     from . import actions, book, impact
 
     entries = [e for e in book.entries_of(book.current(session)) if float(e["probability"]) > 0]
@@ -143,7 +146,7 @@ def top_scenario_effects(session: Session) -> dict | None:
     out = {"title": s["title"], "probability": float(top["probability"])}
     for b in res["blended"]:
         if b["id"] is not None:
-            out[str(b["id"])] = {"title": s["title"], "probability": float(top["probability"]), "median": b["median"], "median_ils": b["median_ils"]}
+            out[str(b["id"])] = {"title": s["title"], "probability": float(top["probability"]), "median": b["median"], "median_amt": b["median_amt"]}
     return out
 
 
@@ -157,8 +160,9 @@ EN = {"weekly": "Weekly report", "monthly": "Monthly report", "value": "Portfoli
       "if": "If", "none": "None", "family": "Family summary", "advice": "Not investment advice", "people": "All portfolios"}
 
 
-def _ils(v):
-    return "–" if v is None else f"{'+' if v > 0.5 else '−' if v < -0.5 else ''}₪{abs(v):,.0f}"
+def _amt(v, currency: str = "USD"):
+    sym = "$" if currency == "USD" else "₪"
+    return "–" if v is None else f"{'+' if v > 0.5 else '−' if v < -0.5 else ''}{sym}{abs(v):,.0f}"
 
 
 def _pct(v, signed=True):
@@ -194,6 +198,7 @@ def _logo(sym: str) -> Path | None:
 
 
 def card(d: dict, kind: str, lang: str) -> bytes:
+    CCY = d["base"]
     he = lang == "he"
     T = HE if he else EN
     c = render.Canvas(1080, 1350, rtl=he, margin=64)
@@ -202,8 +207,8 @@ def card(d: dict, kind: str, lang: str) -> bytes:
     c.text(d["name"], 56, bold=True, gap=0)
     c.text(period_label(kind, d["start"], d["end"], he), 26, render.MUTED, gap=18)
     c.text(T["value"], 26, render.MUTED, gap=0)
-    c.text(_ils(d["value_ils"]).lstrip("+"), 64, bold=True, gap=0)
-    c.text(f"{_ils(d['change_ils'])}  ({_pct(d['return'])})", 40, render.sign_color(d["change_ils"]), bold=True, gap=10)
+    c.text(_amt(d["value_amt"], CCY).lstrip("+"), 64, bold=True, gap=0)
+    c.text(f"{_amt(d['change_amt'], CCY)}  ({_pct(d['return'])})", 40, render.sign_color(d["change_amt"]), bold=True, gap=10)
     c.pair(f"{T['vs']} S&P 500", _pct(d["sp500"]), 28, render.MUTED, render.sign_color(d["sp500"]))
     c.pair(f"{T['vs']} Nasdaq 100", _pct(d["nasdaq"]), 28, render.MUTED, render.sign_color(d["nasdaq"]))
     c.y += 6
@@ -218,17 +223,17 @@ def card(d: dict, kind: str, lang: str) -> bytes:
             c.logo(_logo(r["symbol"]), r["symbol"][:1], x_logo, y, 40)
             f = render.font(30)
             name = r["symbol"]
-            val = f"{_pct(r['return'])}  {_ils(r['change_ils'])}"
+            val = f"{_pct(r['return'])}  {_amt(r['change_amt'], CCY)}"
             if he:
                 render.draw(c.d, (1080 - 64 - 52 - render.measure(f, name), y + 2), name, f, render.TEXT)
-                render.draw(c.d, (64, y + 2), val, f, render.sign_color(r["change_ils"]))
+                render.draw(c.d, (64, y + 2), val, f, render.sign_color(r["change_amt"]))
             else:
                 render.draw(c.d, (64 + 52, y + 2), name, f, render.TEXT)
-                render.draw(c.d, (1080 - 64 - render.measure(f, val), y + 2), val, f, render.sign_color(r["change_ils"]))
+                render.draw(c.d, (1080 - 64 - render.measure(f, val), y + 2), val, f, render.sign_color(r["change_amt"]))
             c.y += 52
         c.y += 8
     c.rule()
-    c.pair(T["divs"], _ils(d["dividends_ils"]) if d["dividends_ils"] else T["none"], 28)
+    c.pair(T["divs"], _amt(d["dividends_amt"], CCY) if d["dividends_amt"] else T["none"], 28)
     c.pair(T["trades"], str(len(d["trades"])) if d["trades"] else T["none"], 28)
     if d["recommendations"]:
         c.pair(T["recs"], ", ".join(r["ticker"] for r in d["recommendations"][:4]), 28)
@@ -238,21 +243,22 @@ def card(d: dict, kind: str, lang: str) -> bytes:
         c.text(line, 28, render.TEXT, gap=6)
     if d.get("if"):
         x = d["if"]
-        c.text((f"אם {x['title']} ({_pct(x['probability'], False)} לפי הספר שלי): {_ils(x['median_ils'])} ({_pct(x['median'])})" if he
-                else f"If {x['title']} ({_pct(x['probability'], False)} in my book): {_ils(x['median_ils'])} ({_pct(x['median'])})"), 26, render.MUTED, gap=4)
+        c.text((f"אם {x['title']} ({_pct(x['probability'], False)} לפי הספר שלי): {_amt(x['median_amt'], CCY)} ({_pct(x['median'])})" if he
+                else f"If {x['title']} ({_pct(x['probability'], False)} in my book): {_amt(x['median_amt'], CCY)} ({_pct(x['median'])})"), 26, render.MUTED, gap=4)
     c.y = 1350 - 70
     c.text(f"Benchmark · {T['advice']}", 22, render.FAINT)
     return c.png()
 
 
 def pdf(d: dict, kind: str, lang: str) -> bytes:
+    CCY = d["base"]
     he = lang == "he"
     T = HE if he else EN
     doc = render.Document(rtl=he)
     doc.text(d["name"], 44, bold=True, gap=4)
     doc.text(period_label(kind, d["start"], d["end"], he), 24, render.MUTED, gap=20)
-    doc.text(f"{T['value']}: {_ils(d['value_ils']).lstrip('+')}", 30, bold=True)
-    doc.text(f"{T['change']}: {_ils(d['change_ils'])} ({_pct(d['return'])})", 28, render.sign_color(d["change_ils"]))
+    doc.text(f"{T['value']}: {_amt(d['value_amt'], CCY).lstrip('+')}", 30, bold=True)
+    doc.text(f"{T['change']}: {_amt(d['change_amt'], CCY)} ({_pct(d['return'])})", 28, render.sign_color(d["change_amt"]))
     doc.text(f"{T['vs']} S&P 500: {_pct(d['sp500'])} · {T['vs']} Nasdaq 100: {_pct(d['nasdaq'])}", 26, render.MUTED, gap=18)
     line = driver_line(d, he)
     if line:
@@ -260,11 +266,11 @@ def pdf(d: dict, kind: str, lang: str) -> bytes:
     for title, rows in ((T["best"], d["top"]), (T["worst"], d["bottom"])):
         doc.text(title, 28, render.ACCENT, bold=True)
         for r in rows or []:
-            doc.text(f"{r['symbol']} {r['name']}: {_pct(r['return'])}, {_ils(r['change_ils'])}", 24)
+            doc.text(f"{r['symbol']} {r['name']}: {_pct(r['return'])}, {_amt(r['change_amt'], CCY)}", 24)
         if not rows:
             doc.text(T["none"], 24, render.MUTED)
         doc.c.y += 10
-    doc.text(f"{T['divs']}: {_ils(d['dividends_ils']) if d['dividends_ils'] else T['none']}", 24)
+    doc.text(f"{T['divs']}: {_amt(d['dividends_amt'], CCY) if d['dividends_amt'] else T['none']}", 24)
     doc.text(T["trades"], 28, render.ACCENT, bold=True)
     for t in d["trades"] or []:
         doc.text(f"{t['date']} {t['type']} {t['quantity']:g} {t['ticker']} @ {t['price']:,.2f} {t['currency']}", 24)
@@ -278,13 +284,14 @@ def pdf(d: dict, kind: str, lang: str) -> bytes:
     if d.get("if"):
         x = d["if"]
         doc.c.y += 10
-        doc.text(f"{T['if']} {x['title']}: {_ils(x['median_ils'])} ({_pct(x['median'])})", 26, render.MUTED)
+        doc.text(f"{T['if']} {x['title']}: {_amt(x['median_amt'], CCY)} ({_pct(x['median'])})", 26, render.MUTED)
     doc.c.y += 20
     doc.text(T["advice"], 20, render.FAINT)
     return doc.bytes()
 
 
 def family_card(people: list[dict], insights: list[dict], kind: str, start: str, end: str, lang: str) -> bytes:
+    CCY = people[0]["base"] if people else "USD"
     he = lang == "he"
     T = HE if he else EN
     c = render.Canvas(1080, 1350, rtl=he, margin=64)
@@ -292,10 +299,10 @@ def family_card(people: list[dict], insights: list[dict], kind: str, start: str,
     c.y = 54
     c.text(T["family"], 56, bold=True, gap=0)
     c.text(period_label(kind, start, end, he), 26, render.MUTED, gap=18)
-    tot = sum(p["value_ils"] for p in people)
-    ch = sum(p["change_ils"] or 0 for p in people)
-    c.text(_ils(tot).lstrip("+"), 60, bold=True, gap=0)
-    c.text(_ils(ch), 40, render.sign_color(ch), bold=True, gap=14)
+    tot = sum(p["value_amt"] for p in people)
+    ch = sum(p["change_amt"] or 0 for p in people)
+    c.text(_amt(tot, CCY).lstrip("+"), 60, bold=True, gap=0)
+    c.text(_amt(ch, CCY), 40, render.sign_color(ch), bold=True, gap=14)
     c.rule()
     for p in sorted(people, key=lambda x: -(x["return"] or 0)):
         c.pair(p["name"], f"{_pct(p['return'])}   S&P {_pct(p['sp500'])}", 30, render.TEXT, render.sign_color(p["return"]))
@@ -309,13 +316,14 @@ def family_card(people: list[dict], insights: list[dict], kind: str, start: str,
 
 
 def family_pdf(people: list[dict], insights: list[dict], kind: str, start: str, end: str, lang: str) -> bytes:
+    CCY = people[0]["base"] if people else "USD"
     he = lang == "he"
     T = HE if he else EN
     doc = render.Document(rtl=he)
     doc.text(T["family"], 44, bold=True, gap=4)
     doc.text(period_label(kind, start, end, he), 24, render.MUTED, gap=20)
-    for p in sorted(people, key=lambda x: -(x["value_ils"] or 0)):
-        doc.text(f"{p['name']}: {_ils(p['value_ils']).lstrip('+')} · {_ils(p['change_ils'])} ({_pct(p['return'])}) · S&P {_pct(p['sp500'])} · Nasdaq {_pct(p['nasdaq'])}", 25)
+    for p in sorted(people, key=lambda x: -(x["value_amt"] or 0)):
+        doc.text(f"{p['name']}: {_amt(p['value_amt'], CCY).lstrip('+')} · {_amt(p['change_amt'], CCY)} ({_pct(p['return'])}) · S&P {_pct(p['sp500'])} · Nasdaq {_pct(p['nasdaq'])}", 25)
     doc.c.y += 14
     for i in insights:
         doc.text(i["text"], 24, render.MUTED)

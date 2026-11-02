@@ -72,7 +72,7 @@ def test_probabilities_order_and_unknown_factors(session, fake):
 def test_analog_verification_covid_window(session, fake):
     covid_frames(fake)
     assert specs.factor_move(session, "market", dt.date(2020, 2, 19), dt.date(2020, 3, 23)) == pytest.approx(-34.0)
-    assert specs.factor_move(session, "shekel", dt.date(2020, 2, 19), dt.date(2020, 3, 23)) == pytest.approx(5.0)
+    assert specs.factor_move(session, "shekel", dt.date(2020, 2, 19), dt.date(2020, 3, 23)) is None  # no currency factor
     spec = example()
     b = spec["branches"][0]
     b["factor_moves"] = {"market": {"low": 1, "mid": 5, "high": 9}, "oil": {"low": -1, "mid": 0, "high": 1}}

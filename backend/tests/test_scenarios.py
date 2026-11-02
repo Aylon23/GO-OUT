@@ -89,8 +89,8 @@ def test_weekly_returns_friday_to_friday():
     ("US bond yields rise 50bp", [("TLT", -1, -0.08)]),
     ("הפד מעלה ריבית ב-0.5%", [("TLT", -1, -0.08)]),
     ("ריבית יורדת", [("TLT", 1, None)]),
-    ("השקל מתחזק", [("ILS=X", -1, None)]),  # USD/ILS falls
-    ("the dollar strengthens against the shekel", [("ILS=X", 1, None)]),
+    ("השקל מתחזק", []),  # currency moves are left out
+    ("the dollar strengthens against the shekel", []),
     ("אפל ידווחו לא טוב", [("AAPL", -1, None)]),
     ("Apple beats earnings", [("AAPL", 1, None)]),
     ("מניות השבבים צונחות 15%", [("SOXX", -1, -0.15)]),
@@ -100,6 +100,12 @@ def test_weekly_returns_friday_to_friday():
 def test_rules_read_shocks(text, expect):
     got = [(s["symbol"], s["direction"], None if s["move"] is None else round(s["move"], 4)) for s in parse_rules(text, COMPANIES)["shocks"]]
     assert got == expect
+
+
+@pytest.mark.parametrize("text", ["השקל מתחזק", "the dollar strengthens against the shekel"])
+def test_currency_moves_are_left_out_with_a_note(text):
+    out = parse_rules(text, COMPANIES)
+    assert out["shocks"] == [] and any("stock performance only" in n for n in out["notes"])
 
 
 @pytest.mark.parametrize("text,theme", [

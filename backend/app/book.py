@@ -103,17 +103,17 @@ def run(session: Session, entries: list[dict], seed: int = impact.SEED, n: int =
             rows = branch_owner == sid
             if rows.any():
                 per.append({"scenario_id": sid, "title": titles[sid], "median": float(np.median(x[rows])), "share": float(rows.mean()),
-                            "median_ils": float(np.median(x[rows]) * b["value_ils"])})
+                            "median_amt": float(np.median(x[rows]) * b["value_amt"])})
         hurt = sorted([p for p in per if p["median"] < 0], key=lambda p: p["median"])
         helps = sorted([p for p in per if p["median"] > 0], key=lambda p: -p["median"])
-        positioning.append({"id": b["id"], "name": b["name"], "fragility": fragility, "fragility_ils": fragility * b["value_ils"],
+        positioning.append({"id": b["id"], "name": b["name"], "fragility": fragility, "fragility_amt": fragility * b["value_amt"],
                             "by_scenario": per, "hurts_most": hurt[:2], "helps_most": helps[:2]})
     people = [p for p in positioning if p["id"] is not None]
     most_fragile = max(people, key=lambda p: p["fragility"]) if people else None
     total = sum(float(e["probability"]) for e in entries)
     res.update({"entries": entries, "remainder": max(0.0, 1 - total), "positioning": positioning,
                 "most_fragile": {"id": most_fragile["id"], "name": most_fragile["name"], "fragility": most_fragile["fragility"],
-                                 "fragility_ils": most_fragile["fragility_ils"]} if most_fragile else None,
+                                 "fragility_amt": most_fragile["fragility_amt"]} if most_fragile else None,
                 "scenario_titles": titles})
     res["spec"] = {k: v for k, v in res["spec"].items() if k != "branches"} | {"branch_count": len(spec["branches"])}
     res.pop("holdings", None)
@@ -185,7 +185,7 @@ def compare(session: Session, a: int, b: int, n: int = 4000) -> dict:
         r = run(session, es, n=n)
         if r.get("empty"):
             return None
-        return {"answer": r["answer"], "blended": [{k: v for k, v in x.items() if k in ("id", "name", "median", "p5", "median_ils", "p5_ils")} for x in r["blended"]],
+        return {"answer": r["answer"], "blended": [{k: v for k, v in x.items() if k in ("id", "name", "median", "p5", "median_amt", "p5_amt")} for x in r["blended"]],
                 "most_fragile": r["most_fragile"]}
 
     return {"a": {"id": a, "created_at": va.created_at.isoformat(), "result": summary(ea)},

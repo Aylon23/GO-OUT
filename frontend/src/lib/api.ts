@@ -75,7 +75,7 @@ export interface OverviewRow {
   today_pct?: number | null; today_change?: number | null; tracking_since?: string; holdings?: number;
   period_start?: string; short_history?: boolean; return?: number | null; bench?: Record<string, number | null>;
   since_return?: number | null; since_spy?: number | null; since_vs_spy?: number | null; trading_days?: number; spark?: (number | null)[];
-  cost_gain_usd?: number | null; last_activity?: string;
+  cost_gain_amt?: number | null; last_activity?: string;
 }
 export interface Insight { kind: "winner" | "loser" | "shared" | "stock" | "sector"; tone: "gain" | "loss" | "warn" | "info"; text: string; symbol?: string }
 export interface Overview {
@@ -200,43 +200,43 @@ export interface SpecReport {
 }
 export interface SpecRow { id: string; title: string; title_he: string; horizon: string; branches: number; confidence: string; author: string; created_at: string; source: string; imported_at: string; warnings: number; spec?: ScenarioSpec; report?: SpecReport }
 export interface ImpactStats { id: number | null; name: string; median: number; p5: number; p95: number; prob_loss: number;
-  median_ils: number; p5_ils: number; p95_ils: number; mean: number; value_ils: number; mid?: number }
-export interface ImpactHoldingRow { symbol: string; name: string; weight: number; value_ils: number; move: number; change_ils: number;
+  median_amt: number; p5_amt: number; p95_amt: number; mean: number; value_amt: number; mid?: number }
+export interface ImpactHoldingRow { symbol: string; name: string; weight: number; value_amt: number; move: number; change_amt: number;
   why: { factor: string; effect: number }[]; own_news: boolean }
 export interface ImpactResult {
   empty: boolean; spec: ScenarioSpec & { branches: (SpecBranch & { holding_overrides?: Record<string, SpecRange> })[] };
-  n: number; seed: number; horizon: string; horizon_days: number; base_currency: Ccy; usd_ils: number;
+  n: number; seed: number; horizon: string; horizon_days: number; base_currency: Ccy;
   blended: ImpactStats[]; branches: { name: string; probability: number; cause: string; regime: "normal" | "selloff"; draws: number; books: ImpactStats[] }[];
   holdings: Record<string, ImpactHoldingRow[]>; histogram: { edges: number[]; counts: number[] };
   exposures: { family: Record<string, number> }; assumptions: string[]; warnings: string[];
-  answer: { median_ils: number; median: number; p5_ils: number; p5: number; prob_loss: number };
+  answer: { median_amt: number; median: number; p5_amt: number; p5: number; prob_loss: number };
   analogs?: (EventReplay & { branch: string; no_data?: boolean })[]; report?: SpecReport;
 }
 export type ImpactEdit = { branch: string; factor: string; mid: number };
 export interface ActionOption {
   kind: "trim" | "rebalance" | "add" | "cash" | "nothing"; title: string; amount: number; share_of_portfolio: number;
-  benefit_ils: number; cost_ils: number; other_ils: number; top_weight_before: number; top_weight_after: number;
+  benefit_amt: number; cost_amt: number; other_amt: number; top_weight_before: number; top_weight_after: number;
   effective_before: number; effective_after: number; symbol?: string; symbols?: string[];
 }
 export interface PersonActions {
-  id: number; name: string; value_ils: number; expected_ils: number; expected: number; median_ils: number; median: number; bad_ils: number; bad: number;
-  drivers_holdings: { symbol: string; change_ils: number; move: number }[]; drivers_factors: { factor: string; effect: number }[];
+  id: number; name: string; value_amt: number; expected_amt: number; expected: number; median_amt: number; median: number; bad_amt: number; bad: number;
+  drivers_holdings: { symbol: string; change_amt: number; move: number }[]; drivers_factors: { factor: string; effect: number }[];
   line: string; options: ActionOption[]; other_label: string; message: string;
 }
 export interface Actions { empty: boolean; title: string; horizon: string; people: PersonActions[]; rank_expected: number[]; rank_bad: number[]; other_label: string }
 export interface ActionsBody { spec_id?: string; shocks?: { symbol: string; kind: ShockKind; move: number }[]; horizon_weeks?: number; used_events?: string[]; text?: string; regime?: "normal" | "selloff" | null; edits?: ImpactEdit[] }
 export interface NewMoneyRow {
   symbol: string; score: number; robust_count: number; branches: number; robust: boolean; expected: number; worst_p5: number;
-  expected_ils: number; bad_ils: number; by_scenario: Record<string, number>; low_confidence: boolean; short_history: boolean; weight_after?: number;
+  expected_amt: number; bad_amt: number; by_scenario: Record<string, number>; low_confidence: boolean; short_history: boolean; weight_after?: number;
 }
-export interface NewMoney { amount: number; currency: Ccy; amount_ils: number; person: number | null; scenarios: { id: string; title: string; weight: number }[];
+export interface NewMoney { amount: number; currency: Ccy; amount_amt: number; person: number | null; scenarios: { id: string; title: string; weight: number }[];
   rows: NewMoneyRow[]; top: NewMoneyRow[]; note: string | null; method: string }
 export interface BookEntry { scenario_id: string; probability: number; title?: string }
-export interface BookPositioning { id: number | null; name: string; fragility: number; fragility_ils: number;
-  by_scenario: { scenario_id: string; title: string; median: number; share: number; median_ils: number }[];
+export interface BookPositioning { id: number | null; name: string; fragility: number; fragility_amt: number;
+  by_scenario: { scenario_id: string; title: string; median: number; share: number; median_amt: number }[];
   hurts_most: { title: string; median: number }[]; helps_most: { title: string; median: number }[] }
 export interface BookResult { empty: boolean; reason?: string; answer: ImpactResult["answer"]; blended: ImpactStats[]; remainder: number; horizon: string;
-  positioning: BookPositioning[]; most_fragile: { id: number; name: string; fragility: number; fragility_ils: number } | null; scenario_titles: Record<string, string>; n: number }
+  positioning: BookPositioning[]; most_fragile: { id: number; name: string; fragility: number; fragility_amt: number } | null; scenario_titles: Record<string, string>; n: number }
 export interface Signpost { scenario: string; branch: string; indicator: string; symbol?: string; condition: ">" | "<"; value: number; meaning: string;
   current: number | null; as_of: string | null; distance: number | null; status: "triggered" | "near" | "far" | "no data" | "not tracked" }
 export interface BookState { version: number | null; saved_at: string | null; entries: BookEntry[]; result: BookResult; signposts: Signpost[] }
@@ -253,20 +253,20 @@ export interface EarningsCard {
   beat: { revenue: string | null; eps: string | null }; today: EarningsMoves | null; bigger_than_share: number | null;
   history: { events: (EarningsMoves & { date: string })[]; summary: { n: number; reaction_avg: number; reaction_abs_avg: number; reaction_min: number; reaction_max: number;
     d5_avg: number; d20_avg: number; d20_min: number; d20_max: number; continued_share: number | null } | null };
-  impact: { holders: { id: number; name: string; value_ils: number; pnl_ils: number | null; weight: number }[]; exposure_ils: number; pnl_ils: number | null;
-    related: { symbol: string; name: string; why: string; beta: number; expected_move: number; expected_ils: number; holders: string[] }[] };
+  impact: { holders: { id: number; name: string; value_amt: number; pnl_amt: number | null; weight: number }[]; exposure_amt: number; pnl_amt: number | null;
+    related: { symbol: string; name: string; why: string; beta: number; expected_move: number; expected_amt: number; holders: string[] }[] };
   journal: { score_5d: string; score_20d: string; score: string; move_5d: number | null; move_20d: number | null };
 }
 export interface EarningsPayload { date: string | null; dates: string[]; companies: EarningsCard[]; last_trading_day: string }
 export interface EarningsJournal { rows: { date: string; symbol: string; name: string; confidence: string; move_5d: number | null; move_20d: number | null; score_5d: string; score_20d: string; score: string; scored: boolean }[];
   accuracy: Record<string, { d5: { n: number; hit: number | null }; d20: { n: number; hit: number | null }; overall: { n: number; hit: number | null } }> }
-export interface StressBook { id: number | null; name: string; impact: number | null; change_ils: number | null; estimated_share: number | null; missing_share: number }
+export interface StressBook { id: number | null; name: string; impact: number | null; change_amt: number | null; estimated_share: number | null; missing_share: number }
 export interface StressTest { id: string; name: string; start: string; end: string; data: boolean; used_start: string | null; used_end: string | null;
-  sp500_usd: number | null; sp500_ils: number | null; family: StressBook; portfolios: StressBook[]; worst: { symbol: string; move: number; estimated: boolean }[] }
+  sp500_usd: number | null; sp500_amt: number | null; family: StressBook; portfolios: StressBook[]; worst: { symbol: string; move: number; estimated: boolean }[] }
 export interface ReverseStress { empty: boolean; monthly_sd: number; results: { loss: number; sentence: string; sigmas: number; forward: number;
   top: { factor: string; move: number; sigmas: number }[]; closest: { id: string; name: string; family: number | null; similarity: number } | null }[] }
 export interface RiskBook { id: number | null; name: string; weeks: number; var_1w: number; cvar_1w: number; var_1m: number | null; cvar_1m: number | null;
-  var_1w_ils: number; cvar_1w_ils: number; var_1m_ils: number | null; cvar_1m_ils: number | null; holdings: number; effective_bets: number | null;
+  var_1w_amt: number; cvar_1w_amt: number; var_1m_amt: number | null; cvar_1m_amt: number | null; holdings: number; effective_bets: number | null;
   vol_annual: number; risk: { symbol: string; value_share: number; risk_share: number }[] }
 export interface Memo { empty: boolean; lang: "he" | "en"; title: string; date: string; sections: { n: number; title: string; lines: string[] }[] }
 export interface JournalPanel { rows: { id: number; title: string; start: string; end: string; predicted: { median: number; p5: number; p95: number };
@@ -275,11 +275,11 @@ export interface JournalPanel { rows: { id: number; title: string; start: string
   pending: number; band_scale: number; band_note: string; target: number }
 export interface ExposureFactor { id: string; label: string; he: string; tip: string; when: string; shock: number }
 export interface ExposureHolding {
-  symbol: string; name: string; weight: number; value: number; betas: Record<string, number>; betas_usd: Record<string, number>;
-  r2: number | null; r2_usd: number | null; resid_vol: number | null; weeks: number; short_history: boolean; low_confidence: boolean; sector: string;
+  symbol: string; name: string; weight: number; value: number; betas: Record<string, number>;
+  r2: number | null; resid_vol: number | null; weeks: number; short_history: boolean; low_confidence: boolean; sector: string;
 }
 export interface ExposureBook { id: number | null; name: string; value: number; cash_weight: number; betas: Record<string, number>; holdings: ExposureHolding[] }
-export interface Exposures { as_of: string; window_weeks: number; currency: "ILS"; factors: ExposureFactor[]; sectors: Record<string, string>; low_r2: number; books: ExposureBook[] }
+export interface Exposures { as_of: string; window_weeks: number; basis: "local"; factors: ExposureFactor[]; sectors: Record<string, string>; low_r2: number; books: ExposureBook[] }
 export interface ModelCheck {
   summary: { events: number; predictions: number; hit_rate: number | null; mae: number; mae_naive: number; in_range: number; family_mae: number; corr: number | null } | null;
   events: { id: string; name: string; start: string; end: string; story: string[]; holdings: number; family_predicted: number; family_actual: number; sp500: number; mae: number; mae_naive: number; hit_rate: number | null; in_range: number }[];
@@ -444,7 +444,7 @@ export const api = {
   earnings: (date?: string) => request<EarningsPayload>("GET", `/api/earnings${date ? `?date=${date}` : ""}`),
   earningsJournal: () => request<EarningsJournal>("GET", "/api/earnings/journal"),
   earningsImport: (text: string) => request<{ date: string; companies: number }>("POST", "/api/earnings/import", { text }),
-  stress: () => request<{ empty: boolean; tests: StressTest[]; value_ils: number }>("GET", "/api/stress"),
+  stress: () => request<{ empty: boolean; tests: StressTest[]; value_amt: number }>("GET", "/api/stress"),
   reverseStress: () => request<ReverseStress>("GET", "/api/stress/reverse"),
   riskSummary: () => request<{ empty: boolean; books: RiskBook[] }>("GET", "/api/risk/summary"),
   memo: (b: ActionsBody & { lang?: "he" | "en" }) => request<Memo>("POST", "/api/memo", b),

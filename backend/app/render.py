@@ -203,22 +203,23 @@ def memo_card(memo: dict) -> bytes:
     c.text(memo["title"], 50, bold=True, gap=10)
     a = memo["answer"]
     c.text(("התרחיש הסביר למשפחה" if he else "Most likely for the family"), 30, MUTED, gap=2)
-    c.text(f"{_ils(a['median_ils'])}  ({_pct(a['median'])})", 72, sign_color(a["median_ils"]), bold=True, gap=4)
-    c.text((f"במקרה רע (1 מתוך 20): {_ils(a['p5_ils'])}" if he else f"Bad case (1 in 20): {_ils(a['p5_ils'])}"), 32, MUTED, gap=28)
+    c.text(f"{_amt(a['median_amt'], memo.get('currency', 'USD'))}  ({_pct(a['median'])})", 72, sign_color(a["median_amt"]), bold=True, gap=4)
+    c.text((f"במקרה רע (1 מתוך 20): {_amt(a['p5_amt'], memo.get('currency', 'USD'))}" if he else f"Bad case (1 in 20): {_amt(a['p5_amt'], memo.get('currency', 'USD'))}"), 32, MUTED, gap=28)
     c.rule()
     for b in memo["branches"][:4]:
         c.pair(f"{b['name']}  {round(b['probability'] * 100)}%", _pct(b["median"]), 32, TEXT, sign_color(b["median"]))
     c.y += 10
     c.rule()
-    for p in sorted(memo["people"], key=lambda x: x["median_ils"])[:6]:
-        c.pair(p["name"], _ils(p["median_ils"]), 32, TEXT, sign_color(p["median_ils"]))
+    for p in sorted(memo["people"], key=lambda x: x["median_amt"])[:6]:
+        c.pair(p["name"], _amt(p["median_amt"], memo.get('currency', 'USD')), 32, TEXT, sign_color(p["median_amt"]))
     c.y = 1350 - 90
     c.text(("זה לא ייעוץ השקעות · " if he else "Not investment advice · ") + memo["date"], 24, FAINT)
     return c.png()
 
 
-def _ils(v: float) -> str:
-    return f"{'+' if v > 0 else '−' if v < 0 else ''}₪{abs(v):,.0f}"
+def _amt(v: float, currency: str = "USD") -> str:
+    sym = "$" if currency == "USD" else "₪"
+    return f"{'+' if v > 0 else '−' if v < 0 else ''}{sym}{abs(v):,.0f}"
 
 
 def _pct(v: float) -> str:

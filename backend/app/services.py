@@ -64,8 +64,18 @@ def market_data(session: Session, ticker: str) -> MarketData:
     return MarketData(df, currency_for(session, ticker), load_splits(session, ticker))
 
 
-def fx_series(session: Session) -> pd.Series:
+def fx_history(session: Session) -> pd.Series:
+    """Real daily USD/ILS. Only for converting an amount the user typed on a past date into shares."""
     return load_history(session, FX_TICKER)["close"]
+
+
+def fx_series(session: Session) -> pd.Series:
+    """USD/ILS for the app's calculations: today's rate on every date. Stock performance only, so no
+    return, gain, comparison, risk figure or scenario ever includes a currency move; amounts in the
+    other currency are converted at today's rate just to show them."""
+    from .engine.series import neutral_fx
+
+    return neutral_fx(fx_history(session))
 
 
 def to_tx(t: Transaction) -> Tx:

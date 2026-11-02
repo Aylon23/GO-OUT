@@ -8,7 +8,7 @@ import { ChartSkeleton, colorFor, InlineLegend, SeriesChart } from "./chart/Seri
 import { ErrorLine, SidePanel, Skel } from "./ui";
 
 export function QuickView() {
-  const { quickView: s, openQuickView, startAddTx, settings } = useApp();
+  const { quickView: s, openQuickView, startAddTx } = useApp();
   const sym = s?.symbol ?? "";
   const chart = useData(() => api.symbolChart(sym, "1Y"), `qv-${sym}`, !!s);
   const quote = useData(() => api.quote(sym), `qvq-${sym}`, !!s);
@@ -39,7 +39,7 @@ export function QuickView() {
       <div className="mt-8">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-medium">1 year vs SPY</h3>
-          <span className="text-xs text-faint">Total return in {settings?.base_currency === "USD" ? "$" : "₪"}</span>
+          <span className="text-xs text-faint">Total return in its own currency</span>
         </div>
         {c && (
           <InlineLegend items={keys.map((k, i) => ({ key: k, label: k, color: i === 0 ? "var(--accent)" : colorFor(k), width: i === 0 ? 2 : 1.5, value: pct(last(k), 1) }))} />

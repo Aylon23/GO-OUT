@@ -268,7 +268,7 @@ class ResearchedSpec(SQLModel, table=True):
 
 
 class FactorExposure(SQLModel, table=True):
-    """A holding's factor betas (see factors.py), in dollars ("usd") or shekels ("ils")."""
+    """A holding's factor betas (see factors.py), in its own trading currency (view "local")."""
 
     symbol: str = Field(primary_key=True)
     view: str = Field(primary_key=True)

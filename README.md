@@ -37,7 +37,7 @@ downloads and installs it before starting. Your data and installed packages are 
 internet it simply starts the version you have.
 
 New here? Click **Load demo portfolio** on the empty overview page. It loads AAPL, MSFT, NVDA, VOO and TEVA.TA
-bought on different dates, with a few shekel deposits, priced from real closes on those days.
+bought on different dates, with a few deposits, priced from real closes on those days.
 
 ### Offline development
 
@@ -140,10 +140,10 @@ nickname set in Settings (e.g. Keren = קרן). Several at once work too:
 ## Scenario impact
 
 Every scenario, researched or typed ("oil falls 20%"), runs through one engine: each holding moves by its factor
-betas times the factor moves (in shekels), plus sector and company-specific moves where given. 10,000 simulated
+betas times the factor moves (each stock in its own currency), plus sector and company-specific moves where given. 10,000 simulated
 outcomes pick a branch by its probability, draw each move from its low/mid/high range with the factors' historical
 correlations (sell-off weeks for crisis causes, normal weeks otherwise; you can switch), and add each holding's own
-noise. The answer comes first ("Most likely: the family loses about ₪7,000 (−0.4%). Bad case (1 in 20): −₪41,000"),
+noise. The answer comes first ("Most likely: the family loses about $2,000 (−0.4%). Bad case (1 in 20): −$11,000"),
 then branch cards and a table per person. "See the analysis" shows the chain of moves (edit any of them and
 everything downstream recalculates), the range of outcomes, and today's holdings replayed through the analogs, with a
 warning when the model disagrees with them. "Model details" shows the exposures, regime and assumptions. A typed
@@ -154,7 +154,7 @@ scenario becomes a one-branch spec: the factors you didn't name take their usual
 A scheduled Claude task researches yesterday's reports and drops an Earnings Brief (`docs/earnings-brief.schema.json`,
 example in `docs/examples/`) into the inbox folder. The app adds the numbers from its own prices: the reaction-day move
 next to the last 8 reports (and how often the first-day direction held for 20 sessions), who in the family holds it and
-their shekel P&L, and related holdings' expected moves. Each outlook goes into a prediction journal, scored after 5 and
+their P&L, and related holdings' expected moves. Each outlook goes into a prediction journal, scored after 5 and
 20 sessions (needs the optional `days_direction`/`weeks_direction` fields), with accuracy per confidence level.
 
 For the scheduled task: `GET http://localhost:8000/api/earnings/candidates?date=YYYY-MM-DD` lists up to 8 companies that
@@ -171,7 +171,7 @@ pick two versions to compare. New money can be weighted by the book.
 
 ## What each person could do, and where new money should go
 
-Under any scenario result, "Show options for each person" ranks people by expected and bad-case loss in shekels,
+Under any scenario result, "Show options for each person" ranks people by expected and bad-case loss (in the display currency),
 names what drives each one, and offers up to three long-only options (trim, rebalance toward 15%, shift into
 TLT/IEF/GLD, raise cash) plus doing nothing. Each is capped at half the portfolio and shows what it saves if the
 scenario happens, what it costs if things go the other way, and its effect on the largest holding. "Draft message"
@@ -198,7 +198,7 @@ that horizon, context older than 30 days, fewer than 2 analogs. The spec's own n
 ## Weekly and monthly reports
 
 Every Sunday (the week before) and on the 1st (the month before), while the app runs, it makes a phone-sized
-image card (1080x1350) and a short PDF for each person, plus a family summary: value, change in shekels and %, vs the
+image card (1080x1350) and a short PDF for each person, plus a family summary: value, change in amount and %, vs the
 S&P 500 and Nasdaq 100, best and weakest holdings with logos, dividends, trades, open recommendations, one line on what
 drove the period, and, if your book has scenarios, what its most likely one would do. Hebrew by default (Settings).
 Missed weeks or months are made on the next start. They go only to you: listed under All portfolios → Reports and sent
@@ -209,7 +209,7 @@ to your Telegram chat (if connected), to forward yourself. The numbers are the a
 - **Risk → Risk summary:** historical 1-week and 1-month 95% loss for today's holdings (VaR) and the average loss beyond
   it (CVaR), each holding's share of risk vs its share of value, and the effective number of independent bets.
 - **Risk → Stress tests:** today's holdings through 2008, the Covid crash, the 2022 rate shock, Q4 2018, the
-  7 October week and the April 2025 tariffs, from real prices in shekels (holdings without prices then are estimated
+  7 October week and the April 2025 tariffs, from real prices in each stock's own currency (holdings without prices then are estimated
   from their factor exposures and labeled). The reverse test finds the most likely month that would cost the family
   10% or 20% and the closest past stress.
 - **Analyst memo** under every scenario: nine sections written only from the engine's numbers and the scenario's own
@@ -220,11 +220,10 @@ to your Telegram chat (if connected), to forward yourself. The numbers are the a
 
 ## Exposures (Risk page)
 
-What moves each portfolio, in shekels: market, size, value vs growth, momentum, quality, rates (TLT),
-oil, the dollar, USD/ILS and gold, plus sector tilts. Each holding is regressed on weekly factor returns over
-up to three years, shrunk toward its sector ETF (strongly when it has under a year of history). For a US stock
-held in shekels the USD/ILS beta is about 1: when the dollar weakens 5% against the shekel, it loses about 5%
-in shekels. Portfolio and family betas are value-weighted; each comes with a plain sentence ("If the S&P 500
+What moves each portfolio: market, size, value vs growth, momentum, quality, rates (TLT), oil and gold,
+plus sector tilts. Stock performance only, currency effects excluded: each holding is measured in its own trading
+currency, so there is no dollar or shekel factor. Each holding is regressed on weekly factor returns over
+up to three years, shrunk toward its sector ETF (strongly when it has under a year of history). Portfolio and family betas are value-weighted; each comes with a plain sentence ("If the S&P 500
 falls 10%, Keren's portfolio falls about 11%"). Click a portfolio for its holdings, R² and residual volatility;
 R² under 0.3 is marked low confidence. Recomputed once a day, and right away for a new symbol. Method: `backend/app/factors.py`.
 
@@ -258,7 +257,7 @@ A symbol without a logo shows its letter. To fix a wrong or missing logo, upload
 | Rule | What the app does |
 |---|---|
 | Tel Aviv prices | Yahoo quotes `.TA` listings in agorot. Prices are divided by 100 on the way in (indices like `^TA125.TA` excluded). |
-| Currency | Every amount is converted to your base currency (₪ by default) with **that day's** USD/ILS rate (`ILS=X`), never today's. |
+| Currency | Stock performance only, currency effects excluded. Every return (TWR, XIRR, benchmarks, risk, scenarios, stress tests) is measured in each security's own trading currency (US in USD, `.TA` in ILS); portfolio and family returns are value-weighted averages of those. Amounts are shown in USD by default; Settings → "Display amounts in" (USD/ILS) converts the shown amount at today's rate (`ILS=X`) and never changes a percentage. |
 | Splits | Quantities are multiplied by every split after the trade date, so a 10-for-1 split never breaks history. Prices you see for old dates are "as traded". |
 | Dividends | Logged DIVIDEND transactions count as cash. For holdings with no logged dividends, cash dividends from the price feed are added automatically (toggle in Settings). Benchmarks use total return (`Adj Close`). |
 | Calendar | One daily calendar across exchanges (TASE trades Sunday, US does not). Every series is forward-filled onto it. |

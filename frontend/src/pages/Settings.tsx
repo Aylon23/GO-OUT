@@ -37,8 +37,8 @@ export default function Settings() {
         <Item title="Memo language" help="The analyst memo on the What-if page, and its PDF and image card.">
           <Segmented label="Memo language" value={settings.memo_language ?? "he"} onChange={(v) => save({ memo_language: v })} options={[{ value: "he", label: "עברית" }, { value: "en", label: "English" }]} />
         </Item>
-        <Item title="Base currency" help="Everything is converted into this currency using each day's exchange rate.">
-          <Segmented label="Base currency" value={settings.base_currency} onChange={(v) => save({ base_currency: v })} options={[{ value: "ILS", label: "₪ Shekel" }, { value: "USD", label: "$ Dollar" }]} />
+        <Item title="Display amounts in" help="Only how amounts are shown, converted at today's rate. Returns and percentages never include currency moves: every stock is measured in its own currency.">
+          <Segmented label="Display amounts in" value={settings.base_currency} onChange={(v) => save({ base_currency: v })} options={[{ value: "USD", label: "$ Dollar" }, { value: "ILS", label: "₪ Shekel" }]} />
         </Item>
         <Item title="Benchmarks" help="Compared everywhere using total return (dividends reinvested). SPY and QQQ by default; add any ticker, like ^TA125.TA.">
           <ul className="mb-3 flex flex-wrap gap-2">

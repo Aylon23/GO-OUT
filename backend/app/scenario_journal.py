@@ -15,7 +15,7 @@ from sqlmodel import Session, select
 from . import factors, impact, services
 from .models import ScenarioPrediction
 from .specs import factor_move
-from .stresstests import ils_prices, window_move
+from .stresstests import local_prices, window_move
 
 HORIZON_DAYS = {"1w": 7, "2w": 14, "1m": 30, "3m": 91, "6m": 182, "12m": 365}
 TARGET_COVERAGE = 0.90  # the 5-95% band should hold about 9 in 10 outcomes
@@ -66,7 +66,7 @@ def score(session: Session, row: ScenarioPrediction, today: dt.date | None = Non
     actual_f = {f: (m / 100 if (m := factor_move(session, f, row.start, row.end)) is not None else None) for f in pred["factors"]}
     tot = covered = 0.0
     for h in pred["snapshot"]:
-        w = window_move(ils_prices(session, h["symbol"]), row.start, row.end)
+        w = window_move(local_prices(session, h["symbol"]), row.start, row.end)
         if w is not None:
             tot += w[0] * h["value"]
             covered += h["value"]

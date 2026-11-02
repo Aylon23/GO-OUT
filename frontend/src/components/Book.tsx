@@ -2,11 +2,11 @@ import { Plus, X } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { api, ApiError, type BookCompare, type BookEntry, type BookState } from "../lib/api";
-import { dateLong, money, pct } from "../lib/format";
+import { amt, dateLong, pct } from "../lib/format";
 import { invalidate, useData } from "../lib/hooks";
 import { EmptyState, ErrorLine, InfoTip, Signed, Skel } from "./ui";
 
-const ils = (v: number | null | undefined, signed = true) => money(v, "ILS", { decimals: 0, signed });
+const fmt = (v: number | null | undefined, signed = true) => amt(v, signed);
 const HORIZON: Record<string, string> = { "1w": "1 week", "2w": "2 weeks", "1m": "1 month", "3m": "3 months", "6m": "6 months", "12m": "12 months" };
 
 export function Book() {
@@ -71,10 +71,10 @@ export function Book() {
         <div className={clsx("mt-12", dirty && "opacity-60")}>
           {dirty && <p className="mb-2 text-xs text-faint">Showing the saved book. Save to update.</p>}
           <p className="max-w-[60ch] text-2xl font-medium leading-snug">
-            Across the book, most likely: <Signed value={r.answer.median_ils}>{ils(r.answer.median_ils)}</Signed> (<Signed value={r.answer.median}>{pct(r.answer.median, 1)}</Signed>).{" "}
-            <span className="text-muted">Bad case (1 in 20): <Signed value={r.answer.p5_ils}>{ils(r.answer.p5_ils)}</Signed>.</span>
+            Across the book, most likely: <Signed value={r.answer.median_amt}>{fmt(r.answer.median_amt)}</Signed> (<Signed value={r.answer.median}>{pct(r.answer.median, 1)}</Signed>).{" "}
+            <span className="text-muted">Bad case (1 in 20): <Signed value={r.answer.p5_amt}>{fmt(r.answer.p5_amt)}</Signed>.</span>
           </p>
-          <p className="mt-1 text-sm text-muted">Over {HORIZON[r.horizon] ?? r.horizon}, in shekels{r.most_fragile && <> · most fragile: <span className="font-medium text-text">{r.most_fragile.name}</span></>}.</p>
+          <p className="mt-1 text-sm text-muted">Over {HORIZON[r.horizon] ?? r.horizon}. Stock performance only, currency effects excluded{r.most_fragile && <> · most fragile: <span className="font-medium text-text">{r.most_fragile.name}</span></>}.</p>
           <Positioning state={state} />
         </div>
       )}
@@ -98,7 +98,7 @@ function Positioning({ state }: { state: BookState }) {
         <tbody>{r.positioning.map((p) => (
           <tr key={p.id ?? "family"} className={clsx(r.most_fragile?.id === p.id && "bg-accent-soft")}>
             <td className={clsx("border-b border-line py-2.5", p.id == null && "font-semibold")}>{p.name}</td>
-            <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={-p.fragility}>{pct(-p.fragility, 1)}</Signed> <span className="text-xs text-faint">{ils(-p.fragility_ils)}</span></td>
+            <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={-p.fragility}>{pct(-p.fragility, 1)}</Signed> <span className="text-xs text-faint">{fmt(-p.fragility_amt)}</span></td>
             {scen.map(([id]) => {
               const x = p.by_scenario.find((y) => y.scenario_id === id);
               const worst = p.hurts_most[0]?.title === r.scenario_titles[id];
@@ -159,7 +159,7 @@ function Versions({ onLoaded }: { onLoaded: () => void }) {
           {[cmp.a, cmp.b].map((v) => (
             <div key={v.id} className="rounded-md border border-line p-3">
               <p className="text-xs text-faint">{dateLong(v.created_at.slice(0, 10))}</p>
-              {v.result ? <p className="mt-1">Most likely <Signed value={v.result.answer.median_ils}>{ils(v.result.answer.median_ils)}</Signed> · bad case <Signed value={v.result.answer.p5_ils}>{ils(v.result.answer.p5_ils)}</Signed>
+              {v.result ? <p className="mt-1">Most likely <Signed value={v.result.answer.median_amt}>{fmt(v.result.answer.median_amt)}</Signed> · bad case <Signed value={v.result.answer.p5_amt}>{fmt(v.result.answer.p5_amt)}</Signed>
                 {v.result.most_fragile && <span className="block text-xs text-muted">most fragile: {v.result.most_fragile.name}</span>}</p> : <p className="mt-1 text-muted">Empty book</p>}
             </div>
           ))}

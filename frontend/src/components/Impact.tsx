@@ -2,13 +2,13 @@ import { CaretDown, Warning } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { Fragment, useMemo, useState } from "react";
 import type { ImpactEdit, ImpactResult, ImpactStats } from "../lib/api";
-import { dateLong, money, pct } from "../lib/format";
+import { amt, dateLong, pct } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { FACTOR_LABEL, Report } from "./Researched";
 import { InfoTip, Signed } from "./ui";
 
 export type RegimeChoice = "auto" | "normal" | "selloff";
-const ils = (v: number | null | undefined, signed = true) => money(v, "ILS", { signed, decimals: 0 });
+const fmt = (v: number | null | undefined, signed = true) => amt(v, signed);
 const HORIZON: Record<string, string> = { "1w": "1 week", "2w": "2 weeks", "1m": "1 month", "3m": "3 months", "6m": "6 months", "12m": "12 months" };
 const label = (f: string) => FACTOR_LABEL[f] ?? (f.startsWith("sector_") ? `${f.slice(7)} sector` : f);
 
@@ -25,12 +25,12 @@ export function Impact({ r, regime, setRegime, onEdit, busy }: {
     <div className={clsx("mt-10 transition-opacity duration-fast", busy && "opacity-60")}>
       {/* Level 1 */}
       <p className="max-w-[60ch] text-2xl font-medium leading-snug md:text-3xl">
-        Most likely: {who} {verb(r.answer.median_ils)} about <Signed value={r.answer.median_ils}>{ils(Math.abs(r.answer.median_ils), false)}</Signed>{" "}
+        Most likely: {who} {verb(r.answer.median_amt)} about <Signed value={r.answer.median_amt}>{fmt(Math.abs(r.answer.median_amt), false)}</Signed>{" "}
         (<Signed value={r.answer.median}>{pct(r.answer.median, 1)}</Signed>).{" "}
-        <span className="text-muted">Bad case (1 in 20): <Signed value={r.answer.p5_ils}>{ils(r.answer.p5_ils)}</Signed>.</span>
+        <span className="text-muted">Bad case (1 in 20): <Signed value={r.answer.p5_amt}>{fmt(r.answer.p5_amt)}</Signed>.</span>
       </p>
       <p className="mt-2 text-sm text-muted">
-        Over {HORIZON[r.horizon] ?? r.horizon}, in shekels. Chance of a loss: {pct(r.answer.prob_loss, 0, false)}.
+        Over {HORIZON[r.horizon] ?? r.horizon}. Stock performance only, currency effects excluded. Chance of a loss: {pct(r.answer.prob_loss, 0, false)}.
         <InfoTip text={`From ${r.n.toLocaleString("en-US")} simulated outcomes: which branch happens, how big each move is, and each holding's own noise. "Most likely" is the middle outcome; the bad case is the 5th percentile.`} />
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
@@ -51,7 +51,7 @@ export function Impact({ r, regime, setRegime, onEdit, busy }: {
             <li key={b.name} className="min-w-[78%] snap-start rounded-md border border-line p-4 sm:min-w-[46%] md:min-w-0">
               <div className="flex items-baseline justify-between gap-2"><p className="font-medium">{b.name}</p><p className="num text-lg font-semibold">{Math.round(b.probability * 100)}%</p></div>
               <p className="text-xs text-faint">{b.cause}{b.regime === "selloff" ? " · sell-off correlations" : ""}</p>
-              <p className="mt-3"><Signed value={f.median} className="text-xl font-semibold">{pct(f.median, 1)}</Signed> <Signed value={f.median_ils} className="text-sm">{ils(f.median_ils)}</Signed></p>
+              <p className="mt-3"><Signed value={f.median} className="text-xl font-semibold">{pct(f.median, 1)}</Signed> <Signed value={f.median_amt} className="text-sm">{fmt(f.median_amt)}</Signed></p>
               <p className="num text-xs text-muted">{pct(f.p5, 1)} to {pct(f.p95, 1)}</p>
             </li>
           );
@@ -88,9 +88,9 @@ function BookTable({ r, view, setView }: { r: ImpactResult; view: string; setVie
               className={clsx("cursor-pointer transition-colors duration-fast hover:bg-hover", view === key && "bg-hover")}>
               <td className={clsx("border-b border-line py-2.5", i === 0 && "font-semibold")}>{b.name}</td>
               <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.median}>{pct(b.median, 1)}</Signed></td>
-              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.median_ils}>{ils(b.median_ils)}</Signed></td>
-              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.p5_ils}>{ils(b.p5_ils)}</Signed> <span className="text-xs text-faint">{pct(b.p5, 1)}</span></td>
-              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.p95_ils}>{ils(b.p95_ils)}</Signed></td>
+              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.median_amt}>{fmt(b.median_amt)}</Signed></td>
+              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.p5_amt}>{fmt(b.p5_amt)}</Signed> <span className="text-xs text-faint">{pct(b.p5, 1)}</span></td>
+              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.p95_amt}>{fmt(b.p95_amt)}</Signed></td>
               <td className="num border-b border-line py-2.5 pl-3 text-right">{pct(b.prob_loss, 0, false)}</td>
             </tr>
           );
@@ -122,7 +122,7 @@ function Holdings({ r, view }: { r: ImpactResult; view: string }) {
               <td className="border-b border-line py-2"><span className="flex items-center gap-2"><Avatar ticker={h.symbol} size={20} /><span className="font-mono font-semibold">{h.symbol}</span>
                 <span className="text-xs text-faint">{pct(h.weight, 1, false)}</span></span></td>
               <td className="num border-b border-line py-2 pl-3 text-right"><Signed value={h.move}>{pct(h.move, 1)}</Signed></td>
-              <td className="num border-b border-line py-2 pl-3 text-right"><Signed value={h.change_ils}>{ils(h.change_ils)}</Signed></td>
+              <td className="num border-b border-line py-2 pl-3 text-right"><Signed value={h.change_amt}>{fmt(h.change_amt)}</Signed></td>
               <td className="border-b border-line py-2 pl-4 text-xs text-muted">
                 {h.own_news && <span className="mr-2 font-medium text-text">company news</span>}
                 {h.why.map((w) => `${label(w.factor)} ${pct(w.effect, 1)}`).join(", ")}
@@ -271,7 +271,7 @@ function Details({ r }: { r: ImpactResult }) {
   return (
     <section className="fade-in mt-8 space-y-8 text-sm" aria-label="Model details">
       <div>
-        <h3 className="text-base font-semibold">Exposures used ({r.blended.length > 2 ? "family" : r.blended[1]?.name}, in shekels)</h3>
+        <h3 className="text-base font-semibold">Exposures used ({r.blended.length > 2 ? "family" : r.blended[1]?.name})</h3>
         <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted">
           {Object.entries(e).filter(([, v]) => Math.abs(v) >= 0.02).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([k, v]) => (
             <span key={k}>{label(k)} <span className="num text-text">{v.toFixed(2)}</span></span>))}
@@ -283,7 +283,7 @@ function Details({ r }: { r: ImpactResult }) {
       </div>
       <div>
         <h3 className="text-base font-semibold">Assumptions</h3>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">{r.assumptions.map((a) => <li key={a}>{a}</li>)}<li>Seed {r.seed}: the same inputs always give the same numbers.</li><li>USD/ILS used: {r.usd_ils.toFixed(3)}.</li></ul>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">{r.assumptions.map((a) => <li key={a}>{a}</li>)}<li>Seed {r.seed}: the same inputs always give the same numbers.</li></ul>
       </div>
       {r.report && <div><h3 className="text-base font-semibold">Validation</h3><Report report={r.report} /></div>}
     </section>

@@ -1,10 +1,10 @@
 import { Check, Copy, Lightbulb } from "@phosphor-icons/react";
 import { useState } from "react";
 import { api, ApiError, type Actions as A, type ActionsBody, type PersonActions } from "../lib/api";
-import { money, pct } from "../lib/format";
+import { amt, pct } from "../lib/format";
 import { ErrorLine, Signed, Skel } from "./ui";
 
-const ils = (v: number, signed = false) => money(v, "ILS", { decimals: 0, signed });
+const fmt = (v: number | null | undefined, signed = false) => amt(v, signed);
 
 /** What each person could do in the scenario on screen. Loads on request (it reruns the simulation). */
 export function PersonActionsPanel({ body }: { body: ActionsBody }) {
@@ -45,7 +45,7 @@ function Person({ p }: { p: PersonActions }) {
     <li className="border-t border-line pt-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <p className="text-base font-semibold">{p.name}</p>
-        <p className="text-sm text-muted">Most likely <Signed value={p.median_ils}>{ils(p.median_ils, true)}</Signed> · bad case <Signed value={p.bad_ils}>{ils(p.bad_ils, true)}</Signed></p>
+        <p className="text-sm text-muted">Most likely <Signed value={p.median_amt}>{fmt(p.median_amt, true)}</Signed> · bad case <Signed value={p.bad_amt}>{fmt(p.bad_amt, true)}</Signed></p>
       </div>
       <p className="mt-1 text-sm text-muted">{p.line}</p>
       <div className="mt-3 overflow-x-auto">
@@ -60,9 +60,9 @@ function Person({ p }: { p: PersonActions }) {
           <tbody>{p.options.map((o, i) => (
             <tr key={i}>
               <td className="border-b border-line py-2">{o.title}</td>
-              <td className="num border-b border-line py-2 pl-3 text-right">{o.kind === "nothing" ? "–" : <>{pct(o.share_of_portfolio, 0, false)} <span className="text-xs text-faint">{ils(o.amount)}</span></>}</td>
-              <td className="num border-b border-line py-2 pl-3 text-right">{o.kind === "nothing" ? "–" : <Signed value={o.benefit_ils}>{ils(o.benefit_ils, true)}</Signed>}</td>
-              <td className="num border-b border-line py-2 pl-3 text-right">{o.kind === "nothing" ? "–" : o.cost_ils > 0.5 ? <Signed value={-o.cost_ils}>{ils(-o.cost_ils, true)}</Signed> : <span className="text-faint">none</span>}</td>
+              <td className="num border-b border-line py-2 pl-3 text-right">{o.kind === "nothing" ? "–" : <>{pct(o.share_of_portfolio, 0, false)} <span className="text-xs text-faint">{fmt(o.amount)}</span></>}</td>
+              <td className="num border-b border-line py-2 pl-3 text-right">{o.kind === "nothing" ? "–" : <Signed value={o.benefit_amt}>{fmt(o.benefit_amt, true)}</Signed>}</td>
+              <td className="num border-b border-line py-2 pl-3 text-right">{o.kind === "nothing" ? "–" : o.cost_amt > 0.5 ? <Signed value={-o.cost_amt}>{fmt(-o.cost_amt, true)}</Signed> : <span className="text-faint">none</span>}</td>
               <td className="num border-b border-line py-2 pl-3 text-right text-muted">{pct(o.top_weight_before, 0, false)}{o.kind !== "nothing" && Math.abs(o.top_weight_after - o.top_weight_before) > 0.005 && <> → <span className="text-text">{pct(o.top_weight_after, 0, false)}</span></>}</td>
             </tr>
           ))}</tbody>

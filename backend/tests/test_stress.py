@@ -38,7 +38,7 @@ def test_stress_replay_matches_raw_prices(session, fake):
     out = c.get("/api/stress").json()
     covid = next(t for t in out["tests"] if t["id"] == "covid20")
     s, e = dt.date(2020, 2, 19), dt.date(2020, 3, 23)
-    expected = (spy[e] * fx[e]) / (spy[s] * fx[s]) - 1  # in shekels, from the raw prices
+    expected = spy[e] / spy[s] - 1  # SPY's own dollar move: the USD/ILS drift is left out
     assert covid["used_start"] == s.isoformat() and covid["used_end"] == e.isoformat()
     assert covid["family"]["impact"] == pytest.approx(expected, rel=1e-9)
     assert covid["sp500_usd"] == pytest.approx(spy[e] / spy[s] - 1)

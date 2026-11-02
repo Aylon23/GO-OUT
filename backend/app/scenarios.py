@@ -32,7 +32,7 @@ EXTRA_IDIO_WEEKLY = 0.035  # extra weekly uncertainty for a holding measured thr
 MAX_SHOCKS = 6
 INDEX_HEDGES = ["SPY", "QQQ", "IWM", "SOXX", "XLK", "EIS"]
 INVERSE = {"SPY": "SH", "QQQ": "PSQ", "IWM": "RWM"}
-SCENARIO_HEDGES = ["GLD", "TLT", "IEF", "USO", "XLE", "ITA", "UUP", "XLP", "XLU", "XLV"]
+SCENARIO_HEDGES = ["GLD", "TLT", "IEF", "USO", "XLE", "ITA", "XLP", "XLU", "XLV"]
 ENGLISH_NAMES = {
     "apple": "AAPL", "microsoft": "MSFT", "nvidia": "NVDA", "google": "GOOGL", "alphabet": "GOOGL", "amazon": "AMZN",
     "tesla": "TSLA", "meta": "META", "facebook": "META", "netflix": "NFLX", "intel": "INTC", "amd": "AMD", "broadcom": "AVGO",
@@ -69,6 +69,7 @@ _universe_cache: dict[tuple, Universe] = {}
 
 
 def _daily_base(session: Session, sym: str, fx: pd.Series, base: str) -> pd.Series | None:
+    """Daily total-return prices in the security's own trading currency (stock performance only)."""
     try:
         df = load_history(session, sym)
     except NoPriceData:
@@ -77,14 +78,7 @@ def _daily_base(session: Session, sym: str, fx: pd.Series, base: str) -> pd.Seri
         return None
     start = dt.date.today() - dt.timedelta(days=int(365.25 * 20))
     df = df[df.index >= start]
-    p = df["adj_close"].astype(float)
-    if sym == "ILS=X" or sym.startswith("^"):
-        return p  # a rate or an index level, not a holding: no currency conversion
-    ccy = currency_for(session, sym)
-    if ccy == base:
-        return p
-    cal = list(p.index)
-    return p * fx_factor(ccy, base, align(fx, cal)).to_numpy()
+    return df["close" if sym.startswith("^") else "adj_close"].astype(float)
 
 
 def universe(session: Session, extra: list[str]) -> Universe:
@@ -256,7 +250,7 @@ def _ai_parse(session: Session, text: str, key: str, held: list[str]) -> dict:
         "for a stress test. Use factor symbols from the list when the story is about the market, sectors, rates, "
         "commodities or currencies. Use a stock's Yahoo ticker only for news about one company. Pick 1 to 5 shocks: "
         "the ones the scenario is really about, not everything that might follow (the model works out the rest). "
-        "Bond prices fall when yields or rates rise. ILS=X is shekels per dollar, so a stronger shekel means ILS=X down. "
+        "Bond prices fall when yields or rates rise. Currency moves are left out: the app measures stock performance only. "
         "Set move_percent only when the text gives a size; otherwise 0. Pick past events from the list that resemble the "
         "scenario, at most 4, or none.\n\nFactors:\n" + factors + "\n\nPast events:\n" + events
     )
@@ -677,13 +671,13 @@ def replay(u: Universe, ev: dict, ports: list[Book], family: Book) -> dict | Non
     rows = [{"symbol": hd.symbol, "move": cache[hd.symbol][0], "estimated": cache[hd.symbol][1], "change": cache[hd.symbol][0] * hd.value}
             for hd in family.holdings]
     rows.sort(key=lambda r: r["change"])
-    key = ["SPY", "QQQ", "EIS", "^TA125.TA", "TLT", "USO", "GLD", "ILS=X", "^VIX"]
+    key = ["SPY", "QQQ", "EIS", "^TA125.TA", "TLT", "USO", "GLD", "^VIX"]
     if "^TA125.TA" in u.daily and "^TA125.TA" not in fmoves and (m := event_move(u, "^TA125.TA", ev)) is not None:
-        fmoves["^TA125.TA"] = m  # Israeli stocks in shekels, next to EIS (in dollars)
+        fmoves["^TA125.TA"] = m  # Israeli stocks in their own market, next to EIS
     assets = {s: (fmoves[s] if s in fmoves else float(est["mu"][u.idx(s)])) for s in LONG_HEDGES + INDEX_HEDGES if u.has(s)}
     return {"id": ev["id"], "name": ev["name"], "he": ev["he"], "start": ev["start"], "end": ev["end"],
             "family": fam, "portfolios": [book(b) for b in ports],
-            "factors": [{"symbol": s, "label": LABEL.get(s, "TA-125 (₪)" if s == "^TA125.TA" else s), "move": fmoves[s]} for s in key if s in fmoves],
+            "factors": [{"symbol": s, "label": LABEL.get(s, "TA-125" if s == "^TA125.TA" else s), "move": fmoves[s]} for s in key if s in fmoves],
             "worst": rows[:3], "best": [r for r in reversed(rows) if r["change"] > 0][:3],
             "_moves": {k: v[0] for k, v in cache.items()}, "_assets": assets}
 

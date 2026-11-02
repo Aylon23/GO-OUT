@@ -7,8 +7,8 @@ import { useData, useMediaQuery } from "../lib/hooks";
 import { Avatar } from "./Avatar";
 import { ErrorLine, InfoTip, Skel } from "./ui";
 
-const MAIN = ["market", "rates", "oil", "dollar", "shekel"];
-const MORE = ["size", "value", "momentum", "quality", "gold"];
+const MAIN = ["market", "rates", "oil", "gold"];
+const MORE = ["size", "value", "momentum", "quality"];
 
 const beta = (v: number | undefined) => (v == null || !isFinite(v) ? "–" : (v < 0 ? "−" : "") + Math.abs(v).toFixed(2));
 
@@ -16,7 +16,7 @@ function sentence(f: ExposureFactor, b: ExposureBook, family: boolean) {
   const effect = (b.betas[f.id] ?? 0) * f.shock;
   const who = family ? "the family's money" : `${b.name}'s portfolio`;
   if (Math.abs(effect) < 0.0025) return `${f.when}, ${who} barely moves.`;
-  return `${f.when}, ${who} ${effect < 0 ? "falls" : "rises"} about ${pct(Math.abs(effect), Math.abs(effect) < 0.02 ? 1 : 0, false)} (in shekels).`;
+  return `${f.when}, ${who} ${effect < 0 ? "falls" : "rises"} about ${pct(Math.abs(effect), Math.abs(effect) < 0.02 ? 1 : 0, false)}.`;
 }
 
 export function Exposures() {
@@ -36,7 +36,7 @@ export function Exposures() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Exposures</h2>
-          <p className="mt-1 max-w-[70ch] text-sm text-muted">What moves each portfolio, in shekels. Betas from up to {Math.round(d.window_weeks / 52)} years of weekly returns, as of {dateLong(d.as_of)}. Click a row for its holdings.</p>
+          <p className="mt-1 max-w-[70ch] text-sm text-muted">What moves each portfolio. Stock performance only, currency effects excluded. Betas from up to {Math.round(d.window_weeks / 52)} years of weekly returns, as of {dateLong(d.as_of)}. Click a row for its holdings.</p>
         </div>
       </div>
       <div className="mt-5 overflow-x-auto">
@@ -89,7 +89,6 @@ export function Exposures() {
       </div>
       <p className="mt-2 text-xs text-faint">
         R² is how much of a holding's weekly moves the factors explain; under {d.low_r2} the betas are marked low confidence. Holdings with under a year of history lean on their sector ETF.
-        Cash in dollars counts toward USD/ILS.
       </p>
       <div className="mt-6">
         <h3 className="text-sm font-medium">{isFamily(sel) ? "The family" : sel.name}, in plain words</h3>

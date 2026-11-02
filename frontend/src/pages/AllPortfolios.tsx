@@ -55,7 +55,7 @@ export default function AllPortfolios() {
                     animateKey={code} height={340} format={(v) => `${v.toFixed(1)}  (${pct(v / 100 - 1, 1)})`} short={(v) => pct(v / 100 - 1, 0)} end={(v) => pct(v / 100 - 1, 1)} />
                 </div>
                 <p className="mt-2 max-w-[80ch] text-xs text-faint">
-                  Real results, time-weighted, in {d.base === "USD" ? "dollars" : "shekels"}. A portfolio added recently starts on the day it was added;
+                  Real results, time-weighted. Stock performance only, currency effects excluded. A portfolio added recently starts on the day it was added;
                   import its transaction history to include earlier years.
                 </p>
               </section>
@@ -157,7 +157,7 @@ function PortfolioTable({ d, onOpen }: { d: Overview; code: string; onOpen: (r: 
     switch (k) {
       case "name": return r.name;
       case "value": return r.value ?? null;
-      case "gain": return r.cost_gain_usd ?? null;
+      case "gain": return r.cost_gain_amt ?? null;
       case "vs": return early(r) ? null : r.since_vs_spy ?? null;
       case "today": return r.today_change ?? null;
       case "activity": return r.last_activity ?? null;
@@ -194,7 +194,7 @@ function PortfolioTable({ d, onOpen }: { d: Overview; code: string; onOpen: (r: 
           <Th k="name">Person</Th>
           <th scope="col" className="sticky top-14 z-10 hidden border-b border-line bg-bg py-2 pl-3 text-left text-xs font-medium text-muted lg:table-cell">Since tracking</th>
           <Th k="value" right>Value</Th>
-          <Th k="gain" right tip="Market value of open positions minus what they cost (your average price), in dollars.">Gain vs cost</Th>
+          <Th k="gain" right tip="Market value of open positions minus what they cost (your average price).">Gain vs cost</Th>
           <Th k="vs" right tip={`Return since tracking began minus the S&P 500 (SPY, dividends included) over exactly the same days. Shown after ${min} trading days.`}>vs S&P 500</Th>
           <Th k="today" right>Today</Th>
           <Th k="activity" right className="hidden lg:table-cell">Last activity</Th>
@@ -212,7 +212,7 @@ function PortfolioTable({ d, onOpen }: { d: Overview; code: string; onOpen: (r: 
               <td className="hidden border-b border-line py-3 pl-3 lg:table-cell"><Spark values={r.spark ?? []} /></td>
               <td className="num border-b border-line py-3 pl-3 text-right font-medium">{money(r.value, d.base, { decimals: 0 })}</td>
               <td className="num border-b border-line py-3 pl-3 text-right"><span className="leading-5">
-                <Signed value={r.cost_gain_usd} className="block">{money(r.cost_gain_usd, "USD", { signed: true, decimals: 0 })}</Signed>
+                <Signed value={r.cost_gain_amt} className="block">{money(r.cost_gain_amt, d.base, { signed: true, decimals: 0 })}</Signed>
                 <Signed value={r.cost_gain_pct} className="block text-xs">{pct(r.cost_gain_pct, 1)}</Signed></span></td>
               <td className="num border-b border-line py-3 pl-3 text-right">{vsCell(r)}</td>
               <td className="num border-b border-line py-3 pl-3 text-right"><span className="leading-5">
@@ -234,7 +234,7 @@ function PortfolioTable({ d, onOpen }: { d: Overview; code: string; onOpen: (r: 
               <span className="ml-auto"><Spark values={r.spark ?? []} /></span>
               <span className="num font-medium">{money(r.value, d.base, { decimals: 0 })}</span>
             </span>
-            <Kv k="Gain vs cost" v={<Signed value={r.cost_gain_usd}>{money(r.cost_gain_usd, "USD", { signed: true, decimals: 0 })} ({pct(r.cost_gain_pct, 1)})</Signed>} />
+            <Kv k="Gain vs cost" v={<Signed value={r.cost_gain_amt}>{money(r.cost_gain_amt, d.base, { signed: true, decimals: 0 })} ({pct(r.cost_gain_pct, 1)})</Signed>} />
             <Kv k="vs S&P 500" v={early(r) ? <span className="text-faint">Too early · {r.trading_days ?? 0}d</span> : <Signed value={r.since_vs_spy}>{pp(r.since_vs_spy, 1)}</Signed>} />
             <Kv k="Today" v={<Signed value={r.today_change}>{money(r.today_change, d.base, { signed: true, decimals: 0 })} ({pct(r.today_pct, 2)})</Signed>} />
             <Kv k="Last activity" v={r.last_activity ? dateLong(r.last_activity) : "–"} />

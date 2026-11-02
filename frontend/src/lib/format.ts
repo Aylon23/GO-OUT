@@ -20,6 +20,13 @@ export function compactMoney(v: number, ccy: string): string {
   return `${sign}${sym}${Math.round(a).toLocaleString("en-US")}`;
 }
 
+/** The currency amounts are shown in (Settings: "Display amounts in"). Changing it never changes a return. */
+let DISPLAY = "USD";
+export const setDisplayCurrency = (c: string) => { DISPLAY = c || "USD"; };
+export const displayCurrency = () => DISPLAY;
+/** An amount in the display currency, whole units. */
+export const amt = (v: number | null | undefined, signed = true) => money(v, DISPLAY, { decimals: 0, signed });
+
 export function pct(v: number | null | undefined, decimals = 2, signed = true): string {
   if (v === null || v === undefined || !isFinite(v)) return "–";
   const s = Math.abs(v * 100).toFixed(decimals);

@@ -2,14 +2,14 @@ import { X } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useState } from "react";
 import { api, ApiError, type Ccy, type NewMoney as NM, type NewMoneyRow } from "../lib/api";
-import { money, pct } from "../lib/format";
+import { amt, displayCurrency, money, pct } from "../lib/format";
 import { useData } from "../lib/hooks";
 import { useApp } from "../state";
 import { Avatar } from "./Avatar";
 import { SymbolSearch } from "./SymbolSearch";
 import { ErrorLine, InfoTip, Segmented, Signed, Skel } from "./ui";
 
-const ils = (v: number, signed = true) => money(v, "ILS", { decimals: 0, signed });
+const fmt = (v: number | null | undefined, signed = true) => amt(v, signed);
 
 function cell(v: number | undefined) {
   if (v == null) return "transparent";
@@ -20,7 +20,7 @@ function cell(v: number | undefined) {
 export function NewMoney() {
   const { portfolios } = useApp();
   const [amount, setAmount] = useState("20000");
-  const [ccy, setCcy] = useState<Ccy>("ILS");
+  const [ccy, setCcy] = useState<Ccy>(displayCurrency() as Ccy);
   const [person, setPerson] = useState<string>("");
   const [d, setD] = useState<NM | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,8 +76,8 @@ export function NewMoney() {
                     {r.robust && <span className="rounded-sm bg-accent-soft px-1.5 text-[11px] font-medium">robust</span>}
                     {r.low_confidence && <span className="text-[11px] text-faint">low confidence</span>}</span></td>
                   <td className="num border-b border-line py-2 pl-3 text-right">{r.robust_count}/{r.branches}</td>
-                  <td className="num border-b border-line py-2 pl-3 text-right"><Signed value={r.expected_ils}>{ils(r.expected_ils)}</Signed></td>
-                  <td className="num border-b border-line py-2 pl-3 text-right"><Signed value={r.bad_ils}>{ils(r.bad_ils)}</Signed></td>
+                  <td className="num border-b border-line py-2 pl-3 text-right"><Signed value={r.expected_amt}>{fmt(r.expected_amt)}</Signed></td>
+                  <td className="num border-b border-line py-2 pl-3 text-right"><Signed value={r.bad_amt}>{fmt(r.bad_amt)}</Signed></td>
                   {d.scenarios.map((s) => (
                     <td key={s.id} className="num border-b border-line py-2 pl-3 text-right text-xs" style={{ background: cell(r.by_scenario[s.id]) }}>{pct(r.by_scenario[s.id], 1)}</td>
                   ))}

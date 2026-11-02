@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import { setDisplayCurrency } from "./lib/format";
 import { api, type PortfolioInfo, type RangeParams, setApiPortfolio, type Settings, type SymbolItem } from "./lib/api";
 import { invalidate } from "./lib/hooks";
 
@@ -95,7 +96,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("hashchange", h);
   }, []);
   useEffect(() => {
-    api.settings().then((s) => { setSettings(s); applyTheme(s.theme); }).catch(() => {});
+    api.settings().then((s) => { setDisplayCurrency(s.base_currency); setSettings(s); applyTheme(s.theme); }).catch(() => {});
   }, []);
 
   const go = useCallback((r: Route) => { window.location.hash = `/${r}`; setRoute(r); window.scrollTo({ top: 0 }); }, []);
@@ -105,6 +106,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
   const saveSettings = useCallback(async (s: Partial<Settings>) => {
     const next = await api.saveSettings(s);
+    setDisplayCurrency(next.base_currency);
     setSettings(next);
     applyTheme(next.theme);
     invalidate();

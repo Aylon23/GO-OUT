@@ -31,8 +31,6 @@ FACTORS: list[tuple[str, str, str, str]] = [
     ("HYG", "High-yield credit", "אג״ח קונצרני בתשואה גבוהה", "Bonds"),
     ("USO", "Oil", "נפט", "Commodities"),
     ("GLD", "Gold", "זהב", "Commodities"),
-    ("UUP", "US dollar", "הדולר", "Currencies"),
-    ("ILS=X", "Dollar vs shekel (USD/ILS)", "דולר-שקל", "Currencies"),
     ("BTC-USD", "Bitcoin", "ביטקוין", "Crypto"),
     ("^VIX", "Fear index (VIX)", "מדד הפחד (VIX)", "Volatility"),
 ]
@@ -89,7 +87,7 @@ THEMES: list[dict] = [
      "fallback": {"USO": 1, "SPY": -1, "EIS": -1, "ITA": 1, "GLD": 1}},
     {"id": "israel_war", "label": "Escalation in Israel", "any": [["ישראל", "israel", "חיזבאללה", "hezbollah", "עזה", "gaza", "לבנון", "lebanon"],
      ["מלחמה", "war", "הסלמה", "escalation", "טרור", "terror", "מתקפה", "attack", "תקיפה", "ביטחוני"]],
-     "events": ["oct7_23", "iran_apr24", "iran_oct24"], "factors": ["EIS", "ILS=X", "SPY"], "fallback": {"EIS": -1, "ILS=X": 1, "SPY": -1}},
+     "events": ["oct7_23", "iran_apr24", "iran_oct24"], "factors": ["EIS", "^TA125.TA", "SPY"], "fallback": {"EIS": -1, "^TA125.TA": -1, "SPY": -1}},
     {"id": "war", "label": "A major war", "any": [["מלחמה", "מלחמת עולם", "war", "invasion", "פלישה", "invade"]],
      "events": ["ukraine22", "oct7_23", "iran_jun25"], "factors": ["SPY", "USO", "GLD", "ITA"], "fallback": {"SPY": -1, "USO": 1, "GLD": 1, "ITA": 1}},
     {"id": "pandemic", "label": "A pandemic", "any": [["מגפה", "קורונה", "covid", "pandemic", "וירוס", "virus", "סגר", "lockdown"]],

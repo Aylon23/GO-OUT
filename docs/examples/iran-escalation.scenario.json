@@ -8,7 +8,7 @@
   "author": "manual",
   "question": "מה יקרה לתיקים אם תהיה מלחמה עם איראן?",
   "horizon": "1m",
-  "summary": "Example spec for testing the import, with illustrative numbers. A short exchange of strikes is the most likely path and moves markets little; a disruption to Gulf oil shipping is the main tail risk, lifting oil and the dollar and hitting stocks, especially in shekels if the shekel weakens.",
+  "summary": "Example spec for testing the import, with illustrative numbers. A short exchange of strikes is the most likely path and moves markets little; a disruption to Gulf oil shipping is the main tail risk, lifting oil and gold and hitting stocks.",
   "branches": [
     {
       "name": "Contained exchange",
@@ -16,26 +16,73 @@
       "cause": "geopolitical",
       "narrative": "A few days of strikes, then a ceasefire, like June 2025. Oil spikes and gives most of it back.",
       "transmission": [
-        { "from": "trigger", "to": "oil", "direction": "+", "explanation": "Risk premium on Gulf supply" },
-        { "from": "oil", "to": "market", "direction": "-", "explanation": "Brief risk-off" },
-        { "from": "trigger", "to": "shekel", "direction": "+", "explanation": "The shekel weakens on local risk (USD/ILS up)" }
+        {
+          "from": "trigger",
+          "to": "oil",
+          "direction": "+",
+          "explanation": "Risk premium on Gulf supply"
+        },
+        {
+          "from": "oil",
+          "to": "market",
+          "direction": "-",
+          "explanation": "Brief risk-off"
+        }
       ],
       "factor_moves": {
-        "oil": { "low": -3, "mid": 4, "high": 12, "rationale": "Spikes faded within days in 2024 and 2025" },
-        "market": { "low": -4, "mid": -1, "high": 2 },
-        "shekel": { "low": -1, "mid": 1, "high": 3, "rationale": "USD/ILS rose on the first days of past rounds" },
-        "gold": { "low": -1, "mid": 1.5, "high": 4 }
+        "oil": {
+          "low": -3,
+          "mid": 4,
+          "high": 12,
+          "rationale": "Spikes faded within days in 2024 and 2025"
+        },
+        "market": {
+          "low": -4,
+          "mid": -1,
+          "high": 2
+        },
+        "gold": {
+          "low": -1,
+          "mid": 1.5,
+          "high": 4
+        }
       },
       "sector_overrides": {
-        "XLE": { "low": -2, "mid": 3, "high": 8 }
+        "XLE": {
+          "low": -2,
+          "mid": 3,
+          "high": 8
+        }
       },
       "analogs": [
-        { "name": "Israel–Iran war", "start": "2025-06-12", "end": "2025-06-24", "why_similar": "Direct strikes, then a ceasefire" },
-        { "name": "Iran missile attack on Israel", "start": "2024-09-30", "end": "2024-10-04", "why_similar": "One large salvo, limited follow-up" }
+        {
+          "name": "Israel–Iran war",
+          "start": "2025-06-12",
+          "end": "2025-06-24",
+          "why_similar": "Direct strikes, then a ceasefire"
+        },
+        {
+          "name": "Iran missile attack on Israel",
+          "start": "2024-09-30",
+          "end": "2024-10-04",
+          "why_similar": "One large salvo, limited follow-up"
+        }
       ],
       "signposts": [
-        { "indicator": "Brent crude", "symbol": "BZ=F", "condition": "<", "value": 80, "meaning": "Oil premium fading: the contained path" },
-        { "indicator": "Fear index", "symbol": "^VIX", "condition": "<", "value": 20, "meaning": "Markets treat it as contained" }
+        {
+          "indicator": "Brent crude",
+          "symbol": "BZ=F",
+          "condition": "<",
+          "value": 80,
+          "meaning": "Oil premium fading: the contained path"
+        },
+        {
+          "indicator": "Fear index",
+          "symbol": "^VIX",
+          "condition": "<",
+          "value": 20,
+          "meaning": "Markets treat it as contained"
+        }
       ]
     },
     {
@@ -44,57 +91,138 @@
       "cause": "supply",
       "narrative": "Attacks on tankers or the Strait of Hormuz. Oil stays high for weeks; inflation worries return.",
       "transmission": [
-        { "from": "trigger", "to": "oil", "direction": "+", "explanation": "About a fifth of world oil passes the Strait" },
-        { "from": "oil", "to": "rates", "direction": "-", "explanation": "Inflation fears push long yields up, bond prices down" },
-        { "from": "oil", "to": "market", "direction": "-", "explanation": "Higher costs, lower margins" },
-        { "from": "trigger", "to": "dollar", "direction": "+", "explanation": "Safe-haven demand" }
+        {
+          "from": "trigger",
+          "to": "oil",
+          "direction": "+",
+          "explanation": "About a fifth of world oil passes the Strait"
+        },
+        {
+          "from": "oil",
+          "to": "rates",
+          "direction": "-",
+          "explanation": "Inflation fears push long yields up, bond prices down"
+        },
+        {
+          "from": "oil",
+          "to": "market",
+          "direction": "-",
+          "explanation": "Higher costs, lower margins"
+        }
       ],
       "factor_moves": {
-        "oil": { "low": 10, "mid": 25, "high": 45, "rationale": "Larger and longer than the 2019 Abqaiq spike" },
-        "market": { "low": -14, "mid": -7, "high": -2 },
-        "rates": { "low": -6, "mid": -3, "high": 1 },
-        "dollar": { "low": 0, "mid": 2, "high": 4 },
-        "shekel": { "low": 0, "mid": 3, "high": 6 },
-        "gold": { "low": 0, "mid": 5, "high": 10 }
+        "oil": {
+          "low": 10,
+          "mid": 25,
+          "high": 45,
+          "rationale": "Larger and longer than the 2019 Abqaiq spike"
+        },
+        "market": {
+          "low": -14,
+          "mid": -7,
+          "high": -2
+        },
+        "rates": {
+          "low": -6,
+          "mid": -3,
+          "high": 1
+        },
+        "gold": {
+          "low": 0,
+          "mid": 5,
+          "high": 10
+        }
       },
       "sector_overrides": {
-        "XLE": { "low": 5, "mid": 12, "high": 20 },
-        "XLI": { "low": -15, "mid": -9, "high": -3 }
+        "XLE": {
+          "low": 5,
+          "mid": 12,
+          "high": 20
+        },
+        "XLI": {
+          "low": -15,
+          "mid": -9,
+          "high": -3
+        }
       },
       "analogs": [
-        { "name": "Abqaiq attack", "start": "2019-09-13", "end": "2019-09-17", "why_similar": "Sudden loss of Gulf supply" },
-        { "name": "Russia invades Ukraine", "start": "2022-02-23", "end": "2022-03-08", "why_similar": "Supply shock with a weeks-long oil spike" }
+        {
+          "name": "Abqaiq attack",
+          "start": "2019-09-13",
+          "end": "2019-09-17",
+          "why_similar": "Sudden loss of Gulf supply"
+        },
+        {
+          "name": "Russia invades Ukraine",
+          "start": "2022-02-23",
+          "end": "2022-03-08",
+          "why_similar": "Supply shock with a weeks-long oil spike"
+        }
       ],
       "signposts": [
-        { "indicator": "Brent crude", "symbol": "BZ=F", "condition": ">", "value": 100, "meaning": "Supply is actually disrupted" },
-        { "indicator": "USD/ILS", "symbol": "ILS=X", "condition": ">", "value": 3.9, "meaning": "Local risk priced into the shekel" }
+        {
+          "indicator": "Brent crude",
+          "symbol": "BZ=F",
+          "condition": ">",
+          "value": 100,
+          "meaning": "Supply is actually disrupted"
+        }
       ]
     },
     {
       "name": "Quick de-escalation",
       "probability": 0.15,
       "cause": "policy",
-      "narrative": "Talks or pressure end it fast. Relief rally; the shekel firms.",
+      "narrative": "Talks or pressure end it fast. Relief rally.",
       "factor_moves": {
-        "oil": { "low": -10, "mid": -5, "high": 0 },
-        "market": { "low": 0, "mid": 2, "high": 4 },
-        "shekel": { "low": -4, "mid": -2, "high": 0 }
+        "oil": {
+          "low": -10,
+          "mid": -5,
+          "high": 0
+        },
+        "market": {
+          "low": 0,
+          "mid": 2,
+          "high": 4
+        }
       },
       "analogs": [
-        { "name": "Tariff pause rally", "start": "2025-04-08", "end": "2025-04-09", "why_similar": "Sudden removal of a feared risk" }
+        {
+          "name": "Tariff pause rally",
+          "start": "2025-04-08",
+          "end": "2025-04-09",
+          "why_similar": "Sudden removal of a feared risk"
+        }
       ],
       "signposts": [
-        { "indicator": "Fear index", "symbol": "^VIX", "condition": "<", "value": 15, "meaning": "Risk premium gone" }
+        {
+          "indicator": "Fear index",
+          "symbol": "^VIX",
+          "condition": "<",
+          "value": 15,
+          "meaning": "Risk premium gone"
+        }
       ]
     }
   ],
   "current_context": [
-    { "item": "Brent crude", "value": "illustrative: $78", "as_of": "2026-10-30" },
-    { "item": "USD/ILS", "value": "illustrative: 3.65", "as_of": "2026-10-30" },
-    { "item": "VIX", "value": "illustrative: 17", "as_of": "2026-09-15" }
+    {
+      "item": "Brent crude",
+      "value": "illustrative: $78",
+      "as_of": "2026-10-30"
+    },
+    {
+      "item": "VIX",
+      "value": "illustrative: 17",
+      "as_of": "2026-09-15"
+    }
   ],
   "sources": [
-    { "title": "World Oil Transit Chokepoints (EIA)", "url": "https://www.eia.gov/international/analysis/special-topics/World_Oil_Transit_Chokepoints", "date": "2024-06-25" }
+    {
+      "title": "World Oil Transit Chokepoints (EIA)",
+      "url": "https://www.eia.gov/international/analysis/special-topics/World_Oil_Transit_Chokepoints",
+      "date": "2024-06-25"
+    }
   ],
   "confidence": "low",
   "what_would_change_my_view": "Attacks on tankers or Gulf oil facilities would move most of the weight to the shipping-disruption branch."

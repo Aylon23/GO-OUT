@@ -1,5 +1,6 @@
 """Impact engine: runs a Scenario Spec (researched, or built from a local-rule sentence) through the
-factor model and gives each portfolio and the family a distribution of outcomes, in shekels.
+factor model and gives each portfolio and the family a distribution of outcomes. Stock performance only:
+every move is in the security's own trading currency; amounts are shown in the display currency.
 
 Per branch, a holding moves by sum(beta x factor move), plus its sector ETF's move beyond the market
 when the branch overrides that sector (through the holding's sector beta), plus any move given for
@@ -106,7 +107,7 @@ def _corr(session: Session, cols: list[str], regime: str) -> np.ndarray:
             data[c] = F[c]
         else:
             sym = c.split(":", 1)[1]
-            r = factors.holding_returns(session, sym, as_of).get("usd")
+            r = factors.holding_returns(session, sym, as_of).get("local")
             if r is not None:
                 data[c] = r
     df = pd.DataFrame(data)
@@ -135,16 +136,16 @@ def _fx_now(session: Session) -> float:
 
 def simulate(session: Session, spec: dict, syms: list[str], base: str, regime: str | None = None, n: int = N_DRAWS,
              seed: int = SEED, noise: bool = True, exp: dict | None = None, band_scale: float = 1.0) -> dict:
-    """Simulated moves (in shekels) of any list of symbols under a spec.
-    Returns H (draws x symbols), cash (draws: the move of dollar cash in shekels), and per branch:
+    """Simulated moves (each in its own trading currency) of any list of symbols under a spec.
+    Returns H (draws x symbols), cash (draws: always 0, cash doesn't move), and per branch:
     the rows drawn, its middle-case moves and the factor contributions behind them."""
     exp = exp if exp is not None else factors.exposures(session, syms)
     days = HORIZON_DAYS.get(spec.get("horizon", "1m"), 21)
     hyears = days / 252
     cols = factors.ALL_IDS
-    B = np.array([[exp[s]["ils"]["betas"].get(c, 0.0) for c in cols] for s in syms]).reshape(len(syms), len(cols))
-    resid = np.array([(exp[s]["ils"]["resid_vol"] or 0.3) * math.sqrt(hyears) for s in syms])
-    cash_betas = np.array([1.0 if (c == "shekel" and base == "USD") else 0.0 for c in cols])
+    B = np.array([[exp[s]["local"]["betas"].get(c, 0.0) for c in cols] for s in syms]).reshape(len(syms), len(cols))
+    resid = np.array([(exp[s]["local"]["resid_vol"] or 0.3) * math.sqrt(hyears) for s in syms])
+    cash_betas = np.zeros(len(cols))  # cash doesn't move: no currency effect
     rng = np.random.default_rng(seed)
     branches = spec["branches"]
     probs = np.array([b["probability"] for b in branches], dtype=float)
@@ -197,8 +198,7 @@ def simulate(session: Session, spec: dict, syms: list[str], base: str, regime: s
             for s, v in own.items():
                 if s in syms:
                     i = syms.index(s)
-                    # company news replaces the holding's own move in its currency; add the shekel effect
-                    H[:, i] = v + Fm[:, col_idx["shekel"]] * (1.0 if exp[s]["ils"]["betas"].get("shekel", 0) > 0.5 else 0.0)
+                    H[:, i] = v  # company news replaces the holding's own move
             return H
 
         if m:
@@ -223,7 +223,6 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
     if not family.holdings:
         return {"empty": True}
     base = services.get_settings(session).base_currency
-    to_ils = _fx_now(session) if base == "USD" else 1.0
     syms = [h.symbol for h in family.holdings]
     exp = factors.exposures(session, syms)
     days = HORIZON_DAYS.get(spec.get("horizon", "1m"), 21)
@@ -245,23 +244,23 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
     branch_info = sim["branches"]
     branches = spec["branches"]
 
-    def stats(x: np.ndarray, value_ils: float) -> dict:
+    def stats(x: np.ndarray, value_amt: float) -> dict:
         if len(x) == 0:
-            return {"median": None, "p5": None, "p95": None, "prob_loss": None, "value_ils": value_ils}
+            return {"median": None, "p5": None, "p95": None, "prob_loss": None, "value_amt": value_amt}
         q5, q50, q95 = np.percentile(x, [5, 50, 95])
         return {"median": float(q50), "p5": float(q5), "p95": float(q95), "prob_loss": float(np.mean(x < 0)),
-                "median_ils": float(q50 * value_ils), "p5_ils": float(q5 * value_ils), "p95_ils": float(q95 * value_ils),
-                "mean": float(np.mean(x)), "value_ils": value_ils}
+                "median_amt": float(q50 * value_amt), "p5_amt": float(q5 * value_amt), "p95_amt": float(q95 * value_amt),
+                "mean": float(np.mean(x)), "value_amt": value_amt}
 
-    vals_ils = [b.value * to_ils for b in book_list]
+    vals_amt = [b.value for b in book_list]
     labels = [{"id": b.pid, "name": "Family" if b.pid is None else b.name} for b in book_list]
-    blended = [{**labels[k], **stats(outcomes[:, k], vals_ils[k])} for k in range(len(book_list))]
+    blended = [{**labels[k], **stats(outcomes[:, k], vals_amt[k])} for k in range(len(book_list))]
     br_out = []
     for info in branch_info:
         rows = info["rows"]
         br_out.append({"name": info["name"], "probability": info["probability"], "cause": info["cause"], "regime": info["regime"],
                        "draws": int(len(rows)),
-                       "books": [{**labels[k], **stats(outcomes[rows, k], vals_ils[k]),
+                       "books": [{**labels[k], **stats(outcomes[rows, k], vals_amt[k]),
                                   "mid": float(info["mid_moves"] @ W[k][0] + W[k][1] * info["cash_mid"])} for k in range(len(book_list))]})
 
     # per-holding view: probability-weighted middle move and the factors behind it
@@ -278,11 +277,11 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
             order = np.argsort(-np.abs(c))[:3]
             why = [{"factor": cols[j], "effect": float(c[j])} for j in order if abs(c[j]) >= 0.001]
             h = next(x for x in family.holdings if x.symbol == s)
-            v = (b.value * w[i]) * to_ils
-            rows.append({"symbol": s, "name": h.name, "weight": float(w[i]), "value_ils": v, "move": float(exp_move[i]),
-                         "change_ils": float(exp_move[i] * v), "why": why,
+            v = b.value * w[i]
+            rows.append({"symbol": s, "name": h.name, "weight": float(w[i]), "value_amt": v, "move": float(exp_move[i]),
+                         "change_amt": float(exp_move[i] * v), "why": why,
                          "own_news": any(s in (br.get("holding_overrides") or {}) for br in branches)})
-        rows.sort(key=lambda r: r["change_ils"])
+        rows.sort(key=lambda r: r["change_amt"])
         key = str(b.pid) if b.pid is not None else "family"
         holdings[key] = rows
         fac = w @ exp_contrib
@@ -295,23 +294,23 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
 
     out = {
         "empty": False, "spec": spec, "n": n, "seed": seed, "horizon": spec.get("horizon"), "horizon_days": days,
-        "base_currency": base, "usd_ils": to_ils if base == "USD" else _fx_now(session),
+        "base_currency": base,
         "blended": blended, "branches": br_out, "holdings": holdings, "drivers": drivers,
         "histogram": {"edges": bins.tolist(), "counts": counts.tolist()},
-        "exposures": {"family": factors.aggregate([(float(W[0][0][i]), exp[s]["ils"]["betas"]) for i, s in enumerate(syms)], W[0][1], 1.0 if base == "USD" else 0.0)},
+        "exposures": {"family": factors.aggregate([(float(W[0][0][i]), exp[s]["local"]["betas"]) for i, s in enumerate(syms)])},
         "assumptions": [
-            "Each holding moves by its factor betas times the factor moves, in shekels; factors a branch doesn't name stay flat.",
+            "Stock performance only, currency effects excluded: each holding moves by its betas times the factor moves, in its own currency; factors a branch doesn't name stay flat.",
             "A sector override moves holdings of that sector through their sector beta, beyond the market.",
             f"{n:,} draws: branch by probability, moves from triangular low/mid/high ranges with historical correlations, plus each holding's own noise over {days} trading days.",
             "Crisis causes (geopolitical, supply, demand) use correlations from sell-off weeks; others use normal weeks, unless you choose.",
-            "Cash in dollars moves with USD/ILS when counted in shekels." if base == "USD" else "Cash is in shekels and doesn't move.",
+            "Cash doesn't move.",
         ] + ([f"Ranges and noise are widened ×{k:.2f}: {settings.band_note}"] if abs(k - 1) > 1e-9 else []),
         "warnings": [],
     }
     if keep:  # raw draws for callers that need more than the summaries (not serialized)
         out["_outcomes"], out["_pick"] = outcomes, sim["pick"]
     fam = blended[0]
-    out["answer"] = {"median_ils": fam["median_ils"], "median": fam["median"], "p5_ils": fam["p5_ils"], "p5": fam["p5"],
+    out["answer"] = {"median_amt": fam["median_amt"], "median": fam["median"], "p5_amt": fam["p5_amt"], "p5": fam["p5"],
                      "prob_loss": fam["prob_loss"]}
     if analogs:
         out["analogs"] = _analogs(session, spec, ports, family, br_out, out["warnings"])
@@ -345,7 +344,7 @@ def _analogs(session: Session, spec: dict, ports: list[Book], family: Book, br_o
 
 # ------------------------------------------------------------------ local-rule scenarios as specs
 
-SYMBOL_FACTOR = {"SPY": "market", "TLT": "rates", "USO": "oil", "UUP": "dollar", "ILS=X": "shekel", "GLD": "gold"}
+SYMBOL_FACTOR = {"SPY": "market", "TLT": "rates", "USO": "oil", "GLD": "gold"}
 EXTRA_FACTOR_SYMBOLS = ["IWM", "IWD", "IWF", "MTUM", "QUAL"]
 
 
@@ -368,7 +367,7 @@ def spec_from_shocks(session: Session, shocks: list[dict], horizon_weeks: float 
         if col and col in F.columns:
             shocked[col] = mv
         else:
-            r = factors.holding_returns(session, sym, as_of).get("usd")
+            r = factors.holding_returns(session, sym, as_of).get("local")
             if r is None:
                 continue
             data[f"raw:{sym}"] = r

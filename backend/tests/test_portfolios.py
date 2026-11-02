@@ -164,7 +164,7 @@ def test_overview_since_tracking_spark_activity_and_insights(client):
     assert me["since_vs_spy"] == pytest.approx(me["since_return"] - me["since_spy"])
     assert me["trading_days"] == 389 and me["spark"][0] == pytest.approx(100) and len(me["spark"]) <= 45
     assert me["last_activity"] == ds[10].isoformat()
-    assert me["cost_gain_usd"] == pytest.approx(10 * (150 - 40), rel=1e-6)  # base is ILS; shown in dollars
+    assert me["cost_gain_amt"] == pytest.approx(10 * (150 - 40) * 4.0, rel=1e-6)  # shown in ILS at today's rate
     assert rows["Shir"]["trading_days"] < o["min_trading_days"]
     kinds = {i["kind"]: i for i in o["insights"]}
     assert kinds["winner"]["symbol"] == "AAPL" and "My portfolio and Keren" in kinds["winner"]["text"]

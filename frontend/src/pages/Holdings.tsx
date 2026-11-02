@@ -304,7 +304,7 @@ function HoldingPanel({ row, onClose }: { row: HoldingRow; onClose: () => void }
 
 function useBase() {
   const { settings } = useApp();
-  return settings?.base_currency ?? "ILS";
+  return settings?.base_currency ?? "USD";
 }
 
 function HoldingsSkeleton() {

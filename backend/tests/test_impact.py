@@ -53,20 +53,17 @@ def test_branch_probabilities_are_respected(fam):
 def test_zero_uncertainty_equals_beta_calculation(fam):
     spec = copy.deepcopy(EXAMPLE)
     spec["branches"] = [{"name": "Fixed", "probability": 1.0, "cause": "other", "narrative": "",
-                         "factor_moves": {"market": {"low": -10, "mid": -10, "high": -10}, "oil": {"low": 20, "mid": 20, "high": 20},
-                                          "shekel": {"low": -5, "mid": -5, "high": -5}}}]
+                         "factor_moves": {"market": {"low": -10, "mid": -10, "high": -10}, "oil": {"low": 20, "mid": 20, "high": 20}}}]
     out = impact.run(fam.session, spec, n=500, analogs=False, noise=False)
     ports, family = books(fam.session, None)
     exp = factors.exposures(fam.session, [h.symbol for h in family.holdings])
-    f = {"market": -0.10, "oil": 0.20, "shekel": -0.05}
-    by_hand = sum(h.value / family.value * sum(exp[h.symbol]["ils"]["betas"].get(k, 0) * v for k, v in f.items()) for h in family.holdings)
-    cash = 1 - sum(h.value for h in family.holdings) / family.value
-    by_hand += cash * f["shekel"]  # dollar cash counted in shekels
+    f = {"market": -0.10, "oil": 0.20}
+    by_hand = sum(h.value / family.value * sum(exp[h.symbol]["local"]["betas"].get(k, 0) * v for k, v in f.items()) for h in family.holdings)
+    # cash doesn't move: stock performance only
     fam_out = out["blended"][0]
     assert fam_out["median"] == pytest.approx(by_hand, abs=1e-9)
     assert fam_out["p5"] == pytest.approx(by_hand, abs=1e-9) and fam_out["p95"] == pytest.approx(by_hand, abs=1e-9)
-    usd_ils = out["usd_ils"]
-    assert fam_out["median_ils"] == pytest.approx(by_hand * family.value * usd_ils, rel=1e-9)
+    assert fam_out["median_amt"] == pytest.approx(by_hand * family.value, rel=1e-9)
 
 
 def test_editing_a_link_moves_everything_downstream(fam):
@@ -77,7 +74,7 @@ def test_editing_a_link_moves_everything_downstream(fam):
     assert br["factor_moves"]["oil"]["low"] == orig["factor_moves"]["oil"]["low"] - 12.5  # range moves with it
     for k in ("market", "rates"):  # oil -> market, oil -> rates
         assert br["factor_moves"][k]["mid"] == pytest.approx(orig["factor_moves"][k]["mid"] * 0.5)
-    assert br["factor_moves"]["dollar"] == orig["factor_moves"]["dollar"]  # trigger -> dollar: not downstream of oil
+    assert br["factor_moves"]["gold"] == orig["factor_moves"]["gold"]  # gold has no link from oil: not downstream
     a = impact.run(fam.session, EXAMPLE, n=4000, analogs=False)
     b = impact.run(fam.session, EXAMPLE, n=4000, analogs=False, edits=[{"branch": "Shipping disruption", "factor": "oil", "mid": 12.5}])
     sa = next(x for x in a["branches"] if x["name"] == "Shipping disruption")["books"][0]["mid"]
@@ -101,15 +98,15 @@ def test_local_rule_becomes_one_branch_spec(fam):
     assert apple["branches"][0]["factor_moves"]["market"]["mid"] == pytest.approx(0, abs=1e-9)
     res = impact.run(fam.session, apple, n=1000, analogs=False, noise=False)
     aapl = next(h for h in res["holdings"]["family"] if h["symbol"] == "AAPL")
-    shekel_mid = apple["branches"][0]["factor_moves"]["shekel"]["mid"] / 100
-    assert aapl["own_news"] and aapl["move"] == pytest.approx(-0.08 + shekel_mid, abs=1e-9)  # its own move, plus USD/ILS in shekels
+    assert "shekel" not in apple["branches"][0]["factor_moves"] and "dollar" not in apple["branches"][0]["factor_moves"]
+    assert aapl["own_news"] and aapl["move"] == pytest.approx(-0.08, abs=1e-9)  # exactly its own move, in dollars
 
 
 def test_api_and_analogs(fam):
     c = fam
     c.post("/api/specs", json={"text": json.dumps(EXAMPLE)})
     out = c.post(f"/api/impact/spec/{EXAMPLE['id']}", json={}).json()
-    assert out["answer"]["p5_ils"] <= out["answer"]["median_ils"]
+    assert out["answer"]["p5_amt"] <= out["answer"]["median_amt"]
     assert {b["regime"] for b in out["branches"]} == {"selloff", "normal"}  # geopolitical/supply vs policy
     forced = c.post(f"/api/impact/spec/{EXAMPLE['id']}", json={"regime": "normal"}).json()
     assert {b["regime"] for b in forced["branches"]} == {"normal"}

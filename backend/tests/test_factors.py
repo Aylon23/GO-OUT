@@ -22,8 +22,8 @@ def syn(session):
     return session
 
 
-def betas(session, sym, view="usd", as_of=AS_OF):
-    return factors.estimate(session, sym, as_of)[view]
+def betas(session, sym, as_of=AS_OF):
+    return factors.estimate(session, sym, as_of)["local"]
 
 
 def test_qqq_market_beta_above_spy(syn):
@@ -46,21 +46,18 @@ def test_utilities_positive_rates_beta(syn):
     assert betas(syn, "NEE")["betas"]["rates"] > 0.2
 
 
-def test_us_stock_in_shekels_loses_when_shekel_strengthens(syn, monkeypatch):
+def test_no_currency_factor_and_local_returns_only(syn):
+    """Stock performance only: no USD/ILS or dollar factor, and a holding's returns are its own-currency returns."""
+    assert "shekel" not in factors.BASE_IDS and "dollar" not in factors.BASE_IDS
     services.ensure_meta_info(syn, ["AAPL"])
-    ils = betas(syn, "AAPL", "ils")["betas"]["shekel"]
-    usd = betas(syn, "AAPL", "usd")["betas"]["shekel"]
-    # the shekel factor is shekels per dollar: the shekel strengthening is that factor falling
-    assert ils > 0.8 and ils - usd == pytest.approx(1.0)
-    # and the identity holds in the data: without shrinkage, regressing shekel returns directly agrees
-    monkeypatch.setattr(factors, "LAMBDA", 0.0)
-    ils = betas(syn, "AAPL", "ils")["betas"]["shekel"]
-    R = factors.holding_returns(syn, "AAPL", AS_OF)
-    F = factors.factor_returns(syn, AS_OF)
-    cols = list(betas(syn, "AAPL")["betas"])
-    direct = factors.fit(R["ils"], F[cols], np.zeros(len(cols)))["betas"]["shekel"]
-    assert direct == pytest.approx(ils, abs=0.03)  # the gap is the small cross term of compounding
-    assert -ils < -0.8  # beta to "the shekel strengthens" is clearly negative
+    b = betas(syn, "AAPL")["betas"]
+    assert "shekel" not in b and "dollar" not in b
+    R = factors.holding_returns(syn, "AAPL", AS_OF)["local"]
+    from app.market.cache import load_history
+    import pandas as pd
+    px = load_history(syn, "AAPL")["adj_close"]
+    wk = pd.Series(px.to_numpy(), index=pd.to_datetime(px.index)).resample("W-FRI").last().pct_change()
+    assert R.iloc[-5] == pytest.approx(wk.loc[R.index[-5]])  # the dollar price's own weekly return
 
 
 def test_short_history_shrinks_to_sector_and_is_marked():
@@ -94,7 +91,7 @@ def test_no_look_ahead(syn):
     F = factors.factor_returns(syn, early)
     assert F.index.max() <= pd.Timestamp(early) + pd.Timedelta(days=6)  # the week containing as_of at most
     R = factors.holding_returns(syn, "NVDA", early)
-    assert R["usd"].index.max() <= pd.Timestamp(early) + pd.Timedelta(days=6)
+    assert R["local"].index.max() <= pd.Timestamp(early) + pd.Timedelta(days=6)
     # later prices don't change an earlier estimate
     factors._factor_cache.clear()
     b = betas(syn, "NVDA", as_of=early)
@@ -115,19 +112,20 @@ def family(syn):
 
 def test_payload_family_first_and_value_weighted(family, syn):
     d = family.get("/api/exposures").json()
-    assert d["currency"] == "ILS" and [b["name"] for b in d["books"]][0] == "Family"
+    assert d["basis"] == "local" and [b["name"] for b in d["books"]][0] == "Family"
     fam, *ports = d["books"]
     # family betas = value-weighted portfolio betas
-    for k in ("market", "oil", "shekel"):
+    for k in ("market", "oil", "rates"):
         mix = sum(p["betas"].get(k, 0) * p["value"] for p in ports) / sum(p["value"] for p in ports)
         assert fam["betas"][k] == pytest.approx(mix, abs=1e-9)
     keren = next(b for b in ports if b["name"] == "Keren")
     assert keren["betas"]["oil"] > 0  # Exxon
     assert all("r2" in h and "resid_vol" in h and "weeks" in h for h in fam["holdings"])
-    assert {f["id"] for f in d["factors"]} >= {"market", "rates", "oil", "dollar", "shekel"}
+    assert {f["id"] for f in d["factors"]} >= {"market", "rates", "oil", "gold"}
+    assert not {"dollar", "shekel"} & {f["id"] for f in d["factors"]}
     # cached: a second call doesn't re-estimate
     rows = syn.exec(factors.select(factors.FactorExposure)).all()
-    assert len(rows) == 2 * len(fam["holdings"])
+    assert len(rows) == len(fam["holdings"])  # one own-currency view per holding
 
 
 def test_family_market_beta_stable_when_window_shifts_4_weeks(family, syn):
@@ -138,6 +136,6 @@ def test_family_market_beta_stable_when_window_shifts_4_weeks(family, syn):
 
     def market(as_of):
         e = factors.exposures(syn, [h.symbol for h in fam.holdings], as_of, refresh=True)
-        return sum(h.value / total * e[h.symbol]["ils"]["betas"]["market"] for h in fam.holdings)
+        return sum(h.value / total * e[h.symbol]["local"]["betas"]["market"] for h in fam.holdings)
 
     assert abs(market(AS_OF) - market(AS_OF - dt.timedelta(weeks=4))) < 0.1

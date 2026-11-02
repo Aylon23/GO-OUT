@@ -2,12 +2,12 @@ import { Tray } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useState } from "react";
 import { api, ApiError, type EarningsCard } from "../lib/api";
-import { dateLong, money, pct } from "../lib/format";
+import { amt, dateLong, pct } from "../lib/format";
 import { useData } from "../lib/hooks";
 import { Avatar } from "./Avatar";
 import { EmptyState, ErrorLine, InfoTip, Signed, Skel } from "./ui";
 
-const ils = (v: number | null | undefined) => money(v, "ILS", { decimals: 0, signed: true });
+const fmt = (v: number | null | undefined, signed = true) => amt(v, signed);
 
 export function Earnings() {
   const [date, setDate] = useState<string | undefined>(undefined);
@@ -83,14 +83,14 @@ function Card({ c }: { c: EarningsCard }) {
             {c.impact.holders.length === 0 ? <p className="text-sm text-muted">Nobody holds it.</p> : (
               <ul className="mt-1 text-sm">{c.impact.holders.map((h) => (
                 <li key={h.id} className="flex justify-between gap-3 border-b border-line py-1"><span>{h.name} <span className="text-xs text-faint">{pct(h.weight, 1, false)} of the portfolio</span></span>
-                  <Signed value={h.pnl_ils}>{h.pnl_ils == null ? "–" : ils(h.pnl_ils)}</Signed></li>))}</ul>
+                  <Signed value={h.pnl_amt}>{h.pnl_amt == null ? "–" : fmt(h.pnl_amt)}</Signed></li>))}</ul>
             )}
             {c.impact.related.length > 0 && (
               <>
                 <p className="mt-3 flex items-center gap-1 text-xs font-medium text-muted">Related holdings, expected move<InfoTip text="Each holding's weekly-return beta to this company over two years, times today's reaction." /></p>
                 <ul className="mt-1 text-xs">{c.impact.related.slice(0, 5).map((x) => (
                   <li key={x.symbol} className="flex justify-between gap-3 py-0.5"><span><span className="font-mono font-semibold">{x.symbol}</span> <span className="text-faint">{x.why}, held by {x.holders.join(", ")}</span></span>
-                    <span><Signed value={x.expected_move}>{pct(x.expected_move, 1)}</Signed> <Signed value={x.expected_ils} className="text-faint">{ils(x.expected_ils)}</Signed></span></li>))}</ul>
+                    <span><Signed value={x.expected_move}>{pct(x.expected_move, 1)}</Signed> <Signed value={x.expected_amt} className="text-faint">{fmt(x.expected_amt)}</Signed></span></li>))}</ul>
               </>
             )}
           </div>

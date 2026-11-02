@@ -57,8 +57,8 @@ def test_numbers_match_the_app_screens(fam):
     pp = fam.get(f"/api/portfolio?portfolio=1&range=CUSTOM&start={start}&end={end}").json()
     s = pp["summary"]
     assert d["return"] == pytest.approx(s["twr"])
-    assert d["value_ils"] == pytest.approx(s["value"] * 3.6)
-    assert d["change_ils"] == pytest.approx(s["range_gain"] * 3.6)
+    assert d["value_amt"] == pytest.approx(s["value"])  # dollars, like the app's screens
+    assert d["change_amt"] == pytest.approx(s["range_gain"])
     assert d["sp500"] == pytest.approx(next(b["twr"] for b in s["benchmarks"] if b["symbol"] == "SPY"))
     assert d["nasdaq"] == pytest.approx(next(b["twr"] for b in s["benchmarks"] if b["symbol"] == "QQQ"))
     hp = fam.get(f"/api/holdings?portfolio=1&range=CUSTOM&start={start}&end={end}").json()

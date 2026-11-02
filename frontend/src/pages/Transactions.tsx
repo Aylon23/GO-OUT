@@ -25,7 +25,7 @@ export default function Transactions() {
   const [importOpen, setImportOpen] = useState(false);
   const [holdingsOpen, setHoldingsOpen] = useState(false);
   const { portfolio } = useApp();
-  const base = settings?.base_currency ?? "ILS";
+  const base = settings?.base_currency ?? "USD";
 
   const rows = useMemo(() => (txs.data ?? []).filter((t) =>
     (!fTicker || t.ticker.includes(fTicker.trim().toUpperCase())) && (!fType || t.type === fType) && (!fFrom || t.date >= fFrom) && (!fTo || t.date <= fTo)), [txs.data, fTicker, fType, fFrom, fTo]);

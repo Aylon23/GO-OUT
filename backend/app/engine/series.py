@@ -146,6 +146,15 @@ def _map_to_calendar(d: dt.date, calendar: list[dt.date]) -> int:
 TYPE_ORDER = {"DEPOSIT": 0, "WITHDRAWAL": 1, "DIVIDEND": 2, "SELL": 3, "BUY": 4}
 
 
+def neutral_fx(fx: pd.Series) -> pd.Series:
+    """Currency-neutral rate: the latest USD/ILS on every date. Amounts are converted only to show them
+    in one currency; no return, gain or comparison ever includes an exchange-rate move."""
+    fx = fx.dropna()
+    if fx.empty:
+        return fx
+    return pd.Series(float(fx.iloc[-1]), index=fx.index)
+
+
 def build_series(
     txs: list[TxLike],
     market: dict[str, MarketData],
@@ -163,7 +172,7 @@ def build_series(
     frames = [market[t].frame for t in tickers] + list(extra_frames)
     calendar = build_calendar(frames or [fx], first, end)
     n = len(calendar)
-    fx_c = align(fx, calendar)
+    fx_c = align(neutral_fx(fx), calendar)  # stock performance only: one rate for every day
 
     close = pd.DataFrame(index=calendar)
     div_ps = pd.DataFrame(index=calendar)
@@ -282,15 +291,17 @@ def build_series(
 
 
 def total_return_in_base(md: MarketData, fx: pd.Series, calendar: list[dt.date], base: str) -> pd.Series:
-    """Benchmark total-return price (adj_close) in the base currency on the calendar (rule 6)."""
-    fx_c = align(fx, calendar)
+    """Benchmark total-return price (adj_close) on the calendar, in its own currency's terms (converted at one
+    fixed rate only to show it in the base currency, so its returns are its local returns)."""
+    fx_c = align(neutral_fx(fx), calendar)
     p = align(md.frame["adj_close"], calendar)
     return p * fx_factor(md.currency, base, fx_c)
 
 
 def holding_lots(txs: list[TxLike], ticker: str, splits: list[tuple[dt.date, float]], fx: pd.Series, base: str) -> dict:
     """Average-cost position for one ticker: quantity (current split basis), avg cost (native, current basis),
-    cost basis in base currency (converted at each purchase date's FX)."""
+    cost basis in base currency (converted at today's rate: currency moves are left out)."""
+    fx = neutral_fx(fx)
     qty = 0.0
     cost_native = 0.0
     cost_base = 0.0

@@ -1,11 +1,11 @@
 import clsx from "clsx";
 import { useState } from "react";
 import { api, ApiError, type ReverseStress, type RiskBook, type StressTest } from "../lib/api";
-import { dateLong, money, pct } from "../lib/format";
+import { amt, dateLong, pct } from "../lib/format";
 import { useData } from "../lib/hooks";
 import { ErrorLine, InfoTip, Signed, Skel } from "./ui";
 
-const ils = (v: number | null | undefined) => money(v, "ILS", { decimals: 0, signed: true });
+const fmt = (v: number | null | undefined, signed = true) => amt(v, signed);
 
 /** Under Risk: the family risk summary, historical stress tests and the reverse stress test. */
 export function StressSection() {
@@ -33,11 +33,11 @@ function RiskSummary() {
           {d.books.map((x, i) => <option key={x.id ?? "family"} value={i}>{x.name}</option>)}
         </select>
       </div>
-      <p className="mt-1 max-w-[70ch] text-sm text-muted">Today's holdings over the last {Math.round(b.weeks / 52 * 10) / 10} years of weekly returns, in shekels.</p>
+      <p className="mt-1 max-w-[70ch] text-sm text-muted">Today's holdings over the last {Math.round(b.weeks / 52 * 10) / 10} years of weekly returns. Stock performance only, currency effects excluded.</p>
       <dl className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4">
-        <Stat k="Bad week (1 in 20)" tip="Historical 95% value at risk: in 1 week out of 20 the loss was at least this." v={ils(-b.var_1w_ils)} sub={pct(-b.var_1w, 1)} />
-        <Stat k="Beyond it, on average" tip="Average loss in those worst weeks (expected shortfall, CVaR)." v={ils(-b.cvar_1w_ils)} sub={pct(-b.cvar_1w, 1)} />
-        <Stat k="Bad month (1 in 20)" tip="The same for 4-week stretches." v={b.var_1m_ils != null ? ils(-b.var_1m_ils) : "–"} sub={b.var_1m != null ? pct(-b.var_1m, 1) : ""} />
+        <Stat k="Bad week (1 in 20)" tip="Historical 95% value at risk: in 1 week out of 20 the loss was at least this." v={fmt(-b.var_1w_amt)} sub={pct(-b.var_1w, 1)} />
+        <Stat k="Beyond it, on average" tip="Average loss in those worst weeks (expected shortfall, CVaR)." v={fmt(-b.cvar_1w_amt)} sub={pct(-b.cvar_1w, 1)} />
+        <Stat k="Bad month (1 in 20)" tip="The same for 4-week stretches." v={b.var_1m_amt != null ? fmt(-b.var_1m_amt) : "–"} sub={b.var_1m != null ? pct(-b.var_1m, 1) : ""} />
         <Stat k="Independent bets" tip="How many truly separate bets the portfolio's risk is spread over (effective number of bets). Far below the number of holdings means they move together." v={b.effective_bets != null ? b.effective_bets.toFixed(1) : "–"} sub={`of ${b.holdings} holdings`} />
       </dl>
       <div className="mt-6 max-w-[560px]">
@@ -83,7 +83,7 @@ function StressTests() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Stress tests</h2>
-          <p className="mt-1 max-w-[70ch] text-sm text-muted">Today's holdings through past crises, using real prices in shekels. A holding with no prices then is estimated from its factor exposures.</p>
+          <p className="mt-1 max-w-[70ch] text-sm text-muted">Today's holdings through past crises, using real prices in each stock's own currency (currency effects excluded). A holding with no prices then is estimated from its factor exposures.</p>
         </div>
         <button type="button" className="btn-primary" disabled={busy} onClick={run}>{busy ? "Running" : tests ? "Run again" : "Run all stress tests"}</button>
       </div>
@@ -93,9 +93,9 @@ function StressTests() {
           <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
             <thead><tr className="text-xs text-muted">
               <th className="border-b border-line py-2 text-left font-medium">Period</th>
-              <th className="border-b border-line py-2 pl-3 text-right font-medium">S&P 500 ($)</th>
+              <th className="border-b border-line py-2 pl-3 text-right font-medium">S&P 500</th>
               <th className="border-b border-line py-2 pl-3 text-right font-medium">Family</th>
-              <th className="border-b border-line py-2 pl-3 text-right font-medium">₪</th>
+              <th className="border-b border-line py-2 pl-3 text-right font-medium">Amount</th>
               {ports.map((p) => <th key={p.id} className="border-b border-line py-2 pl-3 text-right font-medium">{p.name}</th>)}
             </tr></thead>
             <tbody>{tests.map((t) => (
@@ -105,7 +105,7 @@ function StressTests() {
                     {t.family.estimated_share != null && t.family.estimated_share > 0.01 && ` · ${pct(t.family.estimated_share, 0, false)} estimated`}</span></td>
                 <td className="num border-b border-line py-2.5 pl-3 text-right">{t.sp500_usd != null ? <Signed value={t.sp500_usd}>{pct(t.sp500_usd, 1)}</Signed> : "–"}</td>
                 <td className="num border-b border-line py-2.5 pl-3 text-right font-semibold">{t.family.impact != null ? <Signed value={t.family.impact}>{pct(t.family.impact, 1)}</Signed> : "–"}</td>
-                <td className="num border-b border-line py-2.5 pl-3 text-right">{t.family.change_ils != null ? <Signed value={t.family.change_ils}>{ils(t.family.change_ils)}</Signed> : "–"}</td>
+                <td className="num border-b border-line py-2.5 pl-3 text-right">{t.family.change_amt != null ? <Signed value={t.family.change_amt}>{fmt(t.family.change_amt)}</Signed> : "–"}</td>
                 {t.portfolios.map((p) => <td key={p.id} className="num border-b border-line py-2.5 pl-3 text-right">{p.impact != null ? <Signed value={p.impact}>{pct(p.impact, 1)}</Signed> : "–"}</td>)}
               </tr>
             ))}</tbody>

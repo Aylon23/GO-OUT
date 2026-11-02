@@ -15,8 +15,7 @@ from sqlmodel import Session
 from . import actions, factors, impact
 from .market.cache import NoPriceData, load_history
 
-MARKETS = [("^VIX", "VIX", "מדד הפחד (VIX)"), ("CL=F", "Crude oil", "נפט גולמי"), ("^TNX", "US 10-year yield", "תשואת אג״ח 10 שנים בארה״ב"),
-           ("ILS=X", "USD/ILS", "דולר-שקל")]
+MARKETS = [("^VIX", "VIX", "מדד הפחד (VIX)"), ("CL=F", "Crude oil", "נפט גולמי"), ("^TNX", "US 10-year yield", "תשואת אג״ח 10 שנים בארה״ב")]
 FACTOR_HE = actions.FACTOR_HE
 FACTOR_EN = {f["id"]: f["label"] for f in factors.FACTORS}
 NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
@@ -25,8 +24,9 @@ NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 class Facts:
     """Formats numbers and remembers every string it produced, so the memo can be checked."""
 
-    def __init__(self) -> None:
+    def __init__(self, currency: str = "USD") -> None:
         self.used: set[str] = set()
+        self.sym = "$" if currency == "USD" else "₪"
 
     def _keep(self, s: str) -> str:
         self.used.update(NUM.findall(s))
@@ -39,11 +39,12 @@ class Facts:
         sign = ("+" if v > 0 else "−" if v < 0 else "") if signed else ""
         return self._keep(sign + s)
 
-    def ils(self, v: float | None, signed: bool = True) -> str:
+    def amt(self, v: float | None, signed: bool = True) -> str:
+        """An amount in the display currency."""
         if v is None:
             return "–"
         sign = ("+" if v > 0 else "−" if v < 0 else "") if signed else ""
-        return self._keep(f"{sign}₪{abs(v):,.0f}")
+        return self._keep(f"{sign}{self.sym}{abs(v):,.0f}")
 
     def num(self, v: float, d: int = 2) -> str:
         return self._keep(f"{v:,.{d}f}")
@@ -77,7 +78,10 @@ def market_now(session: Session, f: Facts, he: bool) -> list[str]:
 def build(session: Session, spec: dict, report: dict | None = None, lang: str = "he", regime: str | None = None,
           n: int = 6000) -> dict:
     he = lang == "he"
-    f = Facts()
+    from . import services
+
+    currency = services.get_settings(session).base_currency
+    f = Facts(currency)
     res = impact.run(session, spec, regime=regime, n=n)
     if res.get("empty"):
         return {"empty": True}
@@ -91,10 +95,10 @@ def build(session: Session, spec: dict, report: dict | None = None, lang: str = 
 
     # 1 bottom line
     if he:
-        lines = [f"בטווח של {hz}: התרחיש הסביר למשפחה {f.ils(fam['median_ils'])} ({f.pct(fam['median'])}). במקרה רע (1 מתוך 20) {f.ils(fam['p5_ils'])} ({f.pct(fam['p5'])}). "
+        lines = [f"בטווח של {hz}: התרחיש הסביר למשפחה {f.amt(fam['median_amt'])} ({f.pct(fam['median'])}). במקרה רע (1 מתוך 20) {f.amt(fam['p5_amt'])} ({f.pct(fam['p5'])}). "
                  f"הסיכוי להפסד {f.pct(fam['prob_loss'], 0, False)}."]
     else:
-        lines = [f"Over {hz}: most likely the family {f.ils(fam['median_ils'])} ({f.pct(fam['median'])}). Bad case (1 in 20): {f.ils(fam['p5_ils'])} "
+        lines = [f"Over {hz}: most likely the family {f.amt(fam['median_amt'])} ({f.pct(fam['median'])}). Bad case (1 in 20): {f.amt(fam['p5_amt'])} "
                  f"({f.pct(fam['p5'])}). Chance of a loss: {f.pct(fam['prob_loss'], 0, False)}."]
     if spec.get("summary"):
         lines.append(f.text(spec["summary"]))
@@ -153,12 +157,12 @@ def build(session: Session, spec: dict, report: dict | None = None, lang: str = 
 
     # 7 implications per person
     lines = []
-    for p in sorted(act["people"], key=lambda x: x["median_ils"]):
+    for p in sorted(act["people"], key=lambda x: x["median_amt"]):
         if he:
-            lines.append(f"{f.text(p['name'])}: {f.ils(p['median_ils'])} ({f.pct(p['median'])}), במקרה רע {f.ils(p['bad_ils'])}. "
+            lines.append(f"{f.text(p['name'])}: {f.amt(p['median_amt'])} ({f.pct(p['median'])}), במקרה רע {f.amt(p['bad_amt'])}. "
                          + (f"מה שמשפיע: {f.text(', '.join(h['symbol'] for h in p['drivers_holdings']))}." if p["drivers_holdings"] else ""))
         else:
-            lines.append(f"{f.text(p['name'])}: {f.ils(p['median_ils'])} ({f.pct(p['median'])}), bad case {f.ils(p['bad_ils'])}. "
+            lines.append(f"{f.text(p['name'])}: {f.amt(p['median_amt'])} ({f.pct(p['median'])}), bad case {f.amt(p['bad_amt'])}. "
                          + (f"Driven by {f.text(', '.join(h['symbol'] for h in p['drivers_holdings']))}." if p["drivers_holdings"] else ""))
     S.append(("השלכות לכל אחד" if he else "Implications per person", lines))
 
@@ -171,9 +175,9 @@ def build(session: Session, spec: dict, report: dict | None = None, lang: str = 
         parts = []
         for o in opts:
             if he:
-                parts.append(f"{f.text(o['title'])} ({f.pct(o['share_of_portfolio'], 0, False)} מהתיק): חוסך {f.ils(o['benefit_ils'], False)} אם קורה, עולה {f.ils(o['cost_ils'], False)} אם לא")
+                parts.append(f"{f.text(o['title'])} ({f.pct(o['share_of_portfolio'], 0, False)} מהתיק): חוסך {f.amt(o['benefit_amt'], False)} אם קורה, עולה {f.amt(o['cost_amt'], False)} אם לא")
             else:
-                parts.append(f"{f.text(o['title'])} ({f.pct(o['share_of_portfolio'], 0, False)} of the portfolio): saves {f.ils(o['benefit_ils'], False)} if it happens, costs {f.ils(o['cost_ils'], False)} if not")
+                parts.append(f"{f.text(o['title'])} ({f.pct(o['share_of_portfolio'], 0, False)} of the portfolio): saves {f.amt(o['benefit_amt'], False)} if it happens, costs {f.amt(o['cost_amt'], False)} if not")
         lines.append(f"{f.text(p['name'])}: " + "; ".join(parts))
     S.append(("אפשרויות ומחירן" if he else "Options with trade-offs", lines or [("לא נדרשת פעולה." if he else "No action needed.")]))
 
@@ -187,9 +191,9 @@ def build(session: Session, spec: dict, report: dict | None = None, lang: str = 
     S.append(("ביטחון" if he else "Confidence", lines))
 
     sections = [{"n": i + 1, "title": t, "lines": [x for x in ls if x.strip()]} for i, (t, ls) in enumerate(S)]
-    return {"empty": False, "lang": lang, "title": title, "horizon": spec.get("horizon"), "date": dt.date.today().isoformat(),
+    return {"empty": False, "lang": lang, "currency": currency, "title": title, "horizon": spec.get("horizon"), "date": dt.date.today().isoformat(),
             "answer": res["answer"], "branches": [{"name": b["name"], "probability": b["probability"], "median": b["books"][0]["median"]} for b in res["branches"]],
-            "people": [{"name": p["name"], "median_ils": p["median_ils"], "bad_ils": p["bad_ils"]} for p in act["people"]],
+            "people": [{"name": p["name"], "median_amt": p["median_amt"], "bad_amt": p["bad_amt"]} for p in act["people"]],
             "sections": sections, "numbers": sorted(f.used)}
 
 

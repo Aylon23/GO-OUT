@@ -250,9 +250,9 @@ def parse(session: Session, text: str, default_pid: int | None = None, today: dt
         if qty is None and amount is not None and price:
             amt = amount
             if amount_ccy and amount_ccy != cur:
-                from .services import fx_series
+                from .services import fx_history
 
-                rate = float(align(fx_series(session), [dt.date.fromisoformat(out.get("price_date") or out["date"])]).iloc[0])
+                rate = float(align(fx_history(session), [dt.date.fromisoformat(out.get("price_date") or out["date"])]).iloc[0])
                 amt = convert(amount, amount_ccy, cur, rate)
                 out["warnings"].append(f"Converted {amount:,.0f} {amount_ccy} at that day's rate.")
             qty = round(amt / price, 6)

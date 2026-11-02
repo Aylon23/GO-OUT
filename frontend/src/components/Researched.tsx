@@ -11,7 +11,7 @@ import { EmptyState, ErrorLine, Signed, Skel } from "./ui";
 
 export const FACTOR_LABEL: Record<string, string> = {
   market: "Market (S&P 500)", size: "Size (small vs large)", value: "Value vs growth", momentum: "Momentum", quality: "Quality",
-  rates: "Long bonds (TLT)", oil: "Oil", dollar: "Dollar (vs majors)", shekel: "USD/ILS", gold: "Gold",
+  rates: "Long bonds (TLT)", oil: "Oil", gold: "Gold",
 };
 const HORIZON: Record<string, string> = { "1w": "1 week", "2w": "2 weeks", "1m": "1 month", "3m": "3 months", "6m": "6 months", "12m": "12 months" };
 const p1 = (v: number | null | undefined) => (v == null ? "–" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(Math.abs(v) < 10 ? 1 : 0)}%`);

@@ -142,7 +142,7 @@ function ScenarioLab() {
           <ReadAs parsed={parsed} />
           {!parsed.understood && shocks.length === 0 ? (
             <EmptyState title="I couldn't turn that into market moves."
-              body="Name something that moves prices: oil, rates or bonds, the dollar or shekel, a sector, an index, a company, or an event like a war, a recession or tariffs. Or add a shock by hand below." />
+              body="Name something that moves prices: oil, rates or bonds, gold, a sector, an index, a company, or an event like a war, a recession or tariffs. Or add a shock by hand below." />
           ) : null}
           <ShockEditor shocks={shocks} setShocks={setShocks} lib={lib.data} run={run} horizon={horizon} setHorizon={setHorizon} />
           {shocks.length > 0 && <SaveBar text={text} shocks={shocks} events={events} usedEvents={usedEvents} horizon={horizon} defaultName={parsed.label || text} onSaved={saved.reload} />}
