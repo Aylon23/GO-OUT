@@ -151,10 +151,23 @@ class Settings(SQLModel, table=True):
     telegram_pair_code: str = ""
     weekly_report: bool = True
     weekly_report_sent: str = ""  # date of the last Sunday summary sent
+    anthropic_key: str = ""  # optional: lets Claude read scenarios; the free local rules work without it
     aliases_backfilled: bool = False  # nicknames generated once for portfolios made before nicknames existed
 
     def benchmark_list(self) -> list[str]:
         return [b.strip().upper() for b in self.benchmarks.split(",") if b.strip()]
+
+
+class Scenario(SQLModel, table=True):
+    """A saved stress-test scenario: the sentence and the (edited) shocks."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = ""
+    text: str = ""
+    shocks: str = "[]"  # JSON list of {symbol, kind, move}
+    events: str = "[]"  # JSON list of event ids
+    horizon_weeks: float = 1.0
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
 
 
 from .market.funds import FundSectors  # noqa: E402,F401  (registers the table)

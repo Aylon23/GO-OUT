@@ -585,6 +585,10 @@ def _clean(obj):
         return [_clean(v) for v in obj]
     if isinstance(obj, (float, np.floating)):
         return _f(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
     return obj
 
 

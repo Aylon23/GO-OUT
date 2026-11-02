@@ -9,7 +9,7 @@ import Holdings from "./pages/Holdings";
 import Risk from "./pages/Risk";
 import Settings from "./pages/Settings";
 import Transactions from "./pages/Transactions";
-import WhatIf from "./pages/WhatIf";
+import WhatIf from "./pages/Scenarios";
 import { AppProvider, useApp } from "./state";
 
 function Routes() {

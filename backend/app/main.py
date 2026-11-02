@@ -35,6 +35,28 @@ def _startup() -> None:
         token = get_settings(s).telegram_token
     if token and os.environ.get("PORTFOLIO_NO_BOT") != "1":
         telegram_bot.start(token)
+    if os.environ.get("PORTFOLIO_NO_WARM") != "1":
+        import threading
+
+        threading.Thread(target=_warm_market, name="warm-market", daemon=True).start()
+
+
+def _warm_market() -> None:
+    """Fetch the scenario page's market factors in the background, so its first run is quick."""
+    from sqlmodel import Session
+
+    from .market.cache import NoPriceData, ensure_history
+    from .scenario_library import FACTOR_SYMBOLS
+
+    log = logging.getLogger("warm")
+    with Session(get_engine()) as s:
+        for sym in FACTOR_SYMBOLS:
+            try:
+                ensure_history(s, sym)
+            except NoPriceData as exc:
+                log.info("No history for %s: %s", sym, exc)
+            except Exception as exc:  # never let warming break the app
+                log.warning("Warming %s failed: %s", sym, exc)
 
 
 if DIST.exists():

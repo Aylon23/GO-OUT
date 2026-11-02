@@ -134,6 +134,24 @@ nickname set in Settings (e.g. Keren = קרן). Several at once work too:
 - `קרן, שיר ואבא קנו 3 NVDA` → one recommendation, three trades
 - `כולם מכרו TSLA` → sells the whole position in every portfolio that holds it
 
+## What-if scenarios
+
+Type something that could happen, in Hebrew or English: "מלחמה עם איראן", "הנפט יורד 20%",
+"תשואות האג״ח בארה״ב עולות", "Apple misses earnings". The page turns it into a few market moves you
+can edit, then shows for every portfolio and the whole family:
+
+- the expected impact in % and money, with a range (about 2 in 3 outcomes), using normal and sell-off correlations
+- what else rises and falls, and each holding's move with the reason ("oil +1.6%, defense −0.3%")
+- today's holdings replayed through past events like it (Iran 2024–2025, October 7, COVID, 2022 rate hikes, SVB, tariffs…)
+- how big the same story would need to be to cost 10%, and how often history has seen weeks that unusual
+- protection ideas: trims, an index hedge, and assets that rise in the scenario (ideas, not advice)
+- "How reliable is this?": the model rebuilt before each past event and scored against what really happened
+
+Sentences are read by free local rules. With a Claude API key in Settings, Claude reads freer
+sentences too (falls back to the rules if it fails). The first run loads ten years of prices for ~26
+market ETFs; the app starts fetching them in the background when it starts. Method and sources:
+[docs/SCENARIOS.md](docs/SCENARIOS.md). Swap-a-holding and build-a-portfolio are still on the same page.
+
 ## How the numbers work
 
 | Rule | What the app does |

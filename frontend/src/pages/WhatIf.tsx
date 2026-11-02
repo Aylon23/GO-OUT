@@ -26,7 +26,7 @@ export default function WhatIf() {
   );
 }
 
-function SwapSim() {
+export function SwapSim() {
   const txs = useData(api.transactions, "tx");
   const tickers = useMemo(() => Array.from(new Set((txs.data ?? []).filter((t) => t.type === "BUY").map((t) => t.ticker))).sort(), [txs.data]);
   const [ticker, setTicker] = useState("");
@@ -110,7 +110,7 @@ function SwapResult({ r }: { r: Swap }) {
 
 interface Pick { item: SymbolItem; weight: string }
 
-function CustomSim() {
+export function CustomSim() {
   const { settings } = useApp();
   const base = settings?.base_currency ?? "ILS";
   const [picks, setPicks] = useState<Pick[]>([]);

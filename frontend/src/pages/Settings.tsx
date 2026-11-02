@@ -27,6 +27,9 @@ export default function Settings() {
         <Item title="Telegram" help="Add trades and get reports from your phone. Works while the app is running on this computer.">
           <TelegramSetup />
         </Item>
+        <Item title="Claude (optional)" help="The What-if page reads scenarios with free local rules. With a Claude API key it understands freer sentences too. The key stays on this computer; each scenario costs a fraction of a cent.">
+          <ClaudeKey />
+        </Item>
         <Item title="Base currency" help="Everything is converted into this currency using each day's exchange rate.">
           <Segmented label="Base currency" value={settings.base_currency} onChange={(v) => save({ base_currency: v })} options={[{ value: "ILS", label: "₪ Shekel" }, { value: "USD", label: "$ Dollar" }]} />
         </Item>
@@ -188,5 +191,28 @@ function TelegramSetup() {
         <button type="button" className="link text-xs" onClick={() => saveToken("")}>Disconnect the bot</button>
       </div>
     </div>
+  );
+}
+
+function ClaudeKey() {
+  const { settings, saveSettings } = useApp();
+  const [key, setKey] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const save = async (v: string) => {
+    setErr(null);
+    try { await saveSettings({ anthropic_key: v }); setKey(""); } catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't save."); }
+  };
+  if (settings?.anthropic_key_set) return (
+    <div className="flex flex-wrap items-center gap-3 text-sm">
+      <span className="text-muted">Key saved <span className="font-mono text-xs">{settings.anthropic_key_hint}</span></span>
+      <button type="button" className="btn-ghost h-8" onClick={() => save("")}>Remove</button>
+    </div>
+  );
+  return (
+    <form className="flex max-w-[480px] gap-2" onSubmit={(e) => { e.preventDefault(); if (key.trim()) save(key.trim()); }}>
+      <input aria-label="Claude API key" type="password" autoComplete="off" className="field h-9 font-mono text-sm" placeholder="sk-ant-…" value={key} onChange={(e) => setKey(e.target.value)} />
+      <button type="submit" className="btn-secondary" disabled={!key.trim()}>Save</button>
+      {err && <p className="error-text">{err}</p>}
+    </form>
   );
 }

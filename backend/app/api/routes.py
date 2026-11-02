@@ -243,11 +243,14 @@ class SettingsIn(BaseModel):
     risk_free: float | None = None
     theme: str | None = None
     auto_dividends: bool | None = None
+    anthropic_key: str | None = None
 
 
 def _settings_dict(s):
+    key = (s.anthropic_key or "").strip()
     return {"base_currency": s.base_currency, "benchmarks": s.benchmark_list(), "risk_free": s.risk_free,
-            "theme": s.theme, "auto_dividends": s.auto_dividends}
+            "theme": s.theme, "auto_dividends": s.auto_dividends,
+            "anthropic_key_set": bool(key), "anthropic_key_hint": f"…{key[-4:]}" if len(key) > 8 else ""}
 
 
 @router.get("/settings")
@@ -278,6 +281,11 @@ def put_settings(body: SettingsIn, session: Session = Depends(get_session)):
         s.theme = body.theme if body.theme in ("light", "dark", "system") else "system"
     if body.auto_dividends is not None:
         s.auto_dividends = body.auto_dividends
+    if body.anthropic_key is not None:
+        key = body.anthropic_key.strip()
+        if key and not key.startswith("sk-ant-"):
+            _bad("That doesn't look like a Claude API key (they start with sk-ant-).")
+        s.anthropic_key = key
     session.add(s)
     session.commit()
     services.bump_revision()
@@ -583,6 +591,98 @@ def telegram_new_code(session: Session = Depends(get_session)):
     session.add(st)
     session.commit()
     return _telegram_dict(st)
+
+
+# ---------------------------------------------------------------- scenarios
+
+class ScenarioParseIn(BaseModel):
+    text: str
+    ai: bool = True
+
+
+class ShockIn(BaseModel):
+    symbol: str
+    kind: str | None = None
+    move: float
+
+
+class ScenarioRunIn(BaseModel):
+    shocks: list[ShockIn]
+    horizon_weeks: float = 1.0
+    events: list[str] = []
+    portfolio_ids: list[int] | None = None
+
+
+class ScenarioSaveIn(BaseModel):
+    name: str
+    text: str = ""
+    shocks: list[ShockIn]
+    events: list[str] = []
+    horizon_weeks: float = 1.0
+
+
+@router.get("/scenario/library")
+def scenario_library(session: Session = Depends(get_session)):
+    from .. import scenarios
+    return scenarios.library(session)
+
+
+@router.post("/scenario/parse")
+def scenario_parse(body: ScenarioParseIn, session: Session = Depends(get_session)):
+    from .. import scenarios
+    if not body.text.strip():
+        _bad("Describe a scenario, like “oil jumps 20%”.")
+    return services._clean(scenarios.parse(session, body.text.strip()[:500], use_ai=body.ai))
+
+
+@router.post("/scenario/run")
+def scenario_run(body: ScenarioRunIn, session: Session = Depends(get_session)):
+    from .. import scenarios
+    for s in body.shocks:
+        if not -0.95 <= s.move <= 5:
+            _bad(f"{s.symbol}: a move of {s.move:+.0%} is outside what the model can use (−95% to +500%).")
+    out = scenarios.run(session, [s.model_dump() for s in body.shocks], body.horizon_weeks, body.events, body.portfolio_ids)
+    return services._clean(out)
+
+
+@router.get("/scenario/check")
+def scenario_check(portfolio_ids: str = "", session: Session = Depends(get_session)):
+    from .. import scenarios
+    pids = [int(x) for x in portfolio_ids.split(",") if x.strip().isdigit()] or None
+    return services._clean(scenarios.model_check(session, pids))
+
+
+@router.get("/scenarios")
+def scenarios_list(session: Session = Depends(get_session)):
+    from .. import scenarios
+    from ..models import Scenario
+    return [scenarios.saved_dict(s) for s in session.exec(select(Scenario).order_by(Scenario.created_at.desc())).all()]
+
+
+@router.post("/scenarios")
+def scenarios_save(body: ScenarioSaveIn, session: Session = Depends(get_session)):
+    import json
+    from .. import scenarios
+    from ..models import Scenario
+    if not body.name.strip():
+        _bad("Give the scenario a name.")
+    row = Scenario(name=body.name.strip()[:80], text=body.text[:500], shocks=json.dumps([s.model_dump() for s in body.shocks]),
+                   events=json.dumps(body.events), horizon_weeks=body.horizon_weeks)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return scenarios.saved_dict(row)
+
+
+@router.delete("/scenarios/{sid}")
+def scenarios_delete(sid: int, session: Session = Depends(get_session)):
+    from ..models import Scenario
+    row = session.get(Scenario, sid)
+    if row is None:
+        _bad("Scenario not found.", 404)
+    session.delete(row)
+    session.commit()
+    return {"ok": True}
 
 
 @router.get("/health")
