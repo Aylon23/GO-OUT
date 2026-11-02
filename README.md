@@ -149,6 +149,14 @@ everything downstream recalculates), the range of outcomes, and today's holdings
 warning when the model disagrees with them. "Model details" shows the exposures, regime and assumptions. A typed
 scenario becomes a one-branch spec: the factors you didn't name take their usual move alongside the ones you did.
 
+## My book (your view of the world)
+
+What-if → My book: add saved scenarios, each with your chance that it happens within its horizon; the rest is
+"nothing special" (normal conditions). The whole book runs as one simulation: the combined result for the family and
+each person, a fragility score per portfolio (average loss in the worst 10% of outcomes), which scenarios hurt and help
+each one, and every signpost from the book against the latest price (far / near / triggered). Every save is kept;
+pick two versions to compare. New money can be weighted by the book.
+
 ## What each person could do, and where new money should go
 
 Under any scenario result, "Show options for each person" ranks people by expected and bad-case loss in shekels,

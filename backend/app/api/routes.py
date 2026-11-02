@@ -931,6 +931,7 @@ class NewMoneyIn(BaseModel):
     currency: str = "ILS"
     person: int | None = None
     seed: int = 7
+    use_book: bool = False
 
 
 @router.post("/new-money")
@@ -941,7 +942,80 @@ def new_money(body: NewMoneyIn, session: Session = Depends(get_session)):
         _bad("Enter an amount above zero.")
     if body.currency not in ("ILS", "USD"):
         _bad("Currency must be ILS or USD.")
+    if body.use_book:
+        from .. import book
+
+        entries = [e for e in book.entries_of(book.current(session)) if float(e["probability"]) > 0]
+        if not entries:
+            _bad("Your book has no scenarios yet.")
+        specs = {s["id"]: s for s in actions.saved_specs(session)}
+        chosen = [specs[e["scenario_id"]] for e in entries if e["scenario_id"] in specs]
+        weights = {e["scenario_id"]: float(e["probability"]) for e in entries}
+        weights["normal"] = max(0.0, 1 - sum(weights.values()))
+        out = actions.new_money(session, body.amount, body.currency, body.person, scenarios=chosen, weights=weights, seed=body.seed)
+        out["book"] = True
+        return services._clean(out)
     return services._clean(actions.new_money(session, body.amount, body.currency, body.person, seed=body.seed))
+
+
+# ---------------------------------------------------------------- scenario book
+
+class BookEntryIn(BaseModel):
+    scenario_id: str
+    probability: float
+
+
+class BookIn(BaseModel):
+    entries: list[BookEntryIn]
+    note: str = ""
+
+
+@router.get("/book/scenarios")
+def book_available(session: Session = Depends(get_session)):
+    from .. import actions
+
+    return [{"id": s["id"], "title": s["title"], "kind": s["kind"], "horizon": s["spec"].get("horizon"),
+             "branches": len(s["spec"].get("branches", []))} for s in actions.saved_specs(session)]
+
+
+@router.get("/book")
+def book_get(session: Session = Depends(get_session)):
+    from .. import book
+
+    v = book.current(session)
+    entries = book.entries_of(v)
+    return services._clean({"version": v.id if v else None, "saved_at": v.created_at.isoformat() if v else None, "entries": entries,
+                            "result": book.run(session, entries), "signposts": book.signposts(session, entries)})
+
+
+@router.put("/book")
+def book_put(body: BookIn, session: Session = Depends(get_session)):
+    from .. import book
+
+    try:
+        v = book.save(session, [e.model_dump() for e in body.entries], body.note)
+    except book.BookError as exc:
+        _bad(str(exc))
+    entries = book.entries_of(v)
+    return services._clean({"version": v.id, "saved_at": v.created_at.isoformat(), "entries": entries,
+                            "result": book.run(session, entries), "signposts": book.signposts(session, entries)})
+
+
+@router.get("/book/versions")
+def book_versions(session: Session = Depends(get_session)):
+    from .. import book
+
+    return book.versions(session)
+
+
+@router.get("/book/compare")
+def book_compare(a: int, b: int, session: Session = Depends(get_session)):
+    from .. import book
+
+    try:
+        return services._clean(book.compare(session, a, b))
+    except book.BookError as exc:
+        _bad(str(exc), 404)
 
 
 @router.get("/watchlist")

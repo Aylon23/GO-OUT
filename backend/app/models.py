@@ -173,6 +173,15 @@ class Scenario(SQLModel, table=True):
     created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
 
 
+class BookVersion(SQLModel, table=True):
+    """One saved state of the scenario book: which scenarios, with my probability for each."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entries: str = "[]"  # JSON: [{scenario_id, title, probability}]
+    note: str = ""
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+
+
 class Watch(SQLModel, table=True):
     """A symbol on the watchlist (candidates for new money)."""
 

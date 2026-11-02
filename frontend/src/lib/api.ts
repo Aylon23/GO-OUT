@@ -230,6 +230,19 @@ export interface NewMoneyRow {
 }
 export interface NewMoney { amount: number; currency: Ccy; amount_ils: number; person: number | null; scenarios: { id: string; title: string; weight: number }[];
   rows: NewMoneyRow[]; top: NewMoneyRow[]; note: string | null; method: string }
+export interface BookEntry { scenario_id: string; probability: number; title?: string }
+export interface BookPositioning { id: number | null; name: string; fragility: number; fragility_ils: number;
+  by_scenario: { scenario_id: string; title: string; median: number; share: number; median_ils: number }[];
+  hurts_most: { title: string; median: number }[]; helps_most: { title: string; median: number }[] }
+export interface BookResult { empty: boolean; reason?: string; answer: ImpactResult["answer"]; blended: ImpactStats[]; remainder: number; horizon: string;
+  positioning: BookPositioning[]; most_fragile: { id: number; name: string; fragility: number; fragility_ils: number } | null; scenario_titles: Record<string, string>; n: number }
+export interface Signpost { scenario: string; branch: string; indicator: string; symbol?: string; condition: ">" | "<"; value: number; meaning: string;
+  current: number | null; as_of: string | null; distance: number | null; status: "triggered" | "near" | "far" | "no data" | "not tracked" }
+export interface BookState { version: number | null; saved_at: string | null; entries: BookEntry[]; result: BookResult; signposts: Signpost[] }
+export interface BookVersionRow { id: number; created_at: string; note: string; entries: BookEntry[] }
+export interface BookCompare { a: { id: number; created_at: string; result: { answer: ImpactResult["answer"]; most_fragile: BookResult["most_fragile"] } | null };
+  b: { id: number; created_at: string; result: { answer: ImpactResult["answer"]; most_fragile: BookResult["most_fragile"] } | null };
+  changes: { title: string; from: number | null; to: number | null }[] }
 export interface ExposureFactor { id: string; label: string; he: string; tip: string; when: string; shock: number }
 export interface ExposureHolding {
   symbol: string; name: string; weight: number; value: number; betas: Record<string, number>; betas_usd: Record<string, number>;
@@ -372,7 +385,12 @@ export const api = {
   impactShocks: (b: { shocks: { symbol: string; kind: ShockKind; move: number }[]; horizon_weeks: number; used_events: string[]; text: string; regime?: "normal" | "selloff" | null; edits?: ImpactEdit[] }, signal?: AbortSignal) =>
     request<ImpactResult>("POST", "/api/impact/shocks", b, signal),
   actions: (b: ActionsBody) => request<Actions>("POST", "/api/actions", b),
-  newMoney: (b: { amount: number; currency: Ccy; person?: number | null }) => request<NewMoney>("POST", "/api/new-money", b),
+  newMoney: (b: { amount: number; currency: Ccy; person?: number | null; use_book?: boolean }) => request<NewMoney>("POST", "/api/new-money", b),
+  book: () => request<BookState>("GET", "/api/book"),
+  saveBook: (entries: BookEntry[], note = "") => request<BookState>("PUT", "/api/book", { entries, note }),
+  bookScenarios: () => request<{ id: string; title: string; kind: string; horizon: string; branches: number }[]>("GET", "/api/book/scenarios"),
+  bookVersions: () => request<BookVersionRow[]>("GET", "/api/book/versions"),
+  bookCompare: (a: number, b: number) => request<BookCompare>("GET", `/api/book/compare?a=${a}&b=${b}`),
   watchlist: () => request<string[]>("GET", "/api/watchlist"),
   watch: (symbol: string) => request<{ ok: boolean; symbol: string }>("POST", `/api/watchlist/${encodeURIComponent(symbol)}`),
   unwatch: (symbol: string) => request<{ ok: boolean }>("DELETE", `/api/watchlist/${encodeURIComponent(symbol)}`),

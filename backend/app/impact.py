@@ -214,7 +214,8 @@ def simulate(session: Session, spec: dict, syms: list[str], base: str, regime: s
 
 
 def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAWS, seed: int = SEED,
-        edits: list[dict] | None = None, pids: list[int] | None = None, analogs: bool = True, noise: bool = True) -> dict:
+        edits: list[dict] | None = None, pids: list[int] | None = None, analogs: bool = True, noise: bool = True,
+        keep: bool = False) -> dict:
     spec = apply_edits(spec, edits or [])
     ports, family = books(session, pids)
     if not family.holdings:
@@ -303,6 +304,8 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
         ],
         "warnings": [],
     }
+    if keep:  # raw draws for callers that need more than the summaries (not serialized)
+        out["_outcomes"], out["_pick"] = outcomes, sim["pick"]
     fam = blended[0]
     out["answer"] = {"median_ils": fam["median_ils"], "median": fam["median"], "p5_ils": fam["p5_ils"], "p5": fam["p5"],
                      "prob_loss": fam["prob_loss"]}

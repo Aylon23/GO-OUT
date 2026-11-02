@@ -26,11 +26,14 @@ export function NewMoney() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sort, setSort] = useState<"robust" | "expected">("robust");
+  const book = useData(api.book, "book");
+  const hasBook = !!book.data?.entries.some((e) => e.probability > 0);
+  const [useBook, setUseBook] = useState(true);
   const run = async () => {
     const a = Number(amount.replace(/,/g, ""));
     if (!isFinite(a) || a <= 0) { setErr("Enter an amount above zero."); return; }
     setBusy(true); setErr(null);
-    try { setD(await api.newMoney({ amount: a, currency: ccy, person: person ? Number(person) : null })); } catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't rank them."); } finally { setBusy(false); }
+    try { setD(await api.newMoney({ amount: a, currency: ccy, person: person ? Number(person) : null, use_book: hasBook && useBook })); } catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't rank them."); } finally { setBusy(false); }
   };
   const rows = d ? (sort === "robust" ? d.rows : [...d.rows].sort((a, b) => b.expected - a.expected)).slice(0, 10) : [];
   return (
@@ -44,6 +47,7 @@ export function NewMoney() {
           <select id="nm-person" className="field w-44" value={person} onChange={(e) => setPerson(e.target.value)}>
             <option value="">Anyone</option>{portfolios.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select></div>
+        {hasBook && <label className="flex h-9 items-center gap-2 text-sm text-muted"><input type="checkbox" className="accent-[var(--accent)]" checked={useBook} onChange={(e) => setUseBook(e.target.checked)} />Weight by my book</label>}
         <button type="submit" className="btn-primary" disabled={busy}>{busy ? "Ranking" : "Rank"}</button>
       </form>
       {err && <ErrorLine message={err} />}

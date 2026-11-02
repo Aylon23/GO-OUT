@@ -247,7 +247,7 @@ def new_money(session: Session, amount: float, currency: str = "ILS", person: in
     cands = candidates(session)
     exp = factors.exposures(session, cands)
     specs = saved_specs(session) if scenarios is None else scenarios
-    cols = [{"id": "normal", "title": "Normal conditions", "spec": normal_spec(session), "weight": None}] + [
+    cols = [{"id": "normal", "title": "Normal conditions", "spec": normal_spec(session), "weight": (weights or {}).get("normal")}] + [
         {**s, "weight": (weights or {}).get(s["id"])} for s in specs]
     per = {c: {"scenarios": {}, "branch_medians": [], "p5s": []} for c in cands}
     for col in cols:
