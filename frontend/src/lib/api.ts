@@ -179,6 +179,13 @@ export interface ScenarioRun {
   history: { n: number; from: string; to: string; worst: PastExtreme; best: PastExtreme } | null;
   events: EventReplay[]; stress_weeks: number; weeks: number;
 }
+export interface ExposureFactor { id: string; label: string; he: string; tip: string; when: string; shock: number }
+export interface ExposureHolding {
+  symbol: string; name: string; weight: number; value: number; betas: Record<string, number>; betas_usd: Record<string, number>;
+  r2: number | null; r2_usd: number | null; resid_vol: number | null; weeks: number; short_history: boolean; low_confidence: boolean; sector: string;
+}
+export interface ExposureBook { id: number | null; name: string; value: number; cash_weight: number; betas: Record<string, number>; holdings: ExposureHolding[] }
+export interface Exposures { as_of: string; window_weeks: number; currency: "ILS"; factors: ExposureFactor[]; sectors: Record<string, string>; low_r2: number; books: ExposureBook[] }
 export interface ModelCheck {
   summary: { events: number; predictions: number; hit_rate: number | null; mae: number; mae_naive: number; in_range: number; family_mae: number; corr: number | null } | null;
   events: { id: string; name: string; start: string; end: string; story: string[]; holdings: number; family_predicted: number; family_actual: number; sp500: number; mae: number; mae_naive: number; hit_rate: number | null; in_range: number }[];
@@ -301,6 +308,7 @@ export const api = {
     return request<HoldingImport>("POST", `/api/holdings/import?${qs({ commit, as_of: asOf, replace })}`, fd);
   },
   clearAll: () => request<{ ok: boolean }>("DELETE", "/api/transactions"),
+  exposures: (refresh = false) => request<Exposures>("GET", `/api/exposures${refresh ? "?refresh=true" : ""}`),
   logoOverrides: () => request<string[]>("GET", "/api/logos/overrides"),
   uploadLogo: (symbol: string, file: File) => {
     const fd = new FormData();

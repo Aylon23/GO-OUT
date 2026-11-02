@@ -39,6 +39,9 @@ def _startup() -> None:
         import threading
 
         threading.Thread(target=_warm_market, name="warm-market", daemon=True).start()
+        from . import factors
+
+        factors.start_nightly()
 
 
 def _warm_market() -> None:

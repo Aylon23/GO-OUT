@@ -596,6 +596,20 @@ def telegram_new_code(session: Session = Depends(get_session)):
     return _telegram_dict(st)
 
 
+# ---------------------------------------------------------------- factor exposures
+
+@router.get("/exposures")
+def exposures(refresh: bool = False, session: Session = Depends(get_session)):
+    from .. import factors
+
+    if refresh:
+        from ..scenarios import books
+
+        _, fam = books(session, None)
+        factors.exposures(session, [h.symbol for h in fam.holdings], refresh=True)
+    return services._clean(factors.payload(session))
+
+
 # ---------------------------------------------------------------- logos
 
 _IMG_HEADERS = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"}

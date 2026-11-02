@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { Exposures } from "../components/Exposures";
 import { RangeSelector } from "../components/RangeSelector";
 import { StatsTable } from "../components/StatsTable";
 import { EmptyState, ErrorLine, InfoTip, Signed, Skel } from "../components/ui";
@@ -39,6 +40,7 @@ export default function Risk() {
           </div>
         </div>
       )}
+      {d && !d.empty && <Exposures />}
     </div>
   );
 }

@@ -137,6 +137,16 @@ nickname set in Settings (e.g. Keren = קרן). Several at once work too:
 - `קרן, שיר ואבא קנו 3 NVDA` → one recommendation, three trades
 - `כולם מכרו TSLA` → sells the whole position in every portfolio that holds it
 
+## Exposures (Risk page)
+
+What moves each portfolio, in shekels: market, size, value vs growth, momentum, quality, rates (TLT),
+oil, the dollar, USD/ILS and gold, plus sector tilts. Each holding is regressed on weekly factor returns over
+up to three years, shrunk toward its sector ETF (strongly when it has under a year of history). For a US stock
+held in shekels the USD/ILS beta is about 1: when the dollar weakens 5% against the shekel, it loses about 5%
+in shekels. Portfolio and family betas are value-weighted; each comes with a plain sentence ("If the S&P 500
+falls 10%, Keren's portfolio falls about 11%"). Click a portfolio for its holdings, R² and residual volatility;
+R² under 0.3 is marked low confidence. Recomputed once a day, and right away for a new symbol. Method: `backend/app/factors.py`.
+
 ## What-if scenarios
 
 Type something that could happen, in Hebrew or English: "מלחמה עם איראן", "הנפט יורד 20%",

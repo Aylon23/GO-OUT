@@ -59,9 +59,17 @@ CATALOG = {
     "XLC": ("Communication Services Select Sector SPDR Fund", "PCX", "ETF", 50, 0.10, 0.21, "2018-06-19", 0.008),
     "^VIX": ("CBOE Volatility Index", "CBO", "INDEX", 16, 0.0, 0.85, "1990-01-02", 0.0),
     "BTC-USD": ("Bitcoin USD", "CCC", "CRYPTOCURRENCY", 300, 0.45, 0.65, "2014-09-17", 0.0),
+    # style factors and test stocks for the factor model
+    "IWD": ("iShares Russell 1000 Value ETF", "PCX", "ETF", 100, 0.08, 0.17, "2000-05-22", 0.02),
+    "IWF": ("iShares Russell 1000 Growth ETF", "PCX", "ETF", 100, 0.13, 0.19, "2000-05-22", 0.006),
+    "MTUM": ("iShares MSCI USA Momentum Factor ETF", "BTS", "ETF", 70, 0.12, 0.18, "2013-04-16", 0.008),
+    "QUAL": ("iShares MSCI USA Quality Factor ETF", "BTS", "ETF", 65, 0.11, 0.16, "2013-07-16", 0.01),
+    "XOM": ("Exxon Mobil Corporation", "NYQ", "EQUITY", 80, 0.06, 0.28, "1990-01-02", 0.035),
+    "DAL": ("Delta Air Lines, Inc.", "NYQ", "EQUITY", 40, 0.05, 0.40, "2007-05-03", 0.0),
+    "NEE": ("NextEra Energy, Inc.", "NYQ", "EQUITY", 40, 0.08, 0.20, "1990-01-02", 0.025),
 }
 SPLITS = {"NVDA": [(dt.date(2021, 7, 20), 4.0), (dt.date(2024, 6, 10), 10.0)], "AAPL": [(dt.date(2020, 8, 31), 4.0)]}
-SECTORS = {"AAPL": "Technology", "MSFT": "Technology", "NVDA": "Technology", "INTC": "Technology",
+SECTORS = {"XOM": "Energy", "DAL": "Industrials", "NEE": "Utilities", "AAPL": "Technology", "MSFT": "Technology", "NVDA": "Technology", "INTC": "Technology",
            "GOOGL": "Communication Services", "AMZN": "Consumer Cyclical", "TSLA": "Consumer Cyclical",
            "TEVA": "Healthcare", "TEVA.TA": "Healthcare"}
 
@@ -70,6 +78,8 @@ DISPLAY_START = dt.date(2015, 1, 1)
 # Hidden factor loadings. Annual vol of each factor:
 FACTOR_VOL = {"M": 0.16, "T": 0.12, "S": 0.18, "R": 0.12, "O": 0.35, "G": 0.14, "D": 0.07, "I": 0.14, "E": 0.12, "F": 0.10}
 LOADINGS = {
+    "IWD": {"M": 0.95, "F": 0.35, "E": 0.15}, "IWF": {"M": 1.05, "T": 0.55}, "MTUM": {"M": 1.0, "T": 0.35}, "QUAL": {"M": 0.95, "T": 0.15},
+    "XOM": {"M": 0.7, "E": 1.0, "O": 0.5}, "DAL": {"M": 1.3, "O": -0.7}, "NEE": {"M": 0.45, "R": 0.55},
     "SPY": {"M": 1.0}, "VOO": {"M": 1.0}, "VFIAX": {"M": 1.0}, "^GSPC": {"M": 1.0},
     "QQQ": {"M": 1.1, "T": 0.9}, "XLK": {"M": 1.1, "T": 1.2}, "SOXX": {"M": 1.3, "T": 0.9, "S": 1.0},
     "IWM": {"M": 1.15, "F": 0.4, "R": 0.2}, "XLF": {"M": 1.05, "F": 1.0, "R": -0.25}, "XLE": {"M": 0.75, "E": 1.0, "O": 0.45},

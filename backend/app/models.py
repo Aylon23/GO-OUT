@@ -172,5 +172,20 @@ class Scenario(SQLModel, table=True):
     created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
 
 
+class FactorExposure(SQLModel, table=True):
+    """A holding's factor betas (see factors.py), in dollars ("usd") or shekels ("ils")."""
+
+    symbol: str = Field(primary_key=True)
+    view: str = Field(primary_key=True)
+    betas: str = "{}"
+    r2: Optional[float] = None
+    resid_vol: Optional[float] = None  # annualized
+    weeks: int = 0
+    short_history: bool = False
+    sector: str = ""  # sector ETF used, if any
+    as_of: dt.date
+    estimated_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+
+
 from .market.funds import FundSectors  # noqa: E402,F401  (registers the table)
 from .logos import LogoCache  # noqa: E402,F401  (registers the table)
