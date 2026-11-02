@@ -891,6 +891,92 @@ def impact_shocks(body: ImpactShocksIn, session: Session = Depends(get_session))
     return services._clean(out)
 
 
+# ---------------------------------------------------------------- actions, new money, watchlist
+
+class ActionsIn(ImpactSpecIn):
+    spec_id: str | None = None
+    shocks: list[ShockIn] = []
+    horizon_weeks: float = 1.0
+    used_events: list[str] = []
+    text: str = ""
+
+
+def _spec_from(body, session):
+    import json as _json
+    from .. import impact
+    from ..models import ResearchedSpec
+
+    if body.spec_id:
+        row = session.get(ResearchedSpec, body.spec_id)
+        if row is None:
+            _bad("Scenario not found.", 404)
+        return _json.loads(row.spec)
+    if not body.shocks:
+        _bad("Give a scenario: a researched one or at least one move.")
+    return impact.spec_from_shocks(session, [s.model_dump() for s in body.shocks], body.horizon_weeks, body.text[:80], body.text,
+                                   body.used_events, body.regime or "normal")
+
+
+@router.post("/actions")
+def scenario_actions(body: ActionsIn, session: Session = Depends(get_session)):
+    from .. import actions
+
+    _check_regime(body.regime)
+    spec = _spec_from(body, session)
+    return services._clean(actions.actions(session, spec, regime=body.regime, edits=[e.model_dump() for e in body.edits], seed=body.seed))
+
+
+class NewMoneyIn(BaseModel):
+    amount: float
+    currency: str = "ILS"
+    person: int | None = None
+    seed: int = 7
+
+
+@router.post("/new-money")
+def new_money(body: NewMoneyIn, session: Session = Depends(get_session)):
+    from .. import actions
+
+    if body.amount <= 0:
+        _bad("Enter an amount above zero.")
+    if body.currency not in ("ILS", "USD"):
+        _bad("Currency must be ILS or USD.")
+    return services._clean(actions.new_money(session, body.amount, body.currency, body.person, seed=body.seed))
+
+
+@router.get("/watchlist")
+def watchlist(session: Session = Depends(get_session)):
+    from ..models import Watch
+
+    return [w.symbol for w in session.exec(select(Watch).order_by(Watch.added_at)).all()]
+
+
+@router.post("/watchlist/{symbol}")
+def watch_add(symbol: str, session: Session = Depends(get_session)):
+    from ..models import Watch
+
+    sym = symbol.upper().strip()
+    try:
+        ensure_history(session, sym)
+    except NoPriceData as exc:
+        _bad(str(exc), 404)
+    if session.get(Watch, sym) is None:
+        session.add(Watch(symbol=sym))
+        session.commit()
+    return {"ok": True, "symbol": sym}
+
+
+@router.delete("/watchlist/{symbol}")
+def watch_remove(symbol: str, session: Session = Depends(get_session)):
+    from ..models import Watch
+
+    w = session.get(Watch, symbol.upper())
+    if w is not None:
+        session.delete(w)
+        session.commit()
+    return {"ok": True}
+
+
 @router.get("/health")
 def health():
     return {"ok": True}

@@ -2,7 +2,9 @@ import { ArrowRight, CaretDown, FloppyDisk, Lightning, Plus, Sparkle, X } from "
 import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SymbolSearch } from "../components/SymbolSearch";
+import { PersonActionsPanel } from "../components/Actions";
 import { Impact, type RegimeChoice } from "../components/Impact";
+import { NewMoney } from "../components/NewMoney";
 import { Researched } from "../components/Researched";
 import { EmptyState, ErrorLine, Segmented, Signed, Skel } from "../components/ui";
 import {
@@ -17,20 +19,21 @@ const EXAMPLES = ["מלחמה עם איראן", "מחיר הנפט יורד 20%"
 const HORIZONS = [{ value: "1", label: "1 week" }, { value: "2", label: "2 weeks" }, { value: "4.3", label: "1 month" }, { value: "13", label: "3 months" }];
 
 export default function Scenarios() {
-  const [mode, setMode] = useState<"scenario" | "researched" | "swap" | "custom">("scenario");
+  const [mode, setMode] = useState<"scenario" | "researched" | "money" | "swap" | "custom">("scenario");
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-8 md:px-8 md:pt-12">
       <h1 className="text-xl font-semibold">What-if</h1>
       <p className="mt-1 max-w-[66ch] text-sm text-muted">
-        {mode === "researched" ? "Scenarios researched outside the app and imported, checked against real price history."
+        {mode === "money" ? "Rank where new money would hold up best across your saved scenarios."
+          : mode === "researched" ? "Scenarios researched outside the app and imported, checked against real price history."
           : mode === "scenario" ? "Describe something that could happen. See what it would do to each portfolio, why, and what past events like it did."
           : "Replay your own money through a different choice. Same dates, same amounts, same engine as your real numbers."}
       </p>
       <div className="mt-6">
         <Segmented label="What-if tool" value={mode} onChange={setMode}
-          options={[{ value: "scenario", label: "Scenarios" }, { value: "researched", label: "Researched" }, { value: "swap", label: "Swap a holding" }, { value: "custom", label: "Build a portfolio" }]} />
+          options={[{ value: "scenario", label: "Scenarios" }, { value: "researched", label: "Researched" }, { value: "money", label: "New money" }, { value: "swap", label: "Swap a holding" }, { value: "custom", label: "Build a portfolio" }]} />
       </div>
-      {mode === "scenario" ? <ScenarioLab /> : mode === "researched" ? <Researched /> : mode === "swap" ? <SwapSim /> : <CustomSim />}
+      {mode === "scenario" ? <ScenarioLab /> : mode === "researched" ? <Researched /> : mode === "money" ? <NewMoney /> : mode === "swap" ? <SwapSim /> : <CustomSim />}
     </div>
   );
 }
@@ -154,6 +157,7 @@ function ScenarioLab() {
         <>
           <Impact r={impact} regime={impactRegime} setRegime={setImpactRegime} busy={impactBusy}
             onEdit={(e) => setEdits((xs) => [...xs.filter((x) => !(x.branch === e.branch && x.factor === e.factor)), e])} />
+          <PersonActionsPanel body={{ ...JSON.parse(debounced), text, regime: impactRegime === "auto" ? null : impactRegime, edits }} />
           {run && !run.empty && <Reverse run={run} />}
           <ModelCheckPanel />
           <p className="mt-12 max-w-[72ch] text-xs text-faint">

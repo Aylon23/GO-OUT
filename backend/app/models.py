@@ -173,6 +173,13 @@ class Scenario(SQLModel, table=True):
     created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
 
 
+class Watch(SQLModel, table=True):
+    """A symbol on the watchlist (candidates for new money)."""
+
+    symbol: str = Field(primary_key=True)
+    added_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+
+
 class ResearchedSpec(SQLModel, table=True):
     """A Scenario Spec researched outside the app and imported (docs/scenario-spec.schema.json)."""
 

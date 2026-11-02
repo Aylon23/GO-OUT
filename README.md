@@ -149,6 +149,18 @@ everything downstream recalculates), the range of outcomes, and today's holdings
 warning when the model disagrees with them. "Model details" shows the exposures, regime and assumptions. A typed
 scenario becomes a one-branch spec: the factors you didn't name take their usual move alongside the ones you did.
 
+## What each person could do, and where new money should go
+
+Under any scenario result, "Show options for each person" ranks people by expected and bad-case loss in shekels,
+names what drives each one, and offers up to three long-only options (trim, rebalance toward 15%, shift into
+TLT/IEF/GLD, raise cash) plus doing nothing. Each is capped at half the portfolio and shows what it saves if the
+scenario happens, what it costs if things go the other way, and its effect on the largest holding. "Draft message"
+writes a short Hebrew note in your voice with only the numbers on screen; nothing is sent.
+
+What-if → New money ranks your watchlist, everything the family holds, the sector funds and SPY/QQQ/TLT/GLD under
+every saved scenario and normal conditions, robust choices first. Add to the watchlist from search, a stock's page,
+or by typing "watch AVGO" in Ctrl+K.
+
 ## Researched scenarios (Scenario Specs)
 
 Research a scenario outside the app (a Claude chat or a scheduled Claude task) and import the result: the app

@@ -133,40 +133,26 @@ def _fx_now(session: Session) -> float:
     return float(fx.iloc[-1]) if len(fx) else 1.0
 
 
-def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAWS, seed: int = SEED,
-        edits: list[dict] | None = None, pids: list[int] | None = None, analogs: bool = True, noise: bool = True) -> dict:
-    spec = apply_edits(spec, edits or [])
-    ports, family = books(session, pids)
-    if not family.holdings:
-        return {"empty": True}
-    base = services.get_settings(session).base_currency
-    to_ils = _fx_now(session) if base == "USD" else 1.0
-    syms = [h.symbol for h in family.holdings]
-    exp = factors.exposures(session, syms)
+def simulate(session: Session, spec: dict, syms: list[str], base: str, regime: str | None = None, n: int = N_DRAWS,
+             seed: int = SEED, noise: bool = True, exp: dict | None = None) -> dict:
+    """Simulated moves (in shekels) of any list of symbols under a spec.
+    Returns H (draws x symbols), cash (draws: the move of dollar cash in shekels), and per branch:
+    the rows drawn, its middle-case moves and the factor contributions behind them."""
+    exp = exp if exp is not None else factors.exposures(session, syms)
     days = HORIZON_DAYS.get(spec.get("horizon", "1m"), 21)
     hyears = days / 252
-
-    # family holdings: betas (shekel view), residual noise; cash as a pseudo-holding
     cols = factors.ALL_IDS
-    B = np.array([[exp[s]["ils"]["betas"].get(c, 0.0) for c in cols] for s in syms])
+    B = np.array([[exp[s]["ils"]["betas"].get(c, 0.0) for c in cols] for s in syms]).reshape(len(syms), len(cols))
     resid = np.array([(exp[s]["ils"]["resid_vol"] or 0.3) * math.sqrt(hyears) for s in syms])
     cash_betas = np.array([1.0 if (c == "shekel" and base == "USD") else 0.0 for c in cols])
-
-    def weights(b: Book) -> tuple[np.ndarray, float]:
-        vals = {h.symbol: h.value for h in b.holdings}
-        w = np.array([vals.get(s, 0.0) / b.value for s in syms])
-        return w, max(0.0, 1 - w.sum())
-
-    book_list = [family] + ports
-    W = [weights(b) for b in book_list]
-
     rng = np.random.default_rng(seed)
     branches = spec["branches"]
     probs = np.array([b["probability"] for b in branches], dtype=float)
     probs = probs / probs.sum()
     pick = rng.choice(len(branches), size=n, p=probs)
-    noise = rng.standard_normal((n, len(syms))) * resid * (1.0 if noise else 0.0)  # shared by every portfolio holding the same stock
-    outcomes = np.zeros((n, len(book_list)))
+    eps = rng.standard_normal((n, len(syms))) * resid * (1.0 if noise else 0.0)  # shared by every portfolio holding the same stock
+    H = np.zeros((n, len(syms)))
+    cash = np.zeros(n)
     branch_info = []
     col_idx = {c: i for i, c in enumerate(cols)}
     for bi, br in enumerate(branches):
@@ -214,16 +200,45 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
             return H
 
         if m:
-            Hm = holding_moves(draws, noise[rows])
-            cash_move = factor_matrix(draws)[0] @ cash_betas
-            for k, (w, cw) in enumerate(W):
-                outcomes[rows, k] = Hm @ w + cw * cash_move
+            H[rows] = holding_moves(draws, eps[rows])
+            cash[rows] = factor_matrix(draws)[0] @ cash_betas
         # the branch's middle case, no noise: for "why" and analog comparisons
         Hmid = holding_moves(mid_vec[None, :], None)[0] if names else np.zeros(len(syms))
         Fmid, _ = factor_matrix(mid_vec[None, :]) if names else (np.zeros((1, len(cols))), {})
         contrib = B * Fmid[0][None, :]  # holdings x factors
         branch_info.append({"name": br["name"], "probability": float(probs[bi]), "cause": br.get("cause"), "regime": reg,
-                            "rows": rows, "mid_moves": Hmid, "contrib": contrib, "cash_mid": float(Fmid[0] @ cash_betas)})
+                            "rows": rows, "mid_moves": Hmid, "contrib": contrib, "cash_mid": float(Fmid[0] @ cash_betas),
+                            "factor_mid": {cols[j]: float(Fmid[0][j]) for j in range(len(cols)) if abs(Fmid[0][j]) > 1e-12}})
+    return {"H": H, "cash": cash, "pick": pick, "branches": branch_info, "cols": cols, "B": B, "days": days}
+
+
+
+def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAWS, seed: int = SEED,
+        edits: list[dict] | None = None, pids: list[int] | None = None, analogs: bool = True, noise: bool = True) -> dict:
+    spec = apply_edits(spec, edits or [])
+    ports, family = books(session, pids)
+    if not family.holdings:
+        return {"empty": True}
+    base = services.get_settings(session).base_currency
+    to_ils = _fx_now(session) if base == "USD" else 1.0
+    syms = [h.symbol for h in family.holdings]
+    exp = factors.exposures(session, syms)
+    days = HORIZON_DAYS.get(spec.get("horizon", "1m"), 21)
+
+    sim = simulate(session, spec, syms, base, regime=regime, n=n, seed=seed, noise=noise, exp=exp)
+    cols, B = sim["cols"], sim["B"]
+
+    def weights(b: Book) -> tuple[np.ndarray, float]:
+        vals = {h.symbol: h.value for h in b.holdings}
+        w = np.array([vals.get(s, 0.0) / b.value for s in syms])
+        return w, max(0.0, 1 - w.sum())
+
+    book_list = [family] + ports
+    W = [weights(b) for b in book_list]
+    outcomes = np.column_stack([sim["H"] @ w + cw * sim["cash"] for w, cw in W])
+    probs = np.array([i["probability"] for i in sim["branches"]])
+    branch_info = sim["branches"]
+    branches = spec["branches"]
 
     def stats(x: np.ndarray, value_ils: float) -> dict:
         if len(x) == 0:
@@ -247,7 +262,7 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
     # per-holding view: probability-weighted middle move and the factors behind it
     exp_move = sum(i["probability"] * i["mid_moves"] for i in branch_info)
     exp_contrib = sum(i["probability"] * i["contrib"] for i in branch_info)
-    holdings = {}
+    holdings, drivers = {}, {}
     for k, b in enumerate(book_list):
         w = W[k][0]
         rows = []
@@ -263,7 +278,11 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
                          "change_ils": float(exp_move[i] * v), "why": why,
                          "own_news": any(s in (br.get("holding_overrides") or {}) for br in branches)})
         rows.sort(key=lambda r: r["change_ils"])
-        holdings[str(b.pid) if b.pid is not None else "family"] = rows
+        key = str(b.pid) if b.pid is not None else "family"
+        holdings[key] = rows
+        fac = w @ exp_contrib
+        order = np.argsort(fac)
+        drivers[key] = [{"factor": cols[j], "effect": float(fac[j])} for j in order if abs(fac[j]) >= 0.0005][:4]
 
     edges = np.percentile(outcomes[:, 0], [0.5, 99.5])
     bins = np.linspace(edges[0], edges[1], 41) if edges[1] > edges[0] else np.linspace(edges[0] - 0.01, edges[0] + 0.01, 41)
@@ -272,7 +291,7 @@ def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAW
     out = {
         "empty": False, "spec": spec, "n": n, "seed": seed, "horizon": spec.get("horizon"), "horizon_days": days,
         "base_currency": base, "usd_ils": to_ils if base == "USD" else _fx_now(session),
-        "blended": blended, "branches": br_out, "holdings": holdings,
+        "blended": blended, "branches": br_out, "holdings": holdings, "drivers": drivers,
         "histogram": {"edges": bins.tolist(), "counts": counts.tolist()},
         "exposures": {"family": factors.aggregate([(float(W[0][0][i]), exp[s]["ils"]["betas"]) for i, s in enumerate(syms)], W[0][1], 1.0 if base == "USD" else 0.0)},
         "assumptions": [

@@ -1,4 +1,4 @@
-import { Plus } from "@phosphor-icons/react";
+import { Eye, EyeSlash, Plus } from "@phosphor-icons/react";
 import { api } from "../lib/api";
 import { money, pct, signClass } from "../lib/format";
 import { useData } from "../lib/hooks";
@@ -12,6 +12,8 @@ export function QuickView() {
   const sym = s?.symbol ?? "";
   const chart = useData(() => api.symbolChart(sym, "1Y"), `qv-${sym}`, !!s);
   const quote = useData(() => api.quote(sym), `qvq-${sym}`, !!s);
+  const watch = useData(api.watchlist, "watchlist", !!s);
+  const watching = !!watch.data?.includes(sym);
   if (!s) return null;
   const q = quote.data;
   const c = chart.data;
@@ -52,6 +54,9 @@ export function QuickView() {
       </div>
       <button type="button" className="btn-primary mt-8 w-full" onClick={() => startAddTx(s)}>
         <Plus size={16} /> Add transaction
+      </button>
+      <button type="button" className="btn-secondary mt-2 w-full" onClick={async () => { await (watching ? api.unwatch(sym) : api.watch(sym)); watch.reload(); }}>
+        {watching ? <><EyeSlash size={16} /> Stop watching</> : <><Eye size={16} /> Watch</>}
       </button>
     </SidePanel>
   );

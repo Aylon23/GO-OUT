@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type ImpactEdit, type ImpactResult, type ScenarioSpec, type SpecReport } from "../lib/api";
 import { dateLong } from "../lib/format";
 import { useData } from "../lib/hooks";
+import { PersonActionsPanel } from "./Actions";
 import { Impact, type RegimeChoice } from "./Impact";
 import { EmptyState, ErrorLine, Signed, Skel } from "./ui";
 
@@ -257,6 +258,11 @@ function SpecImpact({ id }: { id: string }) {
   if (err) return <ErrorLine message={err} />;
   if (!r) return <div className="mt-10 space-y-3" aria-label="Running"><Skel className="h-9 w-3/4" /><Skel className="h-4 w-1/2" /><Skel className="h-32 w-full" /></div>;
   if (r.empty) return <p className="mt-8 text-sm text-muted">Add holdings to see the impact on your portfolios.</p>;
-  return <Impact r={r} regime={regime} setRegime={setRegime} busy={busy}
-    onEdit={(e) => setEdits((xs) => [...xs.filter((x) => !(x.branch === e.branch && x.factor === e.factor)), e])} />;
+  return (
+    <>
+      <Impact r={r} regime={regime} setRegime={setRegime} busy={busy}
+        onEdit={(e) => setEdits((xs) => [...xs.filter((x) => !(x.branch === e.branch && x.factor === e.factor)), e])} />
+      <PersonActionsPanel body={{ spec_id: id, regime: regime === "auto" ? null : regime, edits }} />
+    </>
+  );
 }

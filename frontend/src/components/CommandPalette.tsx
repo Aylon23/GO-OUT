@@ -10,7 +10,9 @@ import { SymbolSearch } from "./SymbolSearch";
 
 const VERB = /(קני|קנה|קנת|קנו|מכר|הפקד|משכ|משך|דיבידנד|\bbuy\b|\bbought\b|\bsell\b|\bsold\b|\bdeposit|\bwithdr|\bdividend)/i;
 /** A sentence ("bought 5 QQQ"), not a symbol search. */
-export const looksLikeCommand = (q: string) => VERB.test(q) || (/\d/.test(q) && q.trim().split(/\s+/).length >= 2);
+export const looksLikeCommand = (q: string) => !WATCH.test(q.trim()) && (VERB.test(q) || (/\d/.test(q) && q.trim().split(/\s+/).length >= 2));
+/** "watch AVGO", "unwatch AVGO", "עקוב AVGO" */
+const WATCH = /^(watch|unwatch|עקוב|תעקוב|מעקב|הסר מעקב)\s+([A-Za-z0-9.^=-]{1,15})$/i;
 
 const TYPE_WORD: Record<string, string> = { BUY: "Buy", SELL: "Sell", DIVIDEND: "Dividend", DEPOSIT: "Deposit", WITHDRAWAL: "Withdraw" };
 
@@ -26,6 +28,7 @@ export function CommandPalette() {
   const [inputKey, setInputKey] = useState(0);
   const [logCall, setLogCall] = useState(true);
   const command = looksLikeCommand(query);
+  const watchCmd = query.trim().match(WATCH);
   const debounced = useDebounced(command ? query : "", 350);
 
   useEffect(() => {
@@ -74,10 +77,25 @@ export function CommandPalette() {
       <div className="fade-in absolute inset-0 bg-scrim" onClick={() => setPaletteOpen(false)} aria-hidden />
       <div role="dialog" aria-modal="true" aria-label="Search or add a transaction" className="pop-in relative w-full max-w-[640px] overflow-hidden rounded-md bg-surface shadow-panel">
         <SymbolSearch key={inputKey} variant="list" size="lg" autoFocus placeholder="Search a stock, or type: bought 5 QQQ"
-          onEscape={() => setPaletteOpen(false)} onQueryChange={onQuery} suppressResults={command} onSubmitQuery={save}
+          onEscape={() => setPaletteOpen(false)} onQueryChange={onQuery} suppressResults={command || !!watchCmd} onSubmitQuery={save}
           onSelect={(s) => { setPaletteOpen(false); openQuickView(s); }} />
         {command && <DraftCard draft={draft} pending={debounced !== query} err={err} busy={busy} ready={ready} onSave={save} logCall={logCall} setLogCall={setLogCall}
           portfolios={portfolios} onPick={setPicked} onChoose={(k, v) => setChoose((c) => ({ ...c, [k]: v }))} />}
+        {watchCmd && (
+          <div className="flex items-center gap-3 border-b border-line px-4 py-4">
+            <Avatar ticker={watchCmd[2].toUpperCase()} size={20} />
+            <p className="flex-1 text-base">{/^(unwatch|הסר)/i.test(watchCmd[1]) ? "Stop watching" : "Add to your watchlist:"} <span className="font-mono font-semibold">{watchCmd[2].toUpperCase()}</span></p>
+            <button type="button" className="btn-primary" disabled={busy} onClick={async () => {
+              const sym = watchCmd[2].toUpperCase();
+              setBusy(true); setErr(null);
+              try {
+                if (/^(unwatch|הסר)/i.test(watchCmd[1])) { await api.unwatch(sym); setDone(`Stopped watching ${sym}.`); } else { await api.watch(sym); setDone(`Watching ${sym}. It's now a candidate for new money.`); }
+                setQuery(""); setInputKey((k) => k + 1); invalidate();
+              } catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't do that."); } finally { setBusy(false); }
+            }}>{busy ? "Saving" : "OK"}</button>
+          </div>
+        )}
+        {watchCmd && err && <p className="error-text px-4 pb-3" role="alert">{err}</p>}
         {done && !command && (
           <p className="flex items-center gap-2 border-b border-line px-4 py-3 text-sm" role="status"><Check size={16} className="text-gain" />{done}</p>
         )}

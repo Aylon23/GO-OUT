@@ -212,6 +212,24 @@ export interface ImpactResult {
   analogs?: (EventReplay & { branch: string; no_data?: boolean })[]; report?: SpecReport;
 }
 export type ImpactEdit = { branch: string; factor: string; mid: number };
+export interface ActionOption {
+  kind: "trim" | "rebalance" | "add" | "cash" | "nothing"; title: string; amount: number; share_of_portfolio: number;
+  benefit_ils: number; cost_ils: number; other_ils: number; top_weight_before: number; top_weight_after: number;
+  effective_before: number; effective_after: number; symbol?: string; symbols?: string[];
+}
+export interface PersonActions {
+  id: number; name: string; value_ils: number; expected_ils: number; expected: number; median_ils: number; median: number; bad_ils: number; bad: number;
+  drivers_holdings: { symbol: string; change_ils: number; move: number }[]; drivers_factors: { factor: string; effect: number }[];
+  line: string; options: ActionOption[]; other_label: string; message: string;
+}
+export interface Actions { empty: boolean; title: string; horizon: string; people: PersonActions[]; rank_expected: number[]; rank_bad: number[]; other_label: string }
+export interface ActionsBody { spec_id?: string; shocks?: { symbol: string; kind: ShockKind; move: number }[]; horizon_weeks?: number; used_events?: string[]; text?: string; regime?: "normal" | "selloff" | null; edits?: ImpactEdit[] }
+export interface NewMoneyRow {
+  symbol: string; score: number; robust_count: number; branches: number; robust: boolean; expected: number; worst_p5: number;
+  expected_ils: number; bad_ils: number; by_scenario: Record<string, number>; low_confidence: boolean; short_history: boolean; weight_after?: number;
+}
+export interface NewMoney { amount: number; currency: Ccy; amount_ils: number; person: number | null; scenarios: { id: string; title: string; weight: number }[];
+  rows: NewMoneyRow[]; top: NewMoneyRow[]; note: string | null; method: string }
 export interface ExposureFactor { id: string; label: string; he: string; tip: string; when: string; shock: number }
 export interface ExposureHolding {
   symbol: string; name: string; weight: number; value: number; betas: Record<string, number>; betas_usd: Record<string, number>;
@@ -353,6 +371,11 @@ export const api = {
     request<ImpactResult>("POST", `/api/impact/spec/${encodeURIComponent(id)}`, b, signal),
   impactShocks: (b: { shocks: { symbol: string; kind: ShockKind; move: number }[]; horizon_weeks: number; used_events: string[]; text: string; regime?: "normal" | "selloff" | null; edits?: ImpactEdit[] }, signal?: AbortSignal) =>
     request<ImpactResult>("POST", "/api/impact/shocks", b, signal),
+  actions: (b: ActionsBody) => request<Actions>("POST", "/api/actions", b),
+  newMoney: (b: { amount: number; currency: Ccy; person?: number | null }) => request<NewMoney>("POST", "/api/new-money", b),
+  watchlist: () => request<string[]>("GET", "/api/watchlist"),
+  watch: (symbol: string) => request<{ ok: boolean; symbol: string }>("POST", `/api/watchlist/${encodeURIComponent(symbol)}`),
+  unwatch: (symbol: string) => request<{ ok: boolean }>("DELETE", `/api/watchlist/${encodeURIComponent(symbol)}`),
   logoOverrides: () => request<string[]>("GET", "/api/logos/overrides"),
   uploadLogo: (symbol: string, file: File) => {
     const fd = new FormData();
