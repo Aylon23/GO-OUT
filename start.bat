@@ -1,30 +1,72 @@
 @echo off
 rem One-click start for Windows. Double-click this file.
 rem Needs Python 3.11+ and Node.js 18+ installed.
+
+rem Re-open in a window that stays open, so errors stay visible.
+if not "%~1"=="run" (
+  cmd /k ""%~f0" run"
+  exit /b
+)
+
 cd /d "%~dp0"
+echo Benchmark - folder: %CD%
+echo.
 
-where python >nul 2>nul || (echo Python is not installed. Get it from https://www.python.org/downloads and tick "Add python.exe to PATH". & pause & exit /b 1)
-where npm >nul 2>nul || (echo Node.js is not installed. Get it from https://nodejs.org & pause & exit /b 1)
+where python >nul 2>nul
+if errorlevel 1 (
+  echo [X] Python was not found.
+  echo     Reinstall it from https://www.python.org/downloads
+  echo     and tick "Add python.exe to PATH" on the first screen.
+  goto :fail
+)
+where npm >nul 2>nul
+if errorlevel 1 (
+  echo [X] Node.js was not found. Install it from https://nodejs.org and run this again.
+  goto :fail
+)
+python --version
+call node --version
 
-if not exist .venv\Scripts\python.exe (
-  echo Creating Python environment...
-  python -m venv .venv || (pause & exit /b 1)
+if not exist ".venv\Scripts\python.exe" (
+  echo.
+  echo [1/3] Creating Python environment...
+  python -m venv .venv
+  if errorlevel 1 goto :fail
 )
-if not exist .venv\deps-ok (
-  echo Installing Python packages, this takes a few minutes the first time...
-  .venv\Scripts\python.exe -m pip install -q -r backend\requirements.txt || (pause & exit /b 1)
-  echo ok> .venv\deps-ok
+if not exist ".venv\deps-ok" (
+  echo.
+  echo [2/3] Installing Python packages. The first time takes a few minutes...
+  ".venv\Scripts\python.exe" -m pip install --upgrade pip
+  ".venv\Scripts\python.exe" -m pip install -r backend\requirements.txt
+  if errorlevel 1 goto :fail
+  echo ok> ".venv\deps-ok"
 )
-if not exist frontend\node_modules (
-  echo Installing frontend packages...
+if not exist "frontend\node_modules\.bin\vite.cmd" (
+  echo.
+  echo [3/3] Installing frontend packages...
   pushd frontend
-  call npm install --no-fund --no-audit || (popd & pause & exit /b 1)
+  call npm install --no-fund --no-audit
+  if errorlevel 1 (
+    popd
+    goto :fail
+  )
   popd
 )
 
-echo Starting the app. Keep this window open. Close it to stop.
-start "Benchmark API" /min cmd /c "cd backend && ..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
-timeout /t 3 /nobreak >nul
+echo.
+echo Starting the app. Your browser opens in a few seconds.
+echo Keep this window open while you use the app. Close it to stop.
+echo.
+start "Benchmark API - keep open" /min /D backend cmd /k ..\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+timeout /t 4 /nobreak >nul
 start "" http://localhost:5173
 cd frontend
 call npx vite --host 127.0.0.1 --port 5173
+goto :eof
+
+:fail
+echo.
+echo ============================================================
+echo  Something went wrong. Take a screenshot of this window
+echo  and send it. This window stays open.
+echo ============================================================
