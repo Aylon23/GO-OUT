@@ -243,6 +243,22 @@ export interface BookVersionRow { id: number; created_at: string; note: string; 
 export interface BookCompare { a: { id: number; created_at: string; result: { answer: ImpactResult["answer"]; most_fragile: BookResult["most_fragile"] } | null };
   b: { id: number; created_at: string; result: { answer: ImpactResult["answer"]; most_fragile: BookResult["most_fragile"] } | null };
   changes: { title: string; from: number | null; to: number | null }[] }
+export interface EarningsMoves { reaction_date: string; reaction: number; d5: number | null; d20: number | null; continued: boolean | null }
+export interface EarningsCard {
+  symbol: string; name: string; rank: number;
+  data: { reported: string; results: { revenue?: number; revenue_est?: number; eps?: number; eps_est?: number; currency?: string }; guidance: string; guidance_detail?: string;
+    key_points: string[]; market_reaction_summary?: string; related_symbols?: string[]; sources?: { title: string; url: string; date?: string }[];
+    outlook: { days: string; weeks: string; bull_case?: string; bear_case?: string; confidence: string; days_direction?: string; weeks_direction?: string } };
+  beat: { revenue: string | null; eps: string | null }; today: EarningsMoves | null; bigger_than_share: number | null;
+  history: { events: (EarningsMoves & { date: string })[]; summary: { n: number; reaction_avg: number; reaction_abs_avg: number; reaction_min: number; reaction_max: number;
+    d5_avg: number; d20_avg: number; d20_min: number; d20_max: number; continued_share: number | null } | null };
+  impact: { holders: { id: number; name: string; value_ils: number; pnl_ils: number | null; weight: number }[]; exposure_ils: number; pnl_ils: number | null;
+    related: { symbol: string; name: string; why: string; beta: number; expected_move: number; expected_ils: number; holders: string[] }[] };
+  journal: { score_5d: string; score_20d: string; score: string; move_5d: number | null; move_20d: number | null };
+}
+export interface EarningsPayload { date: string | null; dates: string[]; companies: EarningsCard[]; last_trading_day: string }
+export interface EarningsJournal { rows: { date: string; symbol: string; name: string; confidence: string; move_5d: number | null; move_20d: number | null; score_5d: string; score_20d: string; score: string; scored: boolean }[];
+  accuracy: Record<string, { d5: { n: number; hit: number | null }; d20: { n: number; hit: number | null }; overall: { n: number; hit: number | null } }> }
 export interface ExposureFactor { id: string; label: string; he: string; tip: string; when: string; shock: number }
 export interface ExposureHolding {
   symbol: string; name: string; weight: number; value: number; betas: Record<string, number>; betas_usd: Record<string, number>;
@@ -394,6 +410,9 @@ export const api = {
   watchlist: () => request<string[]>("GET", "/api/watchlist"),
   watch: (symbol: string) => request<{ ok: boolean; symbol: string }>("POST", `/api/watchlist/${encodeURIComponent(symbol)}`),
   unwatch: (symbol: string) => request<{ ok: boolean }>("DELETE", `/api/watchlist/${encodeURIComponent(symbol)}`),
+  earnings: (date?: string) => request<EarningsPayload>("GET", `/api/earnings${date ? `?date=${date}` : ""}`),
+  earningsJournal: () => request<EarningsJournal>("GET", "/api/earnings/journal"),
+  earningsImport: (text: string) => request<{ date: string; companies: number }>("POST", "/api/earnings/import", { text }),
   logoOverrides: () => request<string[]>("GET", "/api/logos/overrides"),
   uploadLogo: (symbol: string, file: File) => {
     const fd = new FormData();

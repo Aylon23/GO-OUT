@@ -234,6 +234,25 @@ class SyntheticProvider:
                     "utilities": 0.02, "realestate": 0.02, "basic_materials": 0.02}, "Large Blend"
         return {}, ""
 
+    def earnings_dates(self, ticker: str) -> list[tuple[dt.date, str]]:
+        """Four made-up report dates a year (late Jan/Apr/Jul/Oct), from 2015 to a quarter ahead."""
+        spec = self._spec(ticker)
+        if spec is None or spec[2] not in ("EQUITY",):
+            return []
+        rng = np.random.default_rng(_seed(ticker) + 11)
+        offset = int(rng.integers(0, 14))
+        timing = "after_close" if rng.uniform() < 0.6 else "before_open"
+        out = []
+        horizon = dt.date.today() + dt.timedelta(days=100)
+        for y in range(2015, horizon.year + 1):
+            for m in (1, 4, 7, 10):
+                d = dt.date(y, m, 18) + dt.timedelta(days=offset)
+                while d.weekday() >= 5:
+                    d += dt.timedelta(days=1)
+                if d <= horizon:
+                    out.append((d, timing))
+        return out
+
     def recent_closes(self, tickers: list[str]) -> dict[str, list[tuple[dt.date, float]]]:
         out = {}
         for t in tickers:

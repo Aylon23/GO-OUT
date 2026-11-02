@@ -149,6 +149,18 @@ everything downstream recalculates), the range of outcomes, and today's holdings
 warning when the model disagrees with them. "Model details" shows the exposures, regime and assumptions. A typed
 scenario becomes a one-branch spec: the factors you didn't name take their usual move alongside the ones you did.
 
+## Yesterday's earnings (morning brief)
+
+A scheduled Claude task researches yesterday's reports and drops an Earnings Brief (`docs/earnings-brief.schema.json`,
+example in `docs/examples/`) into the inbox folder. The app adds the numbers from its own prices: the reaction-day move
+next to the last 8 reports (and how often the first-day direction held for 20 sessions), who in the family holds it and
+their shekel P&L, and related holdings' expected moves. Each outlook goes into a prediction journal, scored after 5 and
+20 sessions (needs the optional `days_direction`/`weeks_direction` fields), with accuracy per confidence level.
+
+For the scheduled task: `GET http://localhost:8000/api/earnings/candidates?date=YYYY-MM-DD` lists up to 8 companies that
+reported that day, family holdings first, then the largest S&P 500 names. Without a date it uses the last trading day.
+The inbox is the `inbox` folder inside the app folder (the exact path is shown on the Researched and earnings tabs).
+
 ## My book (your view of the world)
 
 What-if → My book: add saved scenarios, each with your chance that it happens within its horizon; the rest is

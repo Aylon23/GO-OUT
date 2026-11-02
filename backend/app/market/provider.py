@@ -40,6 +40,9 @@ class MarketProvider(Protocol):
     def fund_sectors(self, ticker: str) -> tuple[dict[str, float], str]:
         """A fund's sector weights ({"technology": 0.5, ...}) and its category, if any."""
 
+    def earnings_dates(self, ticker: str) -> list[tuple[dt.date, str]]:
+        """Past and upcoming earnings report dates with timing ("before_open" | "after_close")."""
+
 
 def _frame_from_yahoo(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
@@ -114,6 +117,21 @@ class YahooProvider:
         except Exception:
             category = ""
         return weights, category
+
+    def earnings_dates(self, ticker: str) -> list[tuple[dt.date, str]]:
+        try:
+            df = self.yf.Ticker(ticker).get_earnings_dates(limit=16)
+        except Exception as exc:
+            raise ProviderError(str(exc)) from exc
+        out = []
+        if df is None or df.empty:
+            return out
+        for ts in df.index:
+            t = pd.Timestamp(ts)
+            if t.tzinfo is not None:
+                t = t.tz_convert("America/New_York")
+            out.append((t.date(), "after_close" if t.hour >= 12 else "before_open"))
+        return sorted(set(out))
 
     def recent_closes(self, tickers: list[str]) -> dict[str, list[tuple[dt.date, float]]]:
         out: dict[str, list[tuple[dt.date, float]]] = {}

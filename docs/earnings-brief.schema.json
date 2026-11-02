@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Aylon23/GO-OUT/docs/earnings-brief.schema.json",
+  "title": "Earnings Brief",
+  "description": "Yesterday's earnings, researched by a scheduled Claude task and dropped into the app's inbox each morning. The app adds the numbers from its own price data. Optional *_direction fields let the app score the outlook after 5 and 20 trading days.",
+  "type": "object",
+  "required": ["kind", "spec_version", "date", "companies"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "earnings_brief" },
+    "spec_version": { "const": 1 },
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "The trading day the reports came out." },
+    "companies": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": ["symbol", "name", "reported", "results", "guidance", "key_points", "outlook"],
+        "additionalProperties": false,
+        "properties": {
+          "symbol": { "type": "string", "minLength": 1, "maxLength": 15 },
+          "name": { "type": "string" },
+          "reported": { "enum": ["before_open", "after_close"] },
+          "results": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "revenue": { "type": "number" },
+              "revenue_est": { "type": "number" },
+              "eps": { "type": "number" },
+              "eps_est": { "type": "number" },
+              "currency": { "type": "string" }
+            }
+          },
+          "guidance": { "enum": ["raised", "maintained", "lowered", "none"] },
+          "guidance_detail": { "type": "string" },
+          "key_points": { "type": "array", "items": { "type": "string" }, "maxItems": 8 },
+          "market_reaction_summary": { "type": "string" },
+          "outlook": {
+            "type": "object",
+            "required": ["days", "weeks", "confidence"],
+            "additionalProperties": false,
+            "properties": {
+              "days": { "type": "string" },
+              "weeks": { "type": "string" },
+              "days_direction": { "enum": ["up", "down", "flat"], "description": "Optional: lets the app score the next 5 trading days." },
+              "weeks_direction": { "enum": ["up", "down", "flat"], "description": "Optional: lets the app score the next 20 trading days." },
+              "bull_case": { "type": "string" },
+              "bear_case": { "type": "string" },
+              "confidence": { "enum": ["low", "medium", "high"] }
+            }
+          },
+          "related_symbols": { "type": "array", "items": { "type": "string" }, "maxItems": 12 },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "url"],
+              "additionalProperties": false,
+              "properties": { "title": { "type": "string" }, "url": { "type": "string" }, "date": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1018,6 +1018,41 @@ def book_compare(a: int, b: int, session: Session = Depends(get_session)):
         _bad(str(exc), 404)
 
 
+# ---------------------------------------------------------------- earnings
+
+@router.get("/earnings")
+def earnings_get(date: dt.date | None = None, session: Session = Depends(get_session)):
+    from .. import earnings
+
+    return services._clean(earnings.brief_payload(session, date))
+
+
+@router.get("/earnings/candidates")
+def earnings_candidates(date: dt.date | None = None, session: Session = Depends(get_session)):
+    from .. import earnings
+
+    day = date or earnings.last_trading_day(session)
+    return {"date": day.isoformat(), "candidates": earnings.candidates(session, day)}
+
+
+@router.get("/earnings/journal")
+def earnings_journal(session: Session = Depends(get_session)):
+    from .. import earnings
+
+    return services._clean(earnings.journal(session))
+
+
+@router.post("/earnings/import")
+def earnings_import(body: SpecIn, session: Session = Depends(get_session)):
+    from .. import earnings, specs
+
+    try:
+        brief = specs.extract(body.text, ("earnings_brief",))
+        return earnings.import_brief(session, brief)
+    except (specs.SpecError, earnings.BriefError) as exc:
+        _bad(str(exc))
+
+
 @router.get("/watchlist")
 def watchlist(session: Session = Depends(get_session)):
     from ..models import Watch

@@ -1,0 +1,49 @@
+{
+  "kind": "earnings_brief",
+  "spec_version": 1,
+  "date": "2026-10-29",
+  "companies": [
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft",
+      "reported": "after_close",
+      "results": { "revenue": 77.5, "revenue_est": 75.4, "eps": 3.95, "eps_est": 3.67, "currency": "USD" },
+      "guidance": "maintained",
+      "guidance_detail": "EXAMPLE with illustrative numbers. Cloud growth guided in line with the previous quarter.",
+      "key_points": ["Azure growth above estimates", "Capital spending higher than expected", "AI revenue run-rate raised"],
+      "market_reaction_summary": "Illustrative: shares rose after hours on the cloud beat, then gave some back on spending.",
+      "outlook": {
+        "days": "Likely to hold gains while cloud numbers dominate the coverage.",
+        "weeks": "Spending worries could cap the stock until the next update.",
+        "days_direction": "up",
+        "weeks_direction": "flat",
+        "bull_case": "AI demand keeps cloud growth above 35%.",
+        "bear_case": "Spending rises faster than revenue and margins shrink.",
+        "confidence": "medium"
+      },
+      "related_symbols": ["NVDA", "ORCL", "AMZN"],
+      "sources": [{ "title": "Microsoft Investor Relations", "url": "https://www.microsoft.com/en-us/investor", "date": "2026-10-29" }]
+    },
+    {
+      "symbol": "META",
+      "name": "Meta Platforms",
+      "reported": "after_close",
+      "results": { "revenue": 51.2, "revenue_est": 49.5, "eps": 6.9, "eps_est": 6.7, "currency": "USD" },
+      "guidance": "lowered",
+      "guidance_detail": "EXAMPLE with illustrative numbers. Next-quarter revenue range below what analysts expected.",
+      "key_points": ["Ad revenue beat", "Guidance below estimates", "Higher spending plans"],
+      "market_reaction_summary": "Illustrative: shares fell on the guidance despite the beat.",
+      "outlook": {
+        "days": "Pressure likely to continue for a few days.",
+        "weeks": "Could recover if ad data stays strong.",
+        "days_direction": "down",
+        "weeks_direction": "up",
+        "bull_case": "Guidance proves conservative.",
+        "bear_case": "Spending keeps rising without new revenue.",
+        "confidence": "low"
+      },
+      "related_symbols": ["GOOGL", "SNAP", "PINS"],
+      "sources": [{ "title": "Meta Investor Relations", "url": "https://investor.atmeta.com", "date": "2026-10-29" }]
+    }
+  ]
+}

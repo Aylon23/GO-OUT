@@ -182,6 +182,34 @@ class BookVersion(SQLModel, table=True):
     created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
 
 
+class EarningsDates(SQLModel, table=True):
+    """Cached report dates per symbol (refreshed weekly)."""
+
+    symbol: str = Field(primary_key=True)
+    dates: str = "[]"  # JSON: [[YYYY-MM-DD, timing], ...]
+    fetched_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+
+
+class EarningsItem(SQLModel, table=True):
+    """One company from an imported earnings brief, with its prediction-journal scores."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: dt.date = Field(index=True)  # the trading day reported
+    symbol: str = Field(index=True)
+    data: str = "{}"  # the company entry as imported
+    confidence: str = ""
+    days_direction: str = ""  # up | down | flat | "" (not scored)
+    weeks_direction: str = ""
+    base_close: Optional[float] = None  # close of the reaction day, the journal's starting point
+    base_date: Optional[dt.date] = None
+    move_5d: Optional[float] = None
+    move_20d: Optional[float] = None
+    score_5d: str = ""  # hit | miss | mixed
+    score_20d: str = ""
+    score: str = ""  # overall
+    imported_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+
+
 class Watch(SQLModel, table=True):
     """A symbol on the watchlist (candidates for new money)."""
 

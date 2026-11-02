@@ -82,6 +82,13 @@ def fake(session):
     return p
 
 
+def _earnings_dates(self, ticker):
+    return getattr(self, "earnings", {}).get(ticker, [])
+
+
+FakeProvider.earnings_dates = _earnings_dates
+
+
 def _fund_sectors(self, ticker):
     return getattr(self, "funds", {}).get(ticker, ({}, ""))
 

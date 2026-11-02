@@ -284,6 +284,8 @@ HANDLERS["scenario"] = _handle_scenario
 
 def process_inbox(session: Session, folder: Path | None = None) -> list[dict]:
     """Import every *.json in the inbox. Each file ends in processed/ or failed/ (+ .error.txt)."""
+    from . import earnings  # noqa: F401  (registers the earnings_brief handler)
+
     folder = folder or inbox_dir(session)
     for sub in ("processed", "failed"):
         (folder / sub).mkdir(parents=True, exist_ok=True)
