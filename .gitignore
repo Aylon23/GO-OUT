@@ -9,3 +9,6 @@ data/*.db-*
 .DS_Store
 .version
 start.bat.new
+data/logos/
+inbox/*
+!inbox/README.md

@@ -30,7 +30,7 @@ try {
     $src = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
     # start.bat is running right now, so it is placed next to itself and swapped in by start.bat
     Copy-Item (Join-Path $src.FullName 'start.bat') (Join-Path $root 'start.bat.new') -Force
-    robocopy $src.FullName $root /E /XD data .venv node_modules .git /XF start.bat .version /NFL /NDL /NJH /NJS /NP | Out-Null
+    robocopy $src.FullName $root /E /XD data inbox .venv node_modules .git /XF start.bat .version /NFL /NDL /NJH /NJS /NP | Out-Null
     Set-Content -Path $verFile -Value $sha
     Write-Host 'Updated.'
 } catch {

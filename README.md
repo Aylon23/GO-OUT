@@ -137,6 +137,20 @@ nickname set in Settings (e.g. Keren = קרן). Several at once work too:
 - `קרן, שיר ואבא קנו 3 NVDA` → one recommendation, three trades
 - `כולם מכרו TSLA` → sells the whole position in every portfolio that holds it
 
+## Researched scenarios (Scenario Specs)
+
+Research a scenario outside the app (a Claude chat or a scheduled Claude task) and import the result: the app
+never calls a paid API. The format is `docs/scenario-spec.schema.json` (example: `docs/examples/`). Import it two ways:
+
+- **Paste:** What-if → Researched → Import researched scenario. The whole Claude message is fine; the app finds the JSON.
+- **Inbox folder:** drop `*.json` into `inbox/` (or the folder set in Settings). Imported files move to `inbox/processed/`;
+  files with errors move to `inbox/failed/` with a `.error.txt` explaining why.
+
+Before saving, the app shows a report. Errors block saving: invalid format, unknown factor ids, branch
+probabilities not adding up to 1, or low > mid > high out of order. Warnings don't: each past analog is replayed on our
+own price data and any factor that actually moved against the branch is flagged, moves larger than anything seen over
+that horizon, context older than 30 days, fewer than 2 analogs. The spec's own numbers are never changed.
+
 ## Exposures (Risk page)
 
 What moves each portfolio, in shekels: market, size, value vs growth, momentum, quality, rates (TLT),

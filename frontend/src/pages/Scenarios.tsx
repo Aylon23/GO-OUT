@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { Avatar } from "../components/Avatar";
+import { Researched } from "../components/Researched";
 import { EmptyState, ErrorLine, InfoTip, Segmented, Signed, Skel } from "../components/ui";
 import {
   api, ApiError, type EventReplay, type Idea, type ImpactHolding, type ModelCheck, type Regime, type SavedScenario, type ScenarioLibrary,
@@ -16,19 +17,20 @@ const EXAMPLES = ["מלחמה עם איראן", "מחיר הנפט יורד 20%"
 const HORIZONS = [{ value: "1", label: "1 week" }, { value: "2", label: "2 weeks" }, { value: "4.3", label: "1 month" }, { value: "13", label: "3 months" }];
 
 export default function Scenarios() {
-  const [mode, setMode] = useState<"scenario" | "swap" | "custom">("scenario");
+  const [mode, setMode] = useState<"scenario" | "researched" | "swap" | "custom">("scenario");
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-8 md:px-8 md:pt-12">
       <h1 className="text-xl font-semibold">What-if</h1>
       <p className="mt-1 max-w-[66ch] text-sm text-muted">
-        {mode === "scenario" ? "Describe something that could happen. See what it would do to each portfolio, why, and what past events like it did."
+        {mode === "researched" ? "Scenarios researched outside the app and imported, checked against real price history."
+          : mode === "scenario" ? "Describe something that could happen. See what it would do to each portfolio, why, and what past events like it did."
           : "Replay your own money through a different choice. Same dates, same amounts, same engine as your real numbers."}
       </p>
       <div className="mt-6">
         <Segmented label="What-if tool" value={mode} onChange={setMode}
-          options={[{ value: "scenario", label: "Scenarios" }, { value: "swap", label: "Swap a holding" }, { value: "custom", label: "Build a portfolio" }]} />
+          options={[{ value: "scenario", label: "Scenarios" }, { value: "researched", label: "Researched" }, { value: "swap", label: "Swap a holding" }, { value: "custom", label: "Build a portfolio" }]} />
       </div>
-      {mode === "scenario" ? <ScenarioLab /> : mode === "swap" ? <SwapSim /> : <CustomSim />}
+      {mode === "scenario" ? <ScenarioLab /> : mode === "researched" ? <Researched /> : mode === "swap" ? <SwapSim /> : <CustomSim />}
     </div>
   );
 }

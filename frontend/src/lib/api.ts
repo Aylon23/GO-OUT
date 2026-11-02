@@ -179,6 +179,25 @@ export interface ScenarioRun {
   history: { n: number; from: string; to: string; worst: PastExtreme; best: PastExtreme } | null;
   events: EventReplay[]; stress_weeks: number; weeks: number;
 }
+export interface SpecRange { low: number; mid: number; high: number; rationale?: string }
+export interface SpecBranch {
+  name: string; probability: number; cause: string; narrative: string;
+  transmission?: { from: string; to: string; direction: "+" | "-"; explanation?: string }[];
+  factor_moves: Record<string, SpecRange>; sector_overrides?: Record<string, SpecRange>;
+  analogs?: { name: string; start: string; end: string; why_similar?: string }[];
+  signposts?: { indicator: string; symbol?: string; condition: ">" | "<"; value: number; meaning: string }[];
+}
+export interface ScenarioSpec {
+  spec_version: 1; kind: "scenario"; id: string; title: string; title_he?: string; created_at: string; author: string; question: string;
+  horizon: string; summary: string; branches: SpecBranch[]; current_context?: { item: string; value: string; as_of: string }[];
+  sources?: { title: string; url: string; date?: string }[]; confidence: "low" | "medium" | "high"; what_would_change_my_view?: string;
+}
+export interface SpecReport {
+  errors: string[]; warnings: string[]; ok: boolean; checked_at: string;
+  analogs: { branch: string; name: string; start: string; end: string; why_similar: string; no_data: string[];
+    factors: { factor: string; claimed_mid: number; actual: number | null; contradicts: boolean }[] }[];
+}
+export interface SpecRow { id: string; title: string; title_he: string; horizon: string; branches: number; confidence: string; author: string; created_at: string; source: string; imported_at: string; warnings: number; spec?: ScenarioSpec; report?: SpecReport }
 export interface ExposureFactor { id: string; label: string; he: string; tip: string; when: string; shock: number }
 export interface ExposureHolding {
   symbol: string; name: string; weight: number; value: number; betas: Record<string, number>; betas_usd: Record<string, number>;
@@ -309,6 +328,13 @@ export const api = {
   },
   clearAll: () => request<{ ok: boolean }>("DELETE", "/api/transactions"),
   exposures: (refresh = false) => request<Exposures>("GET", `/api/exposures${refresh ? "?refresh=true" : ""}`),
+  specValidate: (text: string) => request<{ spec: ScenarioSpec; report: SpecReport }>("POST", "/api/specs/validate", { text }),
+  specSave: (text: string) => request<SpecRow>("POST", "/api/specs", { text }),
+  specs: () => request<SpecRow[]>("GET", "/api/specs"),
+  spec: (id: string) => request<SpecRow>("GET", `/api/specs/${encodeURIComponent(id)}`),
+  specDelete: (id: string) => request<{ ok: boolean }>("DELETE", `/api/specs/${encodeURIComponent(id)}`),
+  inbox: () => request<{ path: string; failed: { file: string; error: string }[] }>("GET", "/api/inbox"),
+  inboxCheck: () => request<{ file: string; ok: boolean; message: string }[]>("POST", "/api/inbox/check"),
   logoOverrides: () => request<string[]>("GET", "/api/logos/overrides"),
   uploadLogo: (symbol: string, file: File) => {
     const fd = new FormData();

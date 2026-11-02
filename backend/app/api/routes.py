@@ -245,12 +245,13 @@ class SettingsIn(BaseModel):
     auto_dividends: bool | None = None
     anthropic_key: str | None = None
     allow_short_hedges: bool | None = None
+    inbox_dir: str | None = None
 
 
 def _settings_dict(s):
     key = (s.anthropic_key or "").strip()
     return {"base_currency": s.base_currency, "benchmarks": s.benchmark_list(), "risk_free": s.risk_free,
-            "theme": s.theme, "auto_dividends": s.auto_dividends, "allow_short_hedges": bool(s.allow_short_hedges),
+            "theme": s.theme, "auto_dividends": s.auto_dividends, "allow_short_hedges": bool(s.allow_short_hedges), "inbox_dir": s.inbox_dir or "",
             "anthropic_key_set": bool(key), "anthropic_key_hint": f"…{key[-4:]}" if len(key) > 8 else ""}
 
 
@@ -282,6 +283,13 @@ def put_settings(body: SettingsIn, session: Session = Depends(get_session)):
         s.theme = body.theme if body.theme in ("light", "dark", "system") else "system"
     if body.auto_dividends is not None:
         s.auto_dividends = body.auto_dividends
+    if body.inbox_dir is not None:
+        from pathlib import Path
+
+        d = body.inbox_dir.strip()
+        if d and not Path(d).expanduser().is_absolute():
+            _bad("Use a full folder path, like C:\\Users\\you\\Documents\\inbox.")
+        s.inbox_dir = d
     if body.allow_short_hedges is not None:
         s.allow_short_hedges = body.allow_short_hedges
     if body.anthropic_key is not None:
@@ -594,6 +602,83 @@ def telegram_new_code(session: Session = Depends(get_session)):
     session.add(st)
     session.commit()
     return _telegram_dict(st)
+
+
+# ---------------------------------------------------------------- researched scenario specs
+
+class SpecIn(BaseModel):
+    text: str
+
+
+def _extract_validate(session: Session, text: str):
+    from .. import specs
+
+    try:
+        spec = specs.extract(text)
+    except specs.SpecError as exc:
+        _bad(str(exc))
+    return spec, specs.validate(session, spec)
+
+
+@router.post("/specs/validate")
+def spec_validate(body: SpecIn, session: Session = Depends(get_session)):
+    spec, report = _extract_validate(session, body.text)
+    return services._clean({"spec": spec, "report": report})
+
+
+@router.post("/specs")
+def spec_save(body: SpecIn, session: Session = Depends(get_session)):
+    from .. import specs
+
+    spec, report = _extract_validate(session, body.text)
+    if report["errors"]:
+        _bad("The spec has errors; fix them before saving.", report=report)
+    return services._clean(specs.row_dict(specs.save(session, spec, report, "paste")))
+
+
+@router.get("/specs")
+def spec_list(session: Session = Depends(get_session)):
+    from .. import specs
+
+    return specs.listing(session)
+
+
+@router.get("/specs/{sid}")
+def spec_get(sid: str, session: Session = Depends(get_session)):
+    from .. import specs
+    from ..models import ResearchedSpec
+
+    row = session.get(ResearchedSpec, sid)
+    if row is None:
+        _bad("Scenario not found.", 404)
+    return services._clean(specs.row_dict(row))
+
+
+@router.delete("/specs/{sid}")
+def spec_delete(sid: str, session: Session = Depends(get_session)):
+    from ..models import ResearchedSpec
+
+    row = session.get(ResearchedSpec, sid)
+    if row is not None:
+        session.delete(row)
+        session.commit()
+    return {"ok": True}
+
+
+@router.get("/inbox")
+def inbox_info(session: Session = Depends(get_session)):
+    from .. import specs
+
+    d = specs.inbox_dir(session)
+    failed = sorted((d / "failed").glob("*.error.txt"), key=lambda f: f.stat().st_mtime, reverse=True)[:5]
+    return {"path": str(d.resolve()), "failed": [{"file": f.name.replace(".error.txt", ""), "error": f.read_text(encoding="utf-8")[:2000]} for f in failed]}
+
+
+@router.post("/inbox/check")
+def inbox_check(session: Session = Depends(get_session)):
+    from .. import specs
+
+    return specs.process_inbox(session)
 
 
 # ---------------------------------------------------------------- factor exposures
