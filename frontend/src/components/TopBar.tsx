@@ -7,6 +7,7 @@ const NAV: { route: Route; label: string }[] = [
   { route: "dashboard", label: "Overview" },
   { route: "holdings", label: "Holdings" },
   { route: "risk", label: "Risk" },
+  { route: "compare", label: "Compare" },
   { route: "transactions", label: "Transactions" },
   { route: "whatif", label: "What-if" },
 ];

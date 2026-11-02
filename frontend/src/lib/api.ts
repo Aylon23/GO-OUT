@@ -80,6 +80,16 @@ export interface HoldingImportRow {
 }
 export interface HoldingImport { rows: HoldingImportRow[]; valid: number; invalid: number; committed: boolean; imported: number }
 
+export interface MetricRow {
+  key: string; label: string; kind: "portfolio" | "symbol"; name?: string; note: string; beta: number | null;
+  trailing_pe: number | null; forward_pe: number | null; dividend_yield: number | null;
+  trailing_pe_coverage?: number; trailing_pe_missing?: string[]; forward_pe_coverage?: number;
+}
+export interface Metrics {
+  base: Ccy; reference: string; window_days: number; range: { code: string; start: string | null; end: string };
+  rows: MetricRow[]; warnings: string[]; rolling: { dates: string[]; series: Record<string, (number | null)[]> };
+}
+
 export interface Settings { base_currency: Ccy; benchmarks: string[]; risk_free: number; theme: "light" | "dark" | "system"; auto_dividends: boolean }
 export interface Swap {
   base: Ccy; ticker: string; replacement: string; real_value: number; hypo_value: number; diff: number; diff_pct: number | null; since: string; trades: number;
@@ -176,6 +186,8 @@ export const api = {
   createPortfolio: (name: string, note = "") => request<PortfolioInfo>("POST", "/api/portfolios", { name, note }),
   updatePortfolio: (id: number, name: string, note: string) => request<PortfolioInfo>("PUT", `/api/portfolios/${id}`, { name, note }),
   deletePortfolio: (id: number) => request<{ ok: boolean }>("DELETE", `/api/portfolios/${id}`),
+  metrics: (portfolios: number[], symbols: string[], range: string) =>
+    request<Metrics>("GET", `/api/metrics?${qs({ portfolios: portfolios.join(","), symbols: symbols.join(","), range })}`),
   overview: (range: string) => request<Overview>("GET", `/api/overview?${qs({ range })}`),
   lookback: (p: RangeParams) => request<Lookback>("GET", `/api/lookback?${qs({ ...p })}`),
   importHoldings: (file: File, commit: boolean, asOf?: string) => {

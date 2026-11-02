@@ -390,6 +390,15 @@ async def import_holdings(file: UploadFile = File(...), commit: bool = False, as
     return {"rows": rows, "valid": len(valid), "invalid": len(rows) - len(valid), "committed": commit, "imported": n}
 
 
+@router.get("/metrics")
+def metrics(portfolios: str = "", symbols: str = "SPY,QQQ,XLK", range: str = "1Y", session: Session = Depends(get_session)):
+    from .. import metrics as mx
+
+    pids = [int(x) for x in portfolios.split(",") if x.strip().isdigit()]
+    syms = [s.strip().upper() for s in symbols.split(",") if s.strip()][:12]
+    return _wrap(mx.metrics_payload, session, pids, syms, range)
+
+
 @router.get("/health")
 def health():
     return {"ok": True}

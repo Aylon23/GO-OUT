@@ -95,6 +95,17 @@ class SymbolMeta(SQLModel, table=True):
     info_fetched: bool = False
 
 
+class Fundamentals(SQLModel, table=True):
+    """Valuation figures from Yahoo, refreshed at most once a day."""
+
+    ticker: str = Field(primary_key=True)
+    trailing_pe: Optional[float] = None
+    forward_pe: Optional[float] = None
+    beta: Optional[float] = None
+    dividend_yield: Optional[float] = None
+    fetched_at: dt.datetime
+
+
 class RecentSymbol(SQLModel, table=True):
     ticker: str = Field(primary_key=True)
     selected_at: dt.datetime

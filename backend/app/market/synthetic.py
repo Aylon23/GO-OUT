@@ -25,6 +25,7 @@ CATALOG = {
     "VOO": ("Vanguard S&P 500 ETF", "PCX", "ETF", 190, 0.11, 0.17, "2010-09-09", 0.014),
     "SPY": ("SPDR S&P 500 ETF Trust", "PCX", "ETF", 205, 0.11, 0.17, "1993-01-29", 0.014),
     "QQQ": ("Invesco QQQ Trust", "NMS", "ETF", 100, 0.15, 0.22, "1999-03-10", 0.006),
+    "XLK": ("Technology Select Sector SPDR Fund", "PCX", "ETF", 40, 0.17, 0.24, "1998-12-22", 0.007),
     "TEVA": ("Teva Pharmaceutical Industries", "NYQ", "EQUITY", 60, -0.06, 0.40, "1990-01-02", 0.0),
     "TEVA.TA": ("Teva Pharmaceutical Industries", "TLV", "EQUITY", 22000, -0.06, 0.40, "1990-01-02", 0.0),
     "^GSPC": ("S&P 500", "SNP", "INDEX", 2500, 0.09, 0.17, "1990-01-02", 0.0),
@@ -103,7 +104,10 @@ class SyntheticProvider:
         if ticker not in CATALOG:
             return {}
         name, exch, qt, *_ = CATALOG[ticker]
-        return {"longName": name, "exchange": exch, "quoteType": qt, "sector": SECTORS.get(ticker, ""),
+        pe = {"AAPL": 33.1, "MSFT": 36.4, "NVDA": 52.0, "INTC": -12.0, "GOOGL": 24.5, "AMZN": 41.0, "TSLA": 95.0, "VOO": 27.2,
+              "SPY": 27.3, "QQQ": 34.8, "XLK": 39.5, "TEVA": 15.2, "TEVA.TA": 15.4, "VFIAX": 27.1}.get(ticker)
+        return {"trailingPE": pe, "forwardPE": pe * 0.85 if pe and pe > 0 else None, "beta": 1.1, "trailingAnnualDividendYield": 0.006,
+                "longName": name, "exchange": exch, "quoteType": qt, "sector": SECTORS.get(ticker, ""),
                 "country": "Israel" if ticker.endswith(".TA") else "United States",
                 "currency": "ILA" if ticker.endswith(".TA") else "USD"}
 
