@@ -1,9 +1,10 @@
 import { ArrowLeft, ArrowRight, CheckCircle, DownloadSimple, Tray, Warning, XCircle } from "@phosphor-icons/react";
 import clsx from "clsx";
-import { useState } from "react";
-import { api, ApiError, type ScenarioSpec, type SpecReport } from "../lib/api";
+import { useEffect, useState } from "react";
+import { api, ApiError, type ImpactEdit, type ImpactResult, type ScenarioSpec, type SpecReport } from "../lib/api";
 import { dateLong } from "../lib/format";
 import { useData } from "../lib/hooks";
+import { Impact, type RegimeChoice } from "./Impact";
 import { EmptyState, ErrorLine, Signed, Skel } from "./ui";
 
 export const FACTOR_LABEL: Record<string, string> = {
@@ -133,6 +134,7 @@ function SpecDetail({ id, onBack }: { id: string; onBack: () => void }) {
         {s.question && <span dir="auto">Asked: “{s.question}”</span>}
       </p>
       <p className="mt-4 max-w-[72ch] text-base">{s.summary}</p>
+      <SpecImpact id={id} />
 
       <h3 className="mt-10 text-base font-semibold">Branches</h3>
       <ul className="mt-3 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -226,7 +228,7 @@ function SpecDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
       <h3 className="mt-10 text-base font-semibold">Validation</h3>
       <Report report={r.report} />
-      <p className="mt-2 text-xs text-faint">Checked {dateLong(r.report.checked_at.slice(0, 10))}. Impact on the portfolios comes in the next step.</p>
+      <p className="mt-2 text-xs text-faint">Checked {dateLong(r.report.checked_at.slice(0, 10))}.</p>
       <div className="mt-8">
         {confirm ? (
           <span className="flex items-center gap-2 text-sm">Delete this scenario?
@@ -236,4 +238,25 @@ function SpecDetail({ id, onBack }: { id: string; onBack: () => void }) {
       </div>
     </article>
   );
+}
+
+function SpecImpact({ id }: { id: string }) {
+  const [regime, setRegime] = useState<RegimeChoice>("auto");
+  const [edits, setEdits] = useState<ImpactEdit[]>([]);
+  const [r, setR] = useState<ImpactResult | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    const ctl = new AbortController();
+    setBusy(true); setErr(null);
+    api.impactSpec(id, { regime: regime === "auto" ? null : regime, edits }, ctl.signal)
+      .then((x) => { setR(x); setBusy(false); })
+      .catch((e) => { if (e.name !== "AbortError") { setErr(e instanceof ApiError ? e.message : "Couldn't run it."); setBusy(false); } });
+    return () => ctl.abort();
+  }, [id, regime, edits]);
+  if (err) return <ErrorLine message={err} />;
+  if (!r) return <div className="mt-10 space-y-3" aria-label="Running"><Skel className="h-9 w-3/4" /><Skel className="h-4 w-1/2" /><Skel className="h-32 w-full" /></div>;
+  if (r.empty) return <p className="mt-8 text-sm text-muted">Add holdings to see the impact on your portfolios.</p>;
+  return <Impact r={r} regime={regime} setRegime={setRegime} busy={busy}
+    onEdit={(e) => setEdits((xs) => [...xs.filter((x) => !(x.branch === e.branch && x.factor === e.factor)), e])} />;
 }

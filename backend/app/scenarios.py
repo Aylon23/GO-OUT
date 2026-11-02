@@ -677,11 +677,13 @@ def replay(u: Universe, ev: dict, ports: list[Book], family: Book) -> dict | Non
     rows = [{"symbol": hd.symbol, "move": cache[hd.symbol][0], "estimated": cache[hd.symbol][1], "change": cache[hd.symbol][0] * hd.value}
             for hd in family.holdings]
     rows.sort(key=lambda r: r["change"])
-    key = ["SPY", "QQQ", "EIS", "TLT", "USO", "GLD", "ILS=X", "^VIX"]
+    key = ["SPY", "QQQ", "EIS", "^TA125.TA", "TLT", "USO", "GLD", "ILS=X", "^VIX"]
+    if "^TA125.TA" in u.daily and "^TA125.TA" not in fmoves and (m := event_move(u, "^TA125.TA", ev)) is not None:
+        fmoves["^TA125.TA"] = m  # Israeli stocks in shekels, next to EIS (in dollars)
     assets = {s: (fmoves[s] if s in fmoves else float(est["mu"][u.idx(s)])) for s in LONG_HEDGES + INDEX_HEDGES if u.has(s)}
     return {"id": ev["id"], "name": ev["name"], "he": ev["he"], "start": ev["start"], "end": ev["end"],
             "family": fam, "portfolios": [book(b) for b in ports],
-            "factors": [{"symbol": s, "label": LABEL.get(s, s), "move": fmoves[s]} for s in key if s in fmoves],
+            "factors": [{"symbol": s, "label": LABEL.get(s, "TA-125 (₪)" if s == "^TA125.TA" else s), "move": fmoves[s]} for s in key if s in fmoves],
             "worst": rows[:3], "best": [r for r in reversed(rows) if r["change"] > 0][:3],
             "_moves": {k: v[0] for k, v in cache.items()}, "_assets": assets}
 

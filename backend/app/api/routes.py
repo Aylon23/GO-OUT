@@ -837,6 +837,60 @@ def scenarios_delete(sid: int, session: Session = Depends(get_session)):
     return {"ok": True}
 
 
+# ---------------------------------------------------------------- impact engine
+
+class EditIn(BaseModel):
+    branch: str
+    factor: str
+    mid: float
+
+
+class ImpactSpecIn(BaseModel):
+    regime: str | None = None  # None = by each branch's cause
+    edits: list[EditIn] = []
+    seed: int = 7
+
+
+class ImpactShocksIn(ImpactSpecIn):
+    shocks: list[ShockIn]
+    horizon_weeks: float = 1.0
+    used_events: list[str] = []
+    text: str = ""
+
+
+def _check_regime(r):
+    if r not in (None, "normal", "selloff"):
+        _bad("Regime must be normal or selloff.")
+
+
+@router.post("/impact/spec/{sid}")
+def impact_spec(sid: str, body: ImpactSpecIn, session: Session = Depends(get_session)):
+    import json as _json
+    from .. import impact
+    from ..models import ResearchedSpec
+
+    _check_regime(body.regime)
+    row = session.get(ResearchedSpec, sid)
+    if row is None:
+        _bad("Scenario not found.", 404)
+    out = impact.run(session, _json.loads(row.spec), regime=body.regime, edits=[e.model_dump() for e in body.edits], seed=body.seed)
+    out["report"] = _json.loads(row.report)
+    return services._clean(out)
+
+
+@router.post("/impact/shocks")
+def impact_shocks(body: ImpactShocksIn, session: Session = Depends(get_session)):
+    from .. import impact
+
+    _check_regime(body.regime)
+    if not body.shocks:
+        _bad("Add at least one move.")
+    spec = impact.spec_from_shocks(session, [s.model_dump() for s in body.shocks], body.horizon_weeks, body.text[:80], body.text,
+                                   body.used_events, body.regime or "normal")
+    out = impact.run(session, spec, regime=body.regime or "normal", edits=[e.model_dump() for e in body.edits], seed=body.seed)
+    return services._clean(out)
+
+
 @router.get("/health")
 def health():
     return {"ok": True}

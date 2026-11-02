@@ -198,6 +198,20 @@ export interface SpecReport {
     factors: { factor: string; claimed_mid: number; actual: number | null; contradicts: boolean }[] }[];
 }
 export interface SpecRow { id: string; title: string; title_he: string; horizon: string; branches: number; confidence: string; author: string; created_at: string; source: string; imported_at: string; warnings: number; spec?: ScenarioSpec; report?: SpecReport }
+export interface ImpactStats { id: number | null; name: string; median: number; p5: number; p95: number; prob_loss: number;
+  median_ils: number; p5_ils: number; p95_ils: number; mean: number; value_ils: number; mid?: number }
+export interface ImpactHoldingRow { symbol: string; name: string; weight: number; value_ils: number; move: number; change_ils: number;
+  why: { factor: string; effect: number }[]; own_news: boolean }
+export interface ImpactResult {
+  empty: boolean; spec: ScenarioSpec & { branches: (SpecBranch & { holding_overrides?: Record<string, SpecRange> })[] };
+  n: number; seed: number; horizon: string; horizon_days: number; base_currency: Ccy; usd_ils: number;
+  blended: ImpactStats[]; branches: { name: string; probability: number; cause: string; regime: "normal" | "selloff"; draws: number; books: ImpactStats[] }[];
+  holdings: Record<string, ImpactHoldingRow[]>; histogram: { edges: number[]; counts: number[] };
+  exposures: { family: Record<string, number> }; assumptions: string[]; warnings: string[];
+  answer: { median_ils: number; median: number; p5_ils: number; p5: number; prob_loss: number };
+  analogs?: (EventReplay & { branch: string; no_data?: boolean })[]; report?: SpecReport;
+}
+export type ImpactEdit = { branch: string; factor: string; mid: number };
 export interface ExposureFactor { id: string; label: string; he: string; tip: string; when: string; shock: number }
 export interface ExposureHolding {
   symbol: string; name: string; weight: number; value: number; betas: Record<string, number>; betas_usd: Record<string, number>;
@@ -335,6 +349,10 @@ export const api = {
   specDelete: (id: string) => request<{ ok: boolean }>("DELETE", `/api/specs/${encodeURIComponent(id)}`),
   inbox: () => request<{ path: string; failed: { file: string; error: string }[] }>("GET", "/api/inbox"),
   inboxCheck: () => request<{ file: string; ok: boolean; message: string }[]>("POST", "/api/inbox/check"),
+  impactSpec: (id: string, b: { regime?: "normal" | "selloff" | null; edits?: ImpactEdit[] }, signal?: AbortSignal) =>
+    request<ImpactResult>("POST", `/api/impact/spec/${encodeURIComponent(id)}`, b, signal),
+  impactShocks: (b: { shocks: { symbol: string; kind: ShockKind; move: number }[]; horizon_weeks: number; used_events: string[]; text: string; regime?: "normal" | "selloff" | null; edits?: ImpactEdit[] }, signal?: AbortSignal) =>
+    request<ImpactResult>("POST", "/api/impact/shocks", b, signal),
   logoOverrides: () => request<string[]>("GET", "/api/logos/overrides"),
   uploadLogo: (symbol: string, file: File) => {
     const fd = new FormData();

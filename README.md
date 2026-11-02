@@ -137,6 +137,18 @@ nickname set in Settings (e.g. Keren = קרן). Several at once work too:
 - `קרן, שיר ואבא קנו 3 NVDA` → one recommendation, three trades
 - `כולם מכרו TSLA` → sells the whole position in every portfolio that holds it
 
+## Scenario impact
+
+Every scenario, researched or typed ("oil falls 20%"), runs through one engine: each holding moves by its factor
+betas times the factor moves (in shekels), plus sector and company-specific moves where given. 10,000 simulated
+outcomes pick a branch by its probability, draw each move from its low/mid/high range with the factors' historical
+correlations (sell-off weeks for crisis causes, normal weeks otherwise; you can switch), and add each holding's own
+noise. The answer comes first ("Most likely: the family loses about ₪7,000 (−0.4%). Bad case (1 in 20): −₪41,000"),
+then branch cards and a table per person. "See the analysis" shows the chain of moves (edit any of them and
+everything downstream recalculates), the range of outcomes, and today's holdings replayed through the analogs, with a
+warning when the model disagrees with them. "Model details" shows the exposures, regime and assumptions. A typed
+scenario becomes a one-branch spec: the factors you didn't name take their usual move alongside the ones you did.
+
 ## Researched scenarios (Scenario Specs)
 
 Research a scenario outside the app (a Claude chat or a scheduled Claude task) and import the result: the app
