@@ -33,6 +33,24 @@ if not exist ".venv\Scripts\python.exe" (
   python -m venv .venv
   if errorlevel 1 goto :fail
 )
+rem A half-created environment can lack pip. Repair it, or rebuild it once.
+".venv\Scripts\python.exe" -m pip --version >nul 2>nul
+if errorlevel 1 (
+  echo Repairing the Python environment...
+  ".venv\Scripts\python.exe" -m ensurepip --upgrade >nul 2>nul
+  ".venv\Scripts\python.exe" -m pip --version >nul 2>nul
+  if errorlevel 1 (
+    rmdir /s /q .venv
+    python -m venv .venv
+    ".venv\Scripts\python.exe" -m pip --version >nul 2>nul
+    if errorlevel 1 (
+      echo [X] Python is installed without pip.
+      echo     Run the Python installer again, choose "Modify", tick "pip", and finish.
+      goto :fail
+    )
+  )
+  if exist ".venv\deps-ok" del ".venv\deps-ok"
+)
 if not exist ".venv\deps-ok" (
   echo.
   echo [2/3] Installing Python packages. The first time takes a few minutes...
