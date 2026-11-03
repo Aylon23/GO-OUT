@@ -153,7 +153,7 @@ class Settings(SQLModel, table=True):
     weekly_report_sent: str = ""  # date of the last Sunday summary sent
     allow_short_hedges: bool = False
     inbox_dir: str = ""
-    memo_language: str = "he"  # he | en (memo and periodic reports)
+    memo_language: str = "en"  # he | en (memo and periodic reports)
     report_last_weekly: str = ""  # period end of the last weekly reports generated
     report_last_monthly: str = ""
     report_auto_send: bool = True  # send new reports to my Telegram chat
@@ -161,6 +161,7 @@ class Settings(SQLModel, table=True):
     band_note: str = ""  # folder watched for researched files; empty = ./inbox next to the app  # protection ideas may include shorts and inverse funds
     anthropic_key: str = ""  # optional: lets Claude read scenarios; the free local rules work without it
     aliases_backfilled: bool = False  # nicknames generated once for portfolios made before nicknames existed
+    backup_dir_extra: str = ""  # optional second backup folder (e.g. a synced Google Drive folder)
     ai_free_only: bool = True  # OpenRouter: refuse any model id that is not a :free variant
     ai_roster: str = ""  # JSON list of {role, models: [primary, fallback, fallback]}; empty = defaults
 
@@ -350,3 +351,15 @@ class StockPackCache(SQLModel, table=True):
     kind: str = Field(primary_key=True)  # "raw" (provider fundamentals) | "pack"
     day: str = ""
     data: str = "{}"
+
+
+class AuditEntry(SQLModel, table=True):
+    """Every write the app makes on the user's behalf, with what's needed to undo it."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc), index=True)
+    action: str = ""
+    summary: str = ""
+    detail: str = "{}"  # JSON
+    undo: str = ""  # JSON describing how to undo; empty = nothing to undo
+    undone_at: Optional[dt.datetime] = None

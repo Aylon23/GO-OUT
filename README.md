@@ -246,6 +246,15 @@ The headline shows the result in normal markets and in a sell-off; normal is the
 market ETFs; the app starts fetching them in the background when it starts. Method and sources:
 [docs/SCENARIOS.md](docs/SCENARIOS.md). Swap-a-holding and build-a-portfolio are still on the same page.
 
+## Backups
+
+Every day at the first start of the app (and on demand in Settings → Data), the database is copied with SQLite's
+online backup API (safe while the app runs) and exported to Excel with one sheet per table. Copies go to `./backups/`
+and, optionally, a second folder you choose (for example your synced Google Drive folder). Each folder keeps the
+newest backup of each of the last 30 days and 12 months. Settings → Data lists them with "Restore": it asks first,
+saves a safety copy of the current data, then restores; "Undo restore" brings the safety copy back. With no backup
+for 3 days, the home pages show a warning. Method: `backend/app/backup.py`.
+
 ## AI foundation (OpenRouter, free models)
 
 Shared by the scenario debate and the stock council (coming next). Put `OPENROUTER_API_KEY=...` in a `.env`

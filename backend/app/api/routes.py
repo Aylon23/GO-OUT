@@ -1345,3 +1345,74 @@ def ai_context_pack(tickers: str = "", analogs: bool = True, session: Session = 
     syms = [t.strip().upper() for t in tickers.split(",") if t.strip()][:5]
     pack = context_pack.build(session, syms, include_analogs=analogs)
     return context_pack.redacted_view(session, pack)
+
+
+# ---------------------------------------------------------------- backups
+
+class BackupSettingsIn(BaseModel):
+    extra_dir: str = ""
+
+
+class RestoreIn(BaseModel):
+    stem: str
+    confirm: bool = False
+
+
+@router.get("/backups")
+def backups_status(session: Session = Depends(get_session)):
+    from .. import backup
+
+    return backup.status(session)
+
+
+@router.post("/backups")
+def backups_make(session: Session = Depends(get_session)):
+    from .. import backup
+
+    try:
+        r = backup.make(session, "manual")
+    except backup.BackupError as exc:
+        _bad(str(exc))
+    return {**backup.status(session), "made": r}
+
+
+@router.put("/backups/settings")
+def backups_settings(body: BackupSettingsIn, session: Session = Depends(get_session)):
+    from .. import audit, backup
+
+    path = body.extra_dir.strip()
+    if path:
+        problem = backup.check_folder(path)
+        if problem:
+            _bad(problem)
+    s = services.get_settings(session)
+    old = s.backup_dir_extra
+    s.backup_dir_extra = path
+    session.add(s)
+    session.commit()
+    audit.record(session, "settings", "Second backup folder " + (f"set to {path}" if path else "removed"),
+                 {"backup_dir_extra": path}, undo={"backup_dir_extra": old})
+    return backup.status(session)
+
+
+@router.post("/backups/restore")
+def backups_restore(body: RestoreIn, session: Session = Depends(get_session)):
+    from .. import backup
+
+    if not body.confirm:
+        _bad("Confirm the restore first.")
+    try:
+        r = backup.restore(session, body.stem)
+    except backup.BackupError as exc:
+        _bad(str(exc))
+    return r
+
+
+@router.post("/backups/undo-restore")
+def backups_undo_restore(session: Session = Depends(get_session)):
+    from .. import backup
+
+    try:
+        return backup.undo_last_restore(session)
+    except backup.BackupError as exc:
+        _bad(str(exc))

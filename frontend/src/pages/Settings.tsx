@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { X } from "@phosphor-icons/react";
 import { useState } from "react";
 import { AiSettings } from "../components/AiSettings";
+import { Backups } from "../components/Backups";
 import { Avatar, refreshLogo } from "../components/Avatar";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { ErrorLine, Segmented, Skel } from "../components/ui";
@@ -68,7 +69,9 @@ export default function Settings() {
         <Item title="Theme" help="System follows your device.">
           <Segmented label="Theme" value={settings.theme} onChange={(v) => save({ theme: v })} options={[{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }, { value: "system", label: "System" }]} />
         </Item>
-        <Item title="Data" help="Everything lives in data/portfolio.db on this computer. Export a CSV first if you want a copy.">
+        <Item title="Data" help="Everything lives in data/portfolio.db on this computer, backed up every day.">
+          <Backups />
+          <div className="mt-8 border-t border-line pt-5">
           {confirmClear ? (
             <div className="flex items-center gap-2">
               <span className="text-sm">Delete every transaction?</span>
@@ -76,6 +79,7 @@ export default function Settings() {
               <button type="button" className="btn-secondary text-loss" onClick={async () => { await api.clearAll(); setConfirmClear(false); invalidate(); }}>Delete all</button>
             </div>
           ) : <button type="button" className="btn-secondary" onClick={() => setConfirmClear(true)}>Delete all transactions</button>}
+          </div>
         </Item>
       </dl>
     </div>

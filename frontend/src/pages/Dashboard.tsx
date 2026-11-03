@@ -1,4 +1,5 @@
 import { FileText, UploadSimple } from "@phosphor-icons/react";
+import { BackupWarning } from "../components/Backups";
 import { ReportPanel } from "../components/ReportPanel";
 import { TodayPanel } from "../components/TodayPanel";
 import clsx from "clsx";
@@ -176,5 +177,5 @@ export default function Dashboard() {
 }
 
 function Page({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto max-w-content px-4 pb-24 pt-10 md:px-8 md:pt-16">{children}</div>;
+  return <div className="mx-auto max-w-content px-4 pb-24 pt-10 md:px-8 md:pt-16"><BackupWarning />{children}</div>;
 }

@@ -1,5 +1,6 @@
 import { CaretDown, CaretUp, Plus } from "@phosphor-icons/react";
 import clsx from "clsx";
+import { BackupWarning } from "../components/Backups";
 import { useState } from "react";
 import { FileText, FileXls } from "@phosphor-icons/react";
 import { PeriodicReports } from "../components/PeriodicReports";
@@ -30,6 +31,7 @@ export default function AllPortfolios() {
 
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-10 md:px-8 md:pt-16">
+      <BackupWarning />
       {q.error && !d ? <ErrorLine message={q.error.message} onRetry={q.reload} /> : !d ? <OverviewSkeleton /> : (
         <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 [&>h1]:min-w-0">

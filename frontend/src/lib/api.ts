@@ -338,6 +338,13 @@ export interface ContextPack {
   privacy: { ok: boolean; problems: string[]; checked_names: number; checked_amounts: number }; hash: string; bytes: number;
 }
 
+export interface BackupItem { stem: string; at: string; safety: boolean; has_excel: boolean; bytes: number; in_extra: boolean }
+export interface BackupStatus {
+  last_backup: string | null; warn: boolean; days_since: number | null; extra_dir: string;
+  locations: { path: string; kind: "local" | "extra"; ok: boolean; error: string | null; count: number }[];
+  backups: BackupItem[]; keep: { days: number; months: number };
+}
+
 async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   if (url.startsWith("/api/") && !/[?&]portfolio=/.test(url)) url += (url.includes("?") ? "&" : "?") + portfolioParam();
   let res: Response;
@@ -473,6 +480,11 @@ export const api = {
   earningsImport: (text: string) => request<{ date: string; companies: number }>("POST", "/api/earnings/import", { text }),
   stress: () => request<{ empty: boolean; tests: StressTest[]; value_amt: number }>("GET", "/api/stress"),
   reverseStress: () => request<ReverseStress>("GET", "/api/stress/reverse"),
+  backups: () => request<BackupStatus>("GET", "/api/backups"),
+  backupNow: () => request<BackupStatus & { made: { stem: string; rows: number; folders: string[]; errors: string[] } }>("POST", "/api/backups"),
+  backupFolder: (extra_dir: string) => request<BackupStatus>("PUT", "/api/backups/settings", { extra_dir }),
+  restore: (stem: string) => request<{ restored: string; safety: string }>("POST", "/api/backups/restore", { stem, confirm: true }),
+  undoRestore: () => request<{ restored: string; safety: string }>("POST", "/api/backups/undo-restore"),
   aiStatus: () => request<AiStatus>("GET", "/api/ai/status"),
   aiQuota: (refresh = false) => request<AiQuota>("GET", `/api/ai/quota${refresh ? "?refresh=true" : ""}`),
   aiSave: (b: { free_only?: boolean; roster?: AiRole[]; reset_roster?: boolean }) => request<AiStatus>("PUT", "/api/ai/settings", b),

@@ -3,17 +3,17 @@
 register: product
 
 ## Users
-One person: a passive, long-term investor who holds a handful of US stocks and ETFs and a few
-Tel Aviv listings, thinks in shekels and dollars, and buys a few times a year. Not a trader. Comfortable with
-"index fund" and "return", unsure about "Sharpe" and "beta".
+One person, the owner, and nobody else reads the app. They track the family's portfolios (holdings
+in US stocks and ETFs and a few Tel Aviv listings), advise each person, and act a few times a month. Not a trader.
+Nothing is designed for showing to family members. Everything is in English; Hebrew works as input
+(commands, nicknames, questions) only.
 
 ## Scene
 A passive investor opens this a few times a month, usually in the evening on a laptop or phone,
 to calmly check one thing: am I doing better than just owning the index?
 
-That scene sets the tone: calm, quiet, glanceable. Evening use on a laptop in a lit room means a
-warm light theme by default (no glare, paper-like), with a fully designed dark theme for late
-phone use and a system option.
+That scene sets the tone: calm, quiet, glanceable. Dark is the default theme and gets full design
+attention; light passes contrast and looks clean. Sometimes used in public, so amounts can be blurred (H).
 
 ## Purpose
 Answer one question honestly: **did my stock picking beat just buying the index?**

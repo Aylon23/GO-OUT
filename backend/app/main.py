@@ -46,6 +46,10 @@ def _startup() -> None:
         from . import person_reports
 
         person_reports.start_scheduler()
+    if os.environ.get("PORTFOLIO_NO_BACKUP") != "1":
+        from . import backup
+
+        backup.start_scheduler()  # today's backup at the first start of the day, then hourly checks
     if os.environ.get("PORTFOLIO_NO_AI_WORKER") != "1":
         from . import ai_jobs
 
