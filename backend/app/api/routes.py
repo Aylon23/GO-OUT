@@ -1242,3 +1242,106 @@ def watch_remove(symbol: str, session: Session = Depends(get_session)):
 @router.get("/health")
 def health():
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- AI (OpenRouter, free models only)
+
+class AiSettingsIn(BaseModel):
+    free_only: bool | None = None
+    roster: list[dict] | None = None
+    reset_roster: bool = False
+
+
+def _ai_status(session: Session) -> dict:
+    from .. import ai_jobs, openrouter
+
+    key = openrouter.api_key()
+    return {"key_set": bool(key), "key_hint": f"…{key[-4:]}" if len(key) > 8 else "",
+            "free_only": openrouter.free_only(session), "roster": openrouter.roster(session),
+            "quota": openrouter.quota_status(session), "pace_per_min": openrouter.PACE_PER_MIN,
+            "jobs": ai_jobs.listing(session, 10)}
+
+
+@router.get("/ai/status")
+def ai_status(session: Session = Depends(get_session)):
+    return _ai_status(session)
+
+
+@router.get("/ai/quota")
+def ai_quota(refresh: bool = False, session: Session = Depends(get_session)):
+    from .. import openrouter
+
+    if refresh and openrouter.api_key():
+        try:
+            openrouter.refresh_quota(session, force=True)
+        except Exception as exc:
+            return {**openrouter.quota_status(session, refresh=False), "error": str(exc)}
+    return openrouter.quota_status(session)
+
+
+@router.put("/ai/settings")
+def ai_settings(body: AiSettingsIn, session: Session = Depends(get_session)):
+    import json as _json
+
+    from .. import openrouter
+
+    s = services.get_settings(session)
+    if body.free_only is not None:
+        s.ai_free_only = body.free_only
+    if body.reset_roster:
+        s.ai_roster = ""
+    elif body.roster is not None:
+        roles = []
+        for r in body.roster:
+            models = [str(m).strip() for m in (r.get("models") or []) if str(m).strip()][:3]
+            if not models:
+                _bad(f"{r.get('label') or r.get('role')}: set a model.")
+            roles.append({"role": str(r.get("role") or ""), "label": str(r.get("label") or r.get("role") or ""), "models": models})
+        s.ai_roster = _json.dumps(roles)
+    # with free-only on, every model in the roster must be a :free variant
+    if s.ai_free_only:
+        bad = [m for r in (_json.loads(s.ai_roster) if s.ai_roster else openrouter.DEFAULT_ROSTER) for m in r["models"] if not m.endswith(":free")]
+        if bad:
+            _bad(f"Free models only is on: {', '.join(bad)} is not a :free model.")
+    session.add(s)
+    session.commit()
+    return _ai_status(session)
+
+
+@router.get("/ai/models")
+def ai_models():
+    from .. import openrouter
+
+    return openrouter.free_models()
+
+
+@router.get("/ai/calls")
+def ai_calls(limit: int = 30, session: Session = Depends(get_session)):
+    from .. import openrouter
+
+    return openrouter.recent_calls(session, min(200, max(1, limit)))
+
+
+@router.get("/ai/jobs")
+def ai_jobs_list(session: Session = Depends(get_session)):
+    from .. import ai_jobs
+
+    return ai_jobs.listing(session)
+
+
+@router.post("/ai/jobs/{job_id}/resume")
+def ai_job_resume(job_id: int, session: Session = Depends(get_session)):
+    from .. import ai_jobs
+
+    ai_jobs.resume(session, job_id)
+    return ai_jobs.listing(session)
+
+
+@router.get("/ai/context-pack")
+def ai_context_pack(tickers: str = "", analogs: bool = True, session: Session = Depends(get_session)):
+    """The context pack as it would be sent (redacted view): no names or amounts, with the privacy check."""
+    from .. import context_pack
+
+    syms = [t.strip().upper() for t in tickers.split(",") if t.strip()][:5]
+    pack = context_pack.build(session, syms, include_analogs=analogs)
+    return context_pack.redacted_view(session, pack)

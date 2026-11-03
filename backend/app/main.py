@@ -46,6 +46,10 @@ def _startup() -> None:
         from . import person_reports
 
         person_reports.start_scheduler()
+    if os.environ.get("PORTFOLIO_NO_AI_WORKER") != "1":
+        from . import ai_jobs
+
+        ai_jobs.start_worker()
     if os.environ.get("PORTFOLIO_NO_INBOX") != "1":
         from . import specs
 

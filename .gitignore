@@ -12,3 +12,5 @@ start.bat.new
 data/logos/
 inbox/*
 !inbox/README.md
+.env
+backups/

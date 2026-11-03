@@ -311,6 +311,33 @@ let currentPortfolio = 1;
 export const setApiPortfolio = (id: number) => { currentPortfolio = id; };
 export const portfolioParam = () => `portfolio=${currentPortfolio}`;
 
+export interface AiRole { role: string; label: string; models: string[] }
+export interface AiQuota { known: boolean; key_set: boolean; limit?: number; used?: number; remaining?: number; as_of?: string | null; error?: string; stale_day?: boolean }
+export interface AiJob { id: number; kind: string; title: string; status: string; note: string; created_at: string; resume_after: string | null; total: number; done: number; failed: number }
+export interface AiStatus { key_set: boolean; key_hint: string; free_only: boolean; roster: AiRole[]; quota: AiQuota; pace_per_min: number; jobs: AiJob[] }
+export interface AiCall { id: number; at: string; role: string; models: string[]; model_used: string; status: string; requests: number; prompt_tokens: number; completion_tokens: number; latency_ms: number; payload_hash: string; job_id: number | null; step_key: string; error: string }
+export interface MarketRow { symbol: string; name: string; unit: string; as_of: string | null; level: number | null; low_1y?: number | null; high_1y?: number | null; change_1m?: number | null; change_1y?: number | null; change_1m_pts?: number | null; change_1y_pts?: number | null; missing?: boolean }
+export interface AnalogRow { id: string; name: string; start: string; end: string; tags: string[]; factor_moves_pct: Record<string, number | null>; market_moves_pct: Record<string, number | null>; verified: boolean; missing: string[] }
+export interface PackHolding { ticker: string; weight: number; betas: Record<string, number> | null; r2: number | null }
+export interface Multiple { value: number | null; own_5y_percentile: number | null; sector_median: number | null; note?: string }
+export interface StockPack {
+  ticker: string; name: string | null; sector: string | null; industry: string | null; currency: string; as_of: string | null; price: number | null;
+  range_52w?: { low: number; high: number }; from_high?: number | null; returns?: Record<string, { stock: number | null; spy: number | null; vs_spy: number | null }>;
+  valuation: { trailing_pe: Multiple; forward_pe: Multiple; ev_sales: Multiple; peers: string[]; history_note: string };
+  growth: { revenue_yoy_last4q: { quarter_end: string; yoy: number | null }[]; eps_yoy_last4q: { quarter_end: string; yoy: number | null }[]; next_year_revenue_growth_est: number | null; next_year_eps_growth_est: number | null };
+  margins: { quarters: string[]; gross: (number | null)[]; operating: (number | null)[]; net: (number | null)[]; trend: Record<string, string | null> } | null;
+  roe: number | null; debt_to_equity: number | null;
+  analysts: { consensus: string | null; mean_rating_1_buy_5_sell: number | null; analysts: number | null; mean_target: number | null; upside: number | null } | null;
+  revisions: Record<string, { up_7d: number | null; up_30d: number | null; down_7d: number | null; down_30d: number | null; estimate_change_30d: number | null }> | null;
+  next_earnings: { date: string; days_away: number } | null; dividend_yield: number | null; beta: number | null;
+  factor_exposures: { betas: Record<string, number>; r2: number | null } | null; missing: string[];
+}
+export interface ContextPack {
+  pack: { pack_version: number; today: string; basis: string; market: MarketRow[]; analogs?: AnalogRow[];
+    family: { holdings: PackHolding[]; cash_weight: number | null; family_betas: Record<string, number> }; stocks: StockPack[] };
+  privacy: { ok: boolean; problems: string[]; checked_names: number; checked_amounts: number }; hash: string; bytes: number;
+}
+
 async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   if (url.startsWith("/api/") && !/[?&]portfolio=/.test(url)) url += (url.includes("?") ? "&" : "?") + portfolioParam();
   let res: Response;
@@ -446,6 +473,13 @@ export const api = {
   earningsImport: (text: string) => request<{ date: string; companies: number }>("POST", "/api/earnings/import", { text }),
   stress: () => request<{ empty: boolean; tests: StressTest[]; value_amt: number }>("GET", "/api/stress"),
   reverseStress: () => request<ReverseStress>("GET", "/api/stress/reverse"),
+  aiStatus: () => request<AiStatus>("GET", "/api/ai/status"),
+  aiQuota: (refresh = false) => request<AiQuota>("GET", `/api/ai/quota${refresh ? "?refresh=true" : ""}`),
+  aiSave: (b: { free_only?: boolean; roster?: AiRole[]; reset_roster?: boolean }) => request<AiStatus>("PUT", "/api/ai/settings", b),
+  aiModels: () => request<{ models: { id: string; name: string; context: number | null }[]; live: boolean }>("GET", "/api/ai/models"),
+  aiCalls: () => request<AiCall[]>("GET", "/api/ai/calls"),
+  aiResume: (id: number) => request<AiJob[]>("POST", `/api/ai/jobs/${id}/resume`),
+  aiContextPack: (tickers: string[]) => request<ContextPack>("GET", `/api/ai/context-pack?tickers=${encodeURIComponent(tickers.join(","))}`),
   riskSummary: () => request<{ empty: boolean; books: RiskBook[] }>("GET", "/api/risk/summary"),
   memo: (b: ActionsBody & { lang?: "he" | "en" }) => request<Memo>("POST", "/api/memo", b),
   scenarioJournal: () => request<JournalPanel>("GET", "/api/scenario-journal"),

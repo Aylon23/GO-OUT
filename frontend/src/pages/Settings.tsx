@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { X } from "@phosphor-icons/react";
 import { useState } from "react";
+import { AiSettings } from "../components/AiSettings";
 import { Avatar, refreshLogo } from "../components/Avatar";
 import { SymbolSearch } from "../components/SymbolSearch";
 import { ErrorLine, Segmented, Skel } from "../components/ui";
@@ -26,6 +27,9 @@ export default function Settings() {
         </Item>
         <Item title="Telegram" help="Add trades and get reports from your phone. Works while the app is running on this computer.">
           <TelegramSetup />
+        </Item>
+        <Item title="AI" help="OpenRouter, free models only. Shared by the scenario debate and the stock council. Requests carry tickers, weights and factor exposures, never names or amounts.">
+          <AiSettings />
         </Item>
         <Item title="Protection ideas" help="On the What-if page, protection ideas are long-only: trim, rebalance, add bonds or gold, raise cash. Turn this on to also see shorts and inverse funds.">
           <Segmented label="Allow short and inverse hedges" value={settings.allow_short_hedges ? "on" : "off"} onChange={(v) => save({ allow_short_hedges: v === "on" })}

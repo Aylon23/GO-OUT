@@ -47,6 +47,12 @@ SECTOR_PROXY = {
 
 # id, name, Hebrew name, start (last close before), end, tags
 EVENTS: list[dict] = [
+    # 2026 Iran war (dates: Britannica, "2026 Iran war"); windows run from the last close before each turn
+    {"id": "iran_feb26", "name": "US–Israel war on Iran begins", "he": "פתיחת המלחמה עם איראן", "start": "2026-02-27", "end": "2026-03-13", "tags": ["iran", "war", "israel", "oil"]},
+    {"id": "iran_hormuz26", "name": "Hormuz threats to the April 7 deadline", "he": "איומי הורמוז עד האולטימטום", "start": "2026-03-20", "end": "2026-04-07", "tags": ["iran", "war", "oil"]},
+    {"id": "iran_cease26", "name": "US–Iran ceasefire", "he": "הפסקת האש עם איראן", "start": "2026-04-07", "end": "2026-04-09", "tags": ["iran", "relief", "oil_down"]},
+    {"id": "iran_mou26", "name": "US–Iran memorandum of understanding", "he": "מזכר ההבנות עם איראן", "start": "2026-06-12", "end": "2026-06-17", "tags": ["iran", "relief"]},
+    {"id": "iran_jul26", "name": "Truce collapses, blockade reimposed", "he": "קריסת הפסקת האש וחידוש הסגר", "start": "2026-07-02", "end": "2026-07-17", "tags": ["iran", "war", "oil"]},
     {"id": "iran_jun25", "name": "Israel–Iran war", "he": "מלחמת ישראל–איראן", "start": "2025-06-12", "end": "2025-06-24", "tags": ["iran", "war", "israel", "oil"]},
     {"id": "iran_oct24", "name": "Iran missile attack on Israel", "he": "מתקפת הטילים של איראן", "start": "2024-09-30", "end": "2024-10-04", "tags": ["iran", "war", "israel", "oil"]},
     {"id": "iran_apr24", "name": "Iran drone and missile attack", "he": "מתקפת הכטב״מים של איראן", "start": "2024-04-12", "end": "2024-04-19", "tags": ["iran", "war", "israel"]},
@@ -83,7 +89,7 @@ EVENT_BY_ID = {e["id"]: e for e in EVENTS}
 # used only when none of the events has data.
 THEMES: list[dict] = [
     {"id": "iran_war", "label": "War with Iran", "any": [["איראן", "אירן", "iran", "iranian"]],
-     "events": ["iran_jun25", "iran_oct24", "iran_apr24", "oct7_23"], "factors": ["USO", "SPY", "EIS", "ITA", "GLD"],
+     "events": ["iran_feb26", "iran_hormuz26", "iran_jul26", "iran_jun25", "iran_oct24", "iran_apr24", "oct7_23"], "factors": ["USO", "SPY", "EIS", "ITA", "GLD"],
      "fallback": {"USO": 1, "SPY": -1, "EIS": -1, "ITA": 1, "GLD": 1}},
     {"id": "israel_war", "label": "Escalation in Israel", "any": [["ישראל", "israel", "חיזבאללה", "hezbollah", "עזה", "gaza", "לבנון", "lebanon"],
      ["מלחמה", "war", "הסלמה", "escalation", "טרור", "terror", "מתקפה", "attack", "תקיפה", "ביטחוני"]],

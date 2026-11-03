@@ -67,7 +67,7 @@ export function InfoTip({ text, children, align = "auto" }: { text: string; chil
 }
 
 /** Right side panel on desktop, bottom sheet below 768px. Not a modal dialog for content flow, but traps Esc. */
-export function SidePanel({ open, onClose, title, children, wide = false }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
+export function SidePanel({ open, onClose, title, children, wide = false }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean | "xl" }) {
   const mobile = useMediaQuery("(max-width: 767px)");
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -85,7 +85,7 @@ export function SidePanel({ open, onClose, title, children, wide = false }: { op
       <aside ref={ref} tabIndex={-1} role="complementary" aria-label={title}
         className={clsx("fixed z-50 flex flex-col bg-surface shadow-panel outline-none",
           mobile ? "sheet-in inset-x-0 bottom-0 max-h-[88dvh] rounded-t-lg"
-            : clsx("panel-in bottom-3 right-3 top-[68px] rounded-lg", wide ? "w-[520px]" : "w-[440px]"))}>
+            : clsx("panel-in bottom-3 right-3 top-[68px] rounded-lg", wide === "xl" ? "w-[min(980px,calc(100vw-24px))]" : wide ? "w-[520px]" : "w-[440px]"))}>
         {mobile && <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-line-strong" aria-hidden />}
         <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-4">
           <h2 className="truncate text-lg font-semibold">{title}</h2>

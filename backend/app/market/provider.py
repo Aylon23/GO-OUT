@@ -61,6 +61,36 @@ def _frame_from_yahoo(df: pd.DataFrame) -> pd.DataFrame:
     return out[HISTORY_COLUMNS]
 
 
+INFO_KEYS = (
+    "currentPrice", "regularMarketPrice", "fiftyTwoWeekHigh", "fiftyTwoWeekLow", "trailingPE", "forwardPE", "trailingEps",
+    "forwardEps", "enterpriseToRevenue", "enterpriseValue", "totalRevenue", "marketCap", "sharesOutstanding", "returnOnEquity",
+    "debtToEquity", "recommendationKey", "recommendationMean", "numberOfAnalystOpinions", "targetMeanPrice", "targetHighPrice",
+    "targetLowPrice", "dividendRate", "trailingAnnualDividendYield", "beta", "sector", "industry", "quoteType", "currency",
+    "grossMargins", "operatingMargins", "profitMargins", "longName", "shortName",
+)
+
+
+def _table(df) -> dict:
+    """A yfinance DataFrame as {row label: {column: number}} (dates as ISO strings)."""
+    if df is None or getattr(df, "empty", True):
+        return {}
+    out: dict = {}
+    for idx, row in df.iterrows():
+        vals = {}
+        for col, v in row.items():
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            if f != f:  # NaN
+                continue
+            key = col.date().isoformat() if hasattr(col, "date") else str(col)
+            vals[key] = f
+        if vals:
+            out[str(idx)] = vals
+    return out
+
+
 class YahooProvider:
     def __init__(self) -> None:
         import yfinance as yf  # imported here so tests never need network
@@ -108,6 +138,27 @@ class YahooProvider:
             return dict(self.yf.Ticker(ticker).info or {})
         except Exception as exc:
             raise ProviderError(str(exc)) from exc
+
+    def fundamentals(self, ticker: str) -> dict:
+        """Everything the stock data pack needs, as plain JSON: info, statements, estimates, revisions.
+        Each part that Yahoo doesn't return is left out (and shows as missing)."""
+        t = self.yf.Ticker(ticker)
+        out: dict = {}
+        try:
+            info = dict(t.info or {})
+        except Exception as exc:
+            raise ProviderError(str(exc)) from exc
+        out["info"] = {k: info.get(k) for k in INFO_KEYS if info.get(k) is not None}
+        for name, attr in (("q_income", "quarterly_income_stmt"), ("a_income", "income_stmt"), ("a_balance", "balance_sheet"),
+                           ("earnings_estimate", "earnings_estimate"), ("revenue_estimate", "revenue_estimate"),
+                           ("eps_revisions", "eps_revisions"), ("eps_trend", "eps_trend")):
+            try:
+                d = _table(getattr(t, attr))
+            except Exception:
+                d = None
+            if d:
+                out[name] = d
+        return out
 
     def fund_sectors(self, ticker: str) -> tuple[dict[str, float], str]:
         t = self.yf.Ticker(ticker)

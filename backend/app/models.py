@@ -161,6 +161,8 @@ class Settings(SQLModel, table=True):
     band_note: str = ""  # folder watched for researched files; empty = ./inbox next to the app  # protection ideas may include shorts and inverse funds
     anthropic_key: str = ""  # optional: lets Claude read scenarios; the free local rules work without it
     aliases_backfilled: bool = False  # nicknames generated once for portfolios made before nicknames existed
+    ai_free_only: bool = True  # OpenRouter: refuse any model id that is not a :free variant
+    ai_roster: str = ""  # JSON list of {role, models: [primary, fallback, fallback]}; empty = defaults
 
     def benchmark_list(self) -> list[str]:
         return [b.strip().upper() for b in self.benchmarks.split(",") if b.strip()]
@@ -284,3 +286,67 @@ class FactorExposure(SQLModel, table=True):
 
 from .market.funds import FundSectors  # noqa: E402,F401  (registers the table)
 from .logos import LogoCache  # noqa: E402,F401  (registers the table)
+
+
+class AiCall(SQLModel, table=True):
+    """One logical AI call (with its retry and JSON repair, if any)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc), index=True)
+    role: str = ""
+    models: str = "[]"  # JSON: the requested chain (primary + fallbacks)
+    model_used: str = ""  # what OpenRouter actually served
+    status: str = ""  # ok | failed | refused
+    requests: int = 0  # HTTP requests sent for this call (each counts against the daily free quota)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    latency_ms: int = 0
+    payload_hash: str = ""  # sha256 of the first request body
+    job_id: Optional[int] = None
+    step_key: str = ""
+    error: str = ""
+
+
+class AiQuota(SQLModel, table=True):
+    """Free-model daily requests as last read from GET /api/v1/key, plus requests sent since then."""
+
+    id: int = Field(default=1, primary_key=True)
+    day: str = ""  # UTC date the figures belong to
+    limit: int = 0
+    used: int = 0
+    remaining: int = 0
+    sent_since: int = 0  # requests this app sent after the last read
+    checked_at: Optional[dt.datetime] = None
+
+
+class AiJob(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = ""
+    title: str = ""
+    status: str = "queued"  # queued | running | waiting_quota | done | failed
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    updated_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    resume_after: Optional[dt.datetime] = None
+    note: str = ""
+
+
+class AiJobStep(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_id: int = Field(index=True)
+    idx: int = 0
+    key: str = ""
+    role: str = ""
+    request: str = "{}"  # JSON: {messages, schema_name, schema, max_tokens}
+    status: str = "pending"  # pending | running | done | failed
+    result: str = ""
+    error: str = ""
+    call_id: Optional[int] = None
+
+
+class StockPackCache(SQLModel, table=True):
+    """Per-stock data pack and raw fundamentals, built at most once a day."""
+
+    ticker: str = Field(primary_key=True)
+    kind: str = Field(primary_key=True)  # "raw" (provider fundamentals) | "pack"
+    day: str = ""
+    data: str = "{}"

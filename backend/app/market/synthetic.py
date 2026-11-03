@@ -57,6 +57,9 @@ CATALOG = {
     "XLB": ("Materials Select Sector SPDR Fund", "PCX", "ETF", 45, 0.07, 0.20, "1998-12-22", 0.019),
     "XLRE": ("Real Estate Select Sector SPDR Fund", "PCX", "ETF", 32, 0.05, 0.19, "2015-10-08", 0.033),
     "XLC": ("Communication Services Select Sector SPDR Fund", "PCX", "ETF", 50, 0.10, 0.21, "2018-06-19", 0.008),
+    "^NDX": ("Nasdaq 100", "NIM", "INDEX", 4200, 0.14, 0.21, "1990-01-02", 0.0),
+    "GC=F": ("Gold Futures", "CMX", "FUTURE", 1200, 0.07, 0.15, "2000-08-30", 0.0),
+    "DX-Y.NYB": ("US Dollar Index", "NYB", "INDEX", 92, 0.005, 0.07, "1990-01-02", 0.0),
     "^VIX": ("CBOE Volatility Index", "CBO", "INDEX", 16, 0.0, 0.85, "1990-01-02", 0.0),
     "BTC-USD": ("Bitcoin USD", "CCC", "CRYPTOCURRENCY", 300, 0.45, 0.65, "2014-09-17", 0.0),
     # style factors and test stocks for the factor model
@@ -84,7 +87,8 @@ LOADINGS = {
     "IWD": {"M": 0.95, "F": 0.35, "E": 0.15}, "IWF": {"M": 1.05, "T": 0.55}, "MTUM": {"M": 1.0, "T": 0.35}, "QUAL": {"M": 0.95, "T": 0.15},
     "^TNX": {"R": -2.0}, "CL=F": {"O": 1.0}, "BZ=F": {"O": 0.95},
     "XOM": {"M": 0.7, "E": 1.0, "O": 0.5}, "DAL": {"M": 1.3, "O": -0.7}, "NEE": {"M": 0.45, "R": 0.55},
-    "SPY": {"M": 1.0}, "VOO": {"M": 1.0}, "VFIAX": {"M": 1.0}, "^GSPC": {"M": 1.0},
+    "SPY": {"M": 1.0}, "VOO": {"M": 1.0}, "VFIAX": {"M": 1.0}, "^GSPC": {"M": 1.0}, "^NDX": {"M": 1.1, "T": 0.9},
+    "GC=F": {"G": 1.0, "D": -0.4, "R": 0.2}, "DX-Y.NYB": {"D": 1.0},
     "QQQ": {"M": 1.1, "T": 0.9}, "XLK": {"M": 1.1, "T": 1.2}, "SOXX": {"M": 1.3, "T": 0.9, "S": 1.0},
     "IWM": {"M": 1.15, "F": 0.4, "R": 0.2}, "XLF": {"M": 1.05, "F": 1.0, "R": -0.25}, "XLE": {"M": 0.75, "E": 1.0, "O": 0.45},
     "USO": {"O": 1.0, "M": 0.15}, "TLT": {"R": 1.0, "M": -0.1}, "IEF": {"R": 0.5}, "HYG": {"M": 0.3, "R": 0.3},
@@ -217,10 +221,77 @@ class SyntheticProvider:
         name, exch, qt, *_ = spec
         pe = {"AAPL": 33.1, "MSFT": 36.4, "NVDA": 52.0, "INTC": -12.0, "GOOGL": 24.5, "AMZN": 41.0, "TSLA": 95.0, "VOO": 27.2,
               "SPY": 27.3, "QQQ": 34.8, "XLK": 39.5, "TEVA": 15.2, "TEVA.TA": 15.4, "VFIAX": 27.1}.get(ticker)
-        return {"trailingPE": pe, "forwardPE": pe * 0.85 if pe and pe > 0 else None, "beta": 1.1, "trailingAnnualDividendYield": 0.006,
+        evs = None
+        if qt == "EQUITY":
+            r = np.random.default_rng(_seed(ticker) + 11)
+            pe = pe if pe is not None else float(r.uniform(12, 45))
+            evs = float(r.uniform(1.0, 9.0))
+        return {"trailingPE": pe, "forwardPE": pe * 0.85 if pe and pe > 0 else None, "enterpriseToRevenue": evs,
+                "beta": 1.1, "trailingAnnualDividendYield": 0.006,
                 "longName": name, "exchange": exch, "quoteType": qt, "sector": SECTORS.get(ticker, ""),
                 "country": "Israel" if ticker.endswith(".TA") else "United States",
                 "currency": "ILA" if ticker.endswith(".TA") else "USD"}
+
+    def fundamentals(self, ticker: str) -> dict:
+        """Made-up but self-consistent fundamentals, so the stock data pack can be shown offline."""
+        spec = self._spec(ticker)
+        if spec is None:
+            return {}
+        info = self.info(ticker)
+        if spec[2] != "EQUITY":
+            return {"info": info}
+        rng = np.random.default_rng(_seed(ticker) + 7)
+        hist = self._full(ticker)
+        price = float(hist["close"].iloc[-1])
+        margin = float(rng.uniform(0.05, 0.3))
+        rev_q0 = float(rng.uniform(1e9, 40e9))
+        growth = float(rng.uniform(-0.05, 0.25))
+        shares = float(rng.uniform(12, 45)) * 4 * rev_q0 * margin / price  # a P/E between 12 and 45
+        today = dt.date.today()
+        q_end = [dt.date(today.year, ((today.month - 1) // 3) * 3 + 1, 1) - dt.timedelta(days=1)]
+        for _ in range(7):
+            d = q_end[-1]
+            q_end.append(dt.date(d.year, ((d.month - 1) // 3) * 3 + 1, 1) - dt.timedelta(days=1))
+        q_inc: dict[str, dict] = {"Total Revenue": {}, "Gross Profit": {}, "Operating Income": {}, "Net Income": {}, "Diluted EPS": {}}
+        for i, d in enumerate(q_end):  # newest first
+            rev = rev_q0 / (1 + growth) ** (i / 4) * (1 + 0.02 * np.sin(i))
+            m = margin + 0.004 * (4 - i) * (1 if growth > 0.08 else -1)
+            q_inc["Total Revenue"][d.isoformat()] = rev
+            q_inc["Gross Profit"][d.isoformat()] = rev * (m + 0.3)
+            q_inc["Operating Income"][d.isoformat()] = rev * (m + 0.05)
+            q_inc["Net Income"][d.isoformat()] = rev * m
+            q_inc["Diluted EPS"][d.isoformat()] = rev * m / shares
+        a_inc: dict[str, dict] = {"Total Revenue": {}, "Diluted EPS": {}}
+        a_bal: dict[str, dict] = {"Total Debt": {}, "Cash And Cash Equivalents": {}, "Ordinary Shares Number": {}, "Stockholders Equity": {}}
+        for y in range(5):
+            d = dt.date(today.year - 1 - y, 12, 31).isoformat()
+            rev = 4 * rev_q0 / (1 + growth) ** (y + 0.5)
+            a_inc["Total Revenue"][d] = rev
+            a_inc["Diluted EPS"][d] = rev * margin / shares
+            a_bal["Total Debt"][d] = rev * 0.4
+            a_bal["Cash And Cash Equivalents"][d] = rev * 0.15
+            a_bal["Ordinary Shares Number"][d] = shares
+            a_bal["Stockholders Equity"][d] = rev * 0.8
+        ttm_eps = sum(list(q_inc["Diluted EPS"].values())[:4])
+        target = price * float(rng.uniform(0.9, 1.3))
+        info.update({
+            "currentPrice": price, "trailingEps": ttm_eps, "forwardEps": ttm_eps * (1 + growth),
+            "trailingPE": price / ttm_eps if ttm_eps > 0 else None, "forwardPE": price / (ttm_eps * (1 + growth)) if ttm_eps > 0 else None,
+            "enterpriseToRevenue": (price * shares + 0.25 * 4 * rev_q0) / (4 * rev_q0), "marketCap": price * shares,
+            "returnOnEquity": float(rng.uniform(0.05, 0.4)), "debtToEquity": float(rng.uniform(10, 180)),
+            "recommendationKey": ["strong_buy", "buy", "hold"][int(rng.integers(0, 3))], "recommendationMean": float(rng.uniform(1.5, 3.0)),
+            "numberOfAnalystOpinions": int(rng.integers(8, 45)), "targetMeanPrice": target, "dividendRate": price * float(spec[7]),
+            "beta": float(rng.uniform(0.7, 1.6)), "sharesOutstanding": shares, "grossMargins": margin + 0.3, "operatingMargins": margin + 0.05,
+            "profitMargins": margin})
+        est = lambda base: {"0q": {"avg": base / 4, "growth": growth}, "+1q": {"avg": base / 4 * 1.02, "growth": growth},
+                            "0y": {"avg": base, "growth": growth}, "+1y": {"avg": base * (1 + growth), "growth": growth * 0.9}}
+        up = int(rng.integers(0, 12))
+        return {"info": info, "q_income": q_inc, "a_income": a_inc, "a_balance": a_bal,
+                "earnings_estimate": est(ttm_eps), "revenue_estimate": est(4 * rev_q0),
+                "eps_revisions": {"0y": {"upLast7days": up // 3, "upLast30days": up, "downLast7Days": 0, "downLast30days": int(rng.integers(0, 6))},
+                                  "+1y": {"upLast7days": up // 4, "upLast30days": up // 2, "downLast7Days": 0, "downLast30days": int(rng.integers(0, 4))}},
+                "eps_trend": {"0y": {"current": ttm_eps, "30daysAgo": ttm_eps * float(rng.uniform(0.97, 1.02))},
+                              "+1y": {"current": ttm_eps * (1 + growth), "30daysAgo": ttm_eps * (1 + growth) * float(rng.uniform(0.96, 1.03))}}}
 
     def fund_sectors(self, ticker: str) -> tuple[dict[str, float], str]:
         if ticker in ("IBIT", "ETHA"):

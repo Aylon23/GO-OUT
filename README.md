@@ -246,6 +246,26 @@ The headline shows the result in normal markets and in a sell-off; normal is the
 market ETFs; the app starts fetching them in the background when it starts. Method and sources:
 [docs/SCENARIOS.md](docs/SCENARIOS.md). Swap-a-holding and build-a-portfolio are still on the same page.
 
+## AI foundation (OpenRouter, free models)
+
+Shared by the scenario debate and the stock council (coming next). Put `OPENROUTER_API_KEY=...` in a `.env`
+file next to the app (see `.env.example`). Settings → AI shows the key status, "X of Y AI requests left today"
+(read from OpenRouter's `GET /api/v1/key`), the model roster (4 free analysts from different labs + 1 judge, each
+with 2 fallbacks sent in OpenRouter's `models` array), a call log and queued jobs.
+
+- **Free models only** (on by default): any model id without `:free` is refused before anything is sent.
+- **Privacy**: every request is scanned before it leaves; it may carry tickers, weights and factor exposures, never
+  person or portfolio names, nicknames or amounts. A request that fails the scan is not sent.
+- **Limits**: at most 19 requests a minute, one retry per request (failed requests count), JSON answers checked
+  against a schema with one repair attempt. Long jobs are stored step by step; when the day's free requests run
+  out they wait for the next UTC day and never repeat a finished call.
+- **Context pack** (Settings → AI → Show the context pack): today's market snapshot (S&P 500, Nasdaq 100, VIX, Brent,
+  WTI, US 10-year, gold, dollar index), the analog library with real factor moves from our prices (including the 2026
+  Iran war windows), the family's holdings as tickers + weights + betas, and a per-stock data pack (price, 52-week
+  range, returns vs SPY, P/E, forward P/E, EV/sales vs own 5-year percentile and sector median, growth, margins, ROE,
+  debt/equity, analysts, revisions, next earnings, dividend yield, beta, factor exposures). Missing fields are marked
+  missing, never guessed. Method: `backend/app/context_pack.py`, `stock_pack.py`, `openrouter.py`, `privacy.py`.
+
 ## Company logos
 
 Logos are fetched once by the app from free public sources that need no key (Parqet, Financial Modeling
