@@ -25,8 +25,10 @@ export default {
       scrim: v("scrim"),
     },
     fontFamily: {
-      sans: ["Geist", "ui-sans-serif", "system-ui", "sans-serif"],
-      mono: ["Geist Mono", "ui-monospace", "monospace"],
+      sans: ["IBM Plex Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+      // tickers: no monospace, see .font-mono in index.css
+      mono: ["IBM Plex Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+      display: ["Newsreader", "IBM Plex Sans", "ui-serif", "Georgia", "serif"],
     },
     fontSize: {
       xs: ["12px", "16px"],

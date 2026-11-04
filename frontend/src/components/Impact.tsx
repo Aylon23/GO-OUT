@@ -209,8 +209,8 @@ function Flow({ branch, onEdit }: { branch: ImpactResult["spec"]["branches"][num
                   <div key={f} className="rounded-md border border-line bg-surface px-3 py-2">
                     <p className="text-xs text-muted">{label(f)}</p>
                     <EditMove value={m.mid} onCommit={(v) => onEdit({ branch: branch.name, factor: f, mid: v })} />
-                    <p className="num text-[11px] text-faint">{m.low > 0 ? "+" : ""}{m.low.toFixed(1)} to {m.high > 0 ? "+" : ""}{m.high.toFixed(1)}%</p>
-                    {into(f).length > 0 && <p className="text-[11px] text-faint">from {into(f).map((l) => (l.from === "trigger" ? "trigger" : label(l.from))).join(", ")}</p>}
+                    <p className="num text-xs text-faint">{m.low > 0 ? "+" : ""}{m.low.toFixed(1)} to {m.high > 0 ? "+" : ""}{m.high.toFixed(1)}%</p>
+                    {into(f).length > 0 && <p className="text-xs text-faint">from {into(f).map((l) => (l.from === "trigger" ? "trigger" : label(l.from))).join(", ")}</p>}
                   </div>
                 );
               })}
@@ -256,7 +256,7 @@ function Histogram({ r }: { r: ImpactResult }) {
         {[["5%", f.p5], ["Median", f.median], ["95%", f.p95]].map(([t, v]) => (
           <g key={t as string}>
             <line x1={x(v as number)} x2={x(v as number)} y1={0} y2={h} className="stroke-text" strokeWidth={1} strokeDasharray={t === "Median" ? "" : "3 3"} />
-            <text x={x(v as number)} y={h + 16} textAnchor="middle" className="fill-muted text-[11px]">{t} {pct(v as number, 1)}</text>
+            <text x={x(v as number)} y={h + 16} textAnchor="middle" className="fill-muted text-xs">{t} {pct(v as number, 1)}</text>
           </g>
         ))}
       </svg>

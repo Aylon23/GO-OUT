@@ -32,6 +32,10 @@ export const SERIES_COLOR: Record<string, string> = {
   QQQ: "var(--series-qqq)",
 };
 const EXTRA = ["var(--series-4)", "var(--series-5)", "var(--series-spy)"];
+/** SPY is the reference every line is read against: a quiet dashed rule, never a competitor. */
+const BENCH_DASH = "3 4";
+const isBenchmark = (key: string) => key === "SPY";
+
 export function colorFor(key: string, i = 0) {
   return SERIES_COLOR[key] ?? EXTRA[i % EXTRA.length];
 }
@@ -83,12 +87,12 @@ export function SeriesChart({ dates, series, format, short, end, height = 320, b
             tickFormatter={(v) => tickFmtY(v)} domain={axis.domain} ticks={axis.ticks} interval={0} />
           {baseline !== undefined && <ReferenceLine y={baseline} stroke="var(--line-strong)" strokeDasharray="2 3" />}
           <Tooltip
-            cursor={{ stroke: "var(--line-strong)", strokeWidth: 1 }}
+            cursor={{ stroke: "var(--faint)", strokeWidth: 1, strokeDasharray: "2 3" }}
             isAnimationActive={false}
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null;
               return (
-                <div className="num min-w-[180px] rounded-sm bg-surface px-3 py-2.5 text-sm shadow-pop">
+                <div className="glass num min-w-[180px] rounded-md px-3 py-2.5 text-sm shadow-pop">
                   <div className="mb-1.5 text-xs text-muted">{dateLong(String(label))}</div>
                   {series.map((s) => {
                     const p = payload.find((x) => x.dataKey === s.key);
@@ -107,8 +111,10 @@ export function SeriesChart({ dates, series, format, short, end, height = 320, b
             }}
           />
           {ordered.map((s) => (
-            <Line key={s.key} dataKey={s.key} name={s.label} type={s.step ? "stepAfter" : "linear"} stroke={s.color} strokeWidth={s.width ?? 1.5}
-              strokeDasharray={s.dash} dot={false} activeDot={{ r: 3, strokeWidth: 0, fill: s.color }} isAnimationActive={false} connectNulls />
+            <Line key={s.key} dataKey={s.key} name={s.label} type={s.step ? "stepAfter" : "linear"} stroke={s.color}
+              strokeWidth={s.width ?? (isBenchmark(s.key) ? 1.25 : 1.75)} strokeDasharray={s.dash ?? (isBenchmark(s.key) ? BENCH_DASH : undefined)}
+              dot={false} activeDot={{ r: 3.5, strokeWidth: 2, stroke: "var(--bg)", fill: s.color }}
+              isAnimationActive={!s.step} animationDuration={900} animationEasing="ease-out" animationBegin={isBenchmark(s.key) ? 0 : 120} connectNulls />
           ))}
           <Customized component={(p: unknown) => <EndLabels {...(p as EndLabelProps)} series={series} fmt={end ?? fmtShort} />} />
         </LineChart>
@@ -141,7 +147,7 @@ function EndLabels({ formattedGraphicalItems, offset, series, fmt }: EndLabelPro
   for (let i = 1; i < labels.length; i++) if (labels[i].y - labels[i - 1].y < gap) labels[i].y = labels[i - 1].y + gap;
   const x = offset.left + offset.width + 8;
   return (
-    <g>
+    <g className="chart-labels">
       {labels.map((l) => (
         <text key={l.key} x={x} y={l.y} dy={4} fontSize={12} fill={l.color} fontWeight={l.strong ? 600 : 500} style={{ fontVariantNumeric: "tabular-nums" }}>
           {fmt(l.value)}
@@ -156,7 +162,7 @@ export function InlineLegend({ items }: { items: { key: string; label: string; c
     <ul className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm">
       {items.map((it) => (
         <li key={it.key} className="flex items-center gap-2">
-          <svg width="16" height="6" aria-hidden><line x1="0" y1="3" x2="16" y2="3" stroke={it.color} strokeWidth={it.width ?? 1.5} strokeDasharray={it.dash ? "3 2" : undefined} /></svg>
+          <svg width="16" height="6" aria-hidden><line x1="0" y1="3" x2="16" y2="3" stroke={it.color} strokeWidth={it.width ?? 1.75} strokeDasharray={it.dash || isBenchmark(it.key) ? "3 3" : undefined} /></svg>
           <span className="text-muted">{it.label}</span>
           {it.value && <span className="num font-medium text-text">{it.value}</span>}
         </li>

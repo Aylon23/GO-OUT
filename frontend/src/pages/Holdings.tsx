@@ -172,7 +172,7 @@ function TableRow({ r, base, cols, council, onOpen }: { r: HoldingRow; base: str
       case "value": return <span className="font-medium">{money(r.value, base, { decimals: 0 })}</span>;
       case "weight": return (
         <span className="flex items-center justify-end gap-2">
-          <span className="hidden h-1 w-10 overflow-hidden rounded-full bg-sunken lg:block" aria-hidden><span className="block h-full rounded-full bg-muted" style={{ width: `${Math.min(100, (r.weight ?? 0) * 100)}%` }} /></span>
+          <span className="hidden h-1 w-12 overflow-hidden rounded-full bg-line lg:block" aria-hidden><span className="block h-full rounded-full bg-muted" style={{ width: `${Math.min(100, (r.weight ?? 0) * 100)}%` }} /></span>
           <span>{pct(r.weight, 1, false)}</span>
         </span>);
       case "unrealized": return r.closed ? (
