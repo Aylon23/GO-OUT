@@ -933,7 +933,7 @@ def scenario_actions(body: ActionsIn, session: Session = Depends(get_session)):
 
 class NewMoneyIn(BaseModel):
     amount: float
-    currency: str = "ILS"
+    currency: str = "USD"
     person: int | None = None
     seed: int = 7
     use_book: bool = False

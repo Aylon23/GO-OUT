@@ -240,7 +240,7 @@ def normal_spec(session: Session, horizon: str = "1m") -> dict:
             "branches": [{"name": "Normal", "probability": 1.0, "cause": "other", "narrative": "", "factor_moves": moves}]}
 
 
-def new_money(session: Session, amount: float, currency: str = "ILS", person: int | None = None,
+def new_money(session: Session, amount: float, currency: str = "USD", person: int | None = None,
               scenarios: list[dict] | None = None, weights: dict[str, float] | None = None, n: int = 3000, seed: int = impact.SEED) -> dict:
     base = services.get_settings(session).base_currency
     fx = impact._fx_now(session)
