@@ -125,8 +125,8 @@ function ReactionChart({ c }: { c: EarningsCard }) {
         return <rect key={i} x={i * bw + 2} width={bw - 4} y={v >= 0 ? h / 2 - bh : h / 2} height={Math.max(bh, 1)}
           className={clsx(v >= 0 ? "fill-gain" : "fill-loss")} opacity={today ? 1 : 0.4} />;
       })}
-      {c.today && <text x={(vals.length - 0.5) * bw} y={h + 12} textAnchor="middle" className="fill-text text-[10px]">today</text>}
-      {ev.length > 0 && <text x={2} y={h + 12} className="fill-muted text-[10px]">{ev[0].date.slice(0, 7)}</text>}
+      {c.today && <text x={(vals.length - 0.5) * bw} y={h + 12} textAnchor="middle" className="fill-text text-[11px]">today</text>}
+      {ev.length > 0 && <text x={2} y={h + 12} className="fill-muted text-[11px]">{ev[0].date.slice(0, 7)}</text>}
     </svg>
   );
 }

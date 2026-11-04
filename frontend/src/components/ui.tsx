@@ -29,7 +29,7 @@ export function Segmented<T extends string>({ options, value, onChange, label, a
             onClick={() => { if (!o.disabled) onChange(o.value); }} aria-disabled={o.disabled || undefined} title={o.title}
             className={clsx("press shrink-0 whitespace-nowrap rounded-[5px] font-medium", size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-sm",
               o.disabled ? "cursor-not-allowed text-faint opacity-50" :
-              on ? clsx("bg-surface shadow-[0_1px_2px_var(--line)]", accent ? "text-accent" : "text-text") : "text-muted hover:text-text")}>
+              on ? clsx("bg-surface shadow-[inset_0_0_0_1px_var(--line-strong)]", accent ? "text-accent" : "text-text") : "text-muted hover:text-text")}>
             {o.label}
           </button>
         );
@@ -78,14 +78,22 @@ export function SidePanel({ open, onClose, title, children, wide = false }: { op
     window.addEventListener("keydown", h);
     return () => { window.removeEventListener("keydown", h); prev?.focus?.(); };
   }, [open, onClose]);
-  if (!open) return null;
+  // Stay mounted for the exit so the panel leaves the way it came, a little faster.
+  const [shown, setShown] = useState(open);
+  useEffect(() => {
+    if (open) { setShown(true); return; }
+    const t = window.setTimeout(() => setShown(false), 200);
+    return () => window.clearTimeout(t);
+  }, [open]);
+  if (!open && !shown) return null;
+  const leaving = !open;
   return (
     <>
-      {mobile && <div className="fade-in fixed inset-0 z-40 bg-scrim" onClick={onClose} aria-hidden />}
+      {mobile && <div className={clsx("fixed inset-0 z-40 bg-scrim", leaving ? "fade-out" : "fade-in")} onClick={onClose} aria-hidden />}
       <aside ref={ref} tabIndex={-1} role="complementary" aria-label={title}
-        className={clsx("fixed z-50 flex flex-col bg-surface shadow-panel outline-none",
-          mobile ? "sheet-in inset-x-0 bottom-0 max-h-[88dvh] rounded-t-lg"
-            : clsx("panel-in bottom-3 right-3 top-[68px] rounded-lg", wide === "xl" ? "w-[min(980px,calc(100vw-24px))]" : wide ? "w-[520px]" : "w-[440px]"))}>
+        className={clsx("fixed z-50 flex flex-col bg-surface shadow-panel outline-none", leaving && "pointer-events-none",
+          mobile ? clsx(leaving ? "sheet-out" : "sheet-in", "inset-x-0 bottom-0 max-h-[88dvh] rounded-t-lg")
+            : clsx(leaving ? "panel-out" : "panel-in", "bottom-3 right-3 top-[68px] rounded-lg", wide === "xl" ? "w-[min(980px,calc(100vw-24px))]" : wide ? "w-[520px]" : "w-[440px]"))}>
         {mobile && <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-line-strong" aria-hidden />}
         <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-4">
           <h2 className="truncate text-lg font-semibold">{title}</h2>
@@ -131,5 +139,16 @@ export function SectionTitle({ children, aside }: { children: ReactNode; aside?:
 
 export function Signed({ value, children, className }: { value: number | null | undefined; children: ReactNode; className?: string }) {
   const c = value === null || value === undefined || !isFinite(value) || Math.abs(value) < 5e-5 ? "text-text" : value > 0 ? "text-gain" : "text-loss";
-  return <span className={clsx("num", c, className)}>{children}</span>;
+  // When a live value changes (not on first render), wash it once in the direction it moved.
+  const prev = useRef(value);
+  const [flash, setFlash] = useState<"up" | "down" | null>(null);
+  useEffect(() => {
+    const p = prev.current;
+    prev.current = value;
+    if (p === null || p === undefined || value === null || value === undefined || p === value || !isFinite(p) || !isFinite(value)) return;
+    setFlash(value > p ? "up" : "down");
+    const t = window.setTimeout(() => setFlash(null), 900);
+    return () => window.clearTimeout(t);
+  }, [value]);
+  return <span className={clsx("num", c, flash === "up" && "tick-up", flash === "down" && "tick-down", className)}>{children}</span>;
 }

@@ -1,4 +1,4 @@
-import { ArrowRight, CaretDown, FloppyDisk, Lightning, Plus, Sparkle, X } from "@phosphor-icons/react";
+import { CaretDown, FloppyDisk, Lightning, Plus, Sparkle, X } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SymbolSearch } from "../components/SymbolSearch";
@@ -118,7 +118,7 @@ function ScenarioLab() {
         <input id="scenario-text" dir="auto" autoComplete="off" className="field h-12 pl-12 pr-28 text-base" value={text} onChange={(e) => setText(e.target.value)}
           placeholder="What if… oil jumps 20%, war with Iran, Apple misses earnings" />
         <button type="submit" className="btn-primary absolute right-1.5 top-1/2 h-9 -translate-y-1/2" disabled={!text.trim() || parsing}>
-          {parsing ? "Reading" : "Run"}<ArrowRight size={14} />
+          {parsing ? "Reading" : "Run scenario"}
         </button>
       </form>
       <div className="mt-3 flex flex-wrap gap-1.5">

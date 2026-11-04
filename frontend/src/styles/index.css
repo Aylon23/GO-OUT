@@ -4,41 +4,95 @@
 @tailwind utilities;
 
 @layer base {
-  html { background: var(--bg); color: var(--text); -webkit-text-size-adjust: 100%; }
-  body { font-family: Geist, ui-sans-serif, system-ui, sans-serif; font-size: 15px; line-height: 24px;
-         -webkit-font-smoothing: antialiased; font-feature-settings: "ss01"; }
+  html { background: var(--bg); color: var(--text); -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; }
+  body { font-family: var(--font-sans); font-size: 15px; line-height: 24px; letter-spacing: -0.003em;
+         -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-  input, select, textarea, button { font: inherit; color: inherit; }
-  ::selection { background: var(--accent-soft); }
+  input, select, textarea, button { font: inherit; color: inherit; letter-spacing: inherit; }
+  ::selection { background: var(--accent-soft); color: var(--text); }
+  table { font-variant-numeric: tabular-nums; }
+  th { font-weight: 500; }
+  tbody tr { transition: background-color var(--dur) var(--ease-out); }
+  tbody tr:hover { background-color: color-mix(in oklch, var(--hover) 55%, transparent); }
+
+  /* Display type: the answer sentence and page titles are set like a research note */
+  #main h1 { font-family: var(--font-display); font-weight: 420; letter-spacing: -0.018em;
+             font-variant-numeric: lining-nums proportional-nums; font-optical-sizing: auto;
+             text-wrap: balance; }
+  #main h1.text-xl { font-size: 28px; line-height: 34px; letter-spacing: -0.012em; font-weight: 460; }
+  #main h1.text-2xl { font-size: 34px; line-height: 40px; }
+  @media (min-width: 768px) { #main h1.md\:text-3xl { font-size: 46px; line-height: 52px; letter-spacing: -0.024em; } }
+  #main h1 .text-muted, #main h1 .text-faint { color: var(--muted); }
+
+  /* Tickers were monospace; they are now set in the UI face, slightly heavier and tracked */
+  .font-mono { font-family: var(--font-sans); font-weight: 600; letter-spacing: 0.015em; font-variant-numeric: tabular-nums; }
+
+  * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 }
 
 @layer components {
   .num { font-variant-numeric: tabular-nums; }
-  .press { transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
-  .press:active { transform: scale(0.98); }
+  .press { transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out), border-color var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out); }
+  .press:active { transform: scale(0.975); }
   .btn { @apply press inline-flex h-9 items-center justify-center gap-2 rounded-sm px-4 text-sm font-medium disabled:pointer-events-none disabled:opacity-50; }
-  .btn-primary { @apply btn bg-accent text-accent-text hover:opacity-90; }
+  .btn-primary { @apply btn bg-accent text-accent-text; box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.18), 0 1px 2px oklch(0.1 0.02 262 / 0.25); }
+  .btn-primary:hover { filter: brightness(1.07); }
   .btn-secondary { @apply btn border border-line-strong bg-surface text-text hover:bg-hover; }
   .btn-ghost { @apply btn px-2 text-muted hover:bg-hover hover:text-text; }
-  .chip { @apply press inline-flex h-7 items-center rounded-full border border-line px-3 text-xs text-muted hover:bg-hover hover:text-text; }
-  .chip-on { @apply border-accent text-text; }
-  .link { @apply press text-text underline decoration-line-strong underline-offset-4 hover:decoration-text; }
-  .field { @apply h-9 w-full rounded-sm border border-line-strong bg-surface px-3 text-base outline-none transition-colors duration-fast placeholder:text-faint focus:border-accent; }
+  .chip { @apply press inline-flex h-7 items-center rounded-full border border-line px-3 text-xs text-muted hover:border-line-strong hover:text-text; }
+  .chip-on { @apply border-accent bg-accent-soft text-text; }
+  .link { @apply press text-text underline decoration-line-strong underline-offset-4 hover:decoration-accent; }
+  .field { @apply h-9 w-full rounded-sm border border-line-strong bg-sunken px-3 text-base outline-none placeholder:text-faint; transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out); }
+  .field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .label { @apply mb-1.5 block text-sm font-medium text-text; }
   .helper { @apply mt-1.5 text-xs text-muted; }
   .error-text { @apply mt-1.5 text-xs text-loss; }
-  .skeleton { @apply rounded-sm bg-sunken; }
+  .skeleton { @apply rounded-sm bg-sunken; position: relative; overflow: hidden; }
+  .skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--hover) 75%, transparent), transparent);
+    animation: shimmer 1.6s var(--ease-out) infinite; }
   .hairline { @apply border-t border-line; }
-  .fade-in { animation: fade-in var(--dur) var(--ease-out) both; }
+
+  /* Header: the one translucent layer, it floats over scrolling content */
+  .glass { background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .glass { background: var(--bg); } }
+
+  /* Motion. Enter with ease-out-quint, never bounce, only transform and opacity. */
+  .fade-in { animation: fade-in var(--dur-slow) var(--ease-out) both; }
   .panel-in { animation: panel-in var(--dur-slow) var(--ease-out) both; }
   .sheet-in { animation: sheet-in var(--dur-slow) var(--ease-out) both; }
-  .pop-in { animation: pop-in var(--dur) var(--ease-out) both; }
+  .fade-out { animation: fade-out 200ms var(--ease-in) both; }
+  .panel-out { animation: panel-out 200ms var(--ease-in) both; }
+  .sheet-out { animation: sheet-out 200ms var(--ease-in) both; }
+  .pop-in { animation: pop-in var(--dur) var(--ease-out) both; transform-origin: top; }
+  .route-in { animation: route-in var(--dur-slow) var(--ease-out) both; }
+
+  /* The one orchestrated moment: the answer sentence rises in, then the evidence below it */
+  .route-in h1.md\:text-3xl { animation: rise var(--dur-reveal) var(--ease-out) both; }
+  .route-in h1.md\:text-3xl > span:nth-child(2) { display: inline; animation: settle var(--dur-reveal) var(--ease-out) 140ms both; }
+  .tick-up, .tick-down { border-radius: 3px; animation: tick 900ms var(--ease-out) both; }
+  .tick-up { --tick: color-mix(in oklch, var(--gain) 22%, transparent); }
+  .tick-down { --tick: color-mix(in oklch, var(--loss) 22%, transparent); }
+  .chart-labels { animation: labels-in var(--dur-slow) var(--ease-out) 700ms both; }
+
+  .nav-indicator { position: absolute; left: 0; top: 0; height: 2px; width: 1px; transform-origin: 0 0;
+    background: var(--accent); border-radius: 2px; pointer-events: none;
+    transition: transform var(--dur-slow) var(--ease-out), opacity var(--dur) var(--ease-out); }
 }
 
-@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-@keyframes panel-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
-@keyframes sheet-in { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: none; } }
-@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.99); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes route-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes settle { from { opacity: 0; } to { opacity: 1; } }
+@keyframes labels-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+@keyframes panel-in { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes panel-out { to { opacity: 0; transform: translateX(20px); } }
+@keyframes sheet-out { to { opacity: 0; transform: translateY(32px); } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes tick { from { background-color: var(--tick); } to { background-color: transparent; } }
+@keyframes shimmer { to { transform: translateX(100%); } }
 
 .recharts-wrapper, .recharts-surface { outline: none; }
-.recharts-text { font-variant-numeric: tabular-nums; }
+.recharts-text { font-variant-numeric: tabular-nums; font-family: var(--font-sans); }

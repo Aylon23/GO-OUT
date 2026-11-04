@@ -73,8 +73,8 @@ export function NewMoney() {
                 <tr key={r.symbol}>
                   <td className="num border-b border-line py-2 text-faint">{i + 1}</td>
                   <td className="border-b border-line py-2"><span className="flex items-center gap-2"><Avatar ticker={r.symbol} size={20} /><span className="font-mono font-semibold">{r.symbol}</span>
-                    {r.robust && <span className="rounded-sm bg-accent-soft px-1.5 text-[11px] font-medium">robust</span>}
-                    {r.low_confidence && <span className="text-[11px] text-faint">low confidence</span>}</span></td>
+                    {r.robust && <span className="rounded-sm bg-accent-soft px-1.5 text-xs font-medium">robust</span>}
+                    {r.low_confidence && <span className="text-xs text-faint">low confidence</span>}</span></td>
                   <td className="num border-b border-line py-2 pl-3 text-right">{r.robust_count}/{r.branches}</td>
                   <td className="num border-b border-line py-2 pl-3 text-right"><Signed value={r.expected_amt}>{fmt(r.expected_amt)}</Signed></td>
                   <td className="num border-b border-line py-2 pl-3 text-right"><Signed value={r.bad_amt}>{fmt(r.bad_amt)}</Signed></td>

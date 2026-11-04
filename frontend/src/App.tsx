@@ -29,13 +29,19 @@ function Routes() {
   }
 }
 
+/** Re-keys on route change so each page enters with the same short rise. */
+function RouteFrame() {
+  const { route } = useApp();
+  return <div key={route} className="route-in"><Routes /></div>;
+}
+
 export default function App() {
   return (
     <AppProvider>
       <div className="min-h-[100dvh] bg-bg text-text">
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-sm focus:bg-surface focus:px-3 focus:py-2 focus:shadow-pop">Skip to content</a>
         <TopBar />
-        <main id="main"><Routes /></main>
+        <main id="main"><RouteFrame /></main>
         <CommandPalette />
         <QuickView />
       </div>
