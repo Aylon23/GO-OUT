@@ -1416,3 +1416,170 @@ def backups_undo_restore(session: Session = Depends(get_session)):
         return backup.undo_last_restore(session)
     except backup.BackupError as exc:
         _bad(str(exc))
+
+
+# ---------------------------------------------------------------- AI scenario debate
+
+class DebateIn(BaseModel):
+    text: str
+    horizon: str | None = None
+    cause: str | None = None
+
+
+@router.post("/debates")
+def debate_start(body: DebateIn, session: Session = Depends(get_session)):
+    """Reads the question; if the horizon or cause is missing, returns the chips to ask with (nothing is sent)."""
+    from .. import debate, debate_input
+
+    if not body.text.strip():
+        _bad("Write the scenario first.")
+    inp = debate_input.read(session, body.text, body.horizon, body.cause)
+    if inp["needs"]:
+        return {"needs": inp["needs"], "read": inp}
+    d = debate.start(session, inp["text"], inp["horizon"], inp["cause"], inp)
+    return debate.payload(session, d)
+
+
+@router.get("/debates")
+def debate_list(session: Session = Depends(get_session)):
+    from .. import debate
+
+    return debate.listing(session)
+
+
+@router.get("/debates/leaderboard")
+def debate_board(session: Session = Depends(get_session)):
+    from .. import debate
+
+    debate.score_due(session)
+    return debate.leaderboard(session)
+
+
+@router.get("/debates/{did}")
+def debate_get(did: int, session: Session = Depends(get_session)):
+    from .. import debate
+    from ..models import Debate
+
+    d = session.get(Debate, did)
+    if d is None:
+        _bad("That debate isn't there.", 404)
+    return debate.payload(session, d)
+
+
+@router.post("/debates/{did}/queue")
+def debate_queue(did: int, session: Session = Depends(get_session)):
+    from .. import debate
+    from ..models import Debate
+
+    d = session.get(Debate, did)
+    if d is None or d.phase != "done":
+        _bad("The debate hasn't finished.")
+    return {"added": debate.send_to_queue(session, d)}
+
+
+@router.post("/debates/{did}/book")
+def debate_book(did: int, session: Session = Depends(get_session)):
+    """Adds the merged spec to My book at 10% (or what's left); set your own probability there."""
+    from .. import book
+    from ..models import Debate
+
+    d = session.get(Debate, did)
+    if d is None or not d.spec_id:
+        _bad("The debate hasn't finished.")
+    entries = book.entries_of(book.current(session))
+    if any(e["scenario_id"] == d.spec_id for e in entries):
+        _bad("It's already in My book.")
+    room = 1 - sum(float(e["probability"]) for e in entries)
+    p = round(min(0.10, room), 4)
+    if p <= 0:
+        _bad("My book is at 100%. Lower another scenario's probability first.")
+    try:
+        book.save(session, [*entries, {"scenario_id": d.spec_id, "probability": p}], note=f"Added from AI debate #{did}")
+    except book.BookError as exc:
+        _bad(str(exc))
+    return {"probability": p}
+
+
+@router.get("/actions")
+def actions_list(source: str | None = None, portfolio: int | None = None, session: Session = Depends(get_session)):
+    from .. import action_queue
+
+    return action_queue.listing(session, source=source, portfolio_id=portfolio)
+
+
+class ActionStatusIn(BaseModel):
+    status: str
+    reason: str = ""
+
+
+@router.post("/actions/{item_id}")
+def actions_set(item_id: int, body: ActionStatusIn, session: Session = Depends(get_session)):
+    from .. import action_queue
+
+    if body.status not in ("done", "snoozed", "dismissed", "open"):
+        _bad("Unknown status.")
+    action_queue.set_status(session, item_id, body.status, body.reason)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- AI stock council
+
+class CouncilRunIn(BaseModel):
+    tickers: list[str] | None = None
+
+
+class CouncilSettingsIn(BaseModel):
+    min_weight: bool | None = None
+    weekday: int | None = None
+
+
+@router.get("/council")
+def council_overview(session: Session = Depends(get_session)):
+    from .. import council
+
+    return council.overview(session)
+
+
+@router.post("/council/run")
+def council_run(body: CouncilRunIn, session: Session = Depends(get_session)):
+    from .. import council
+
+    run = council.start(session, body.tickers, kind="stock" if body.tickers else "full")
+    return council.run_status(session, run)
+
+
+@router.put("/council/settings")
+def council_settings(body: CouncilSettingsIn, session: Session = Depends(get_session)):
+    from .. import council
+
+    s = services.get_settings(session)
+    if body.min_weight is not None:
+        s.council_min_weight = body.min_weight
+    if body.weekday is not None:
+        if not -1 <= body.weekday <= 6:
+            _bad("Pick a day of the week, or off.")
+        s.council_weekday = body.weekday
+    session.add(s)
+    session.commit()
+    return council.overview(session)
+
+
+@router.get("/council/leaderboard")
+def council_board(session: Session = Depends(get_session)):
+    from .. import council
+
+    return council.leaderboard(session)
+
+
+@router.get("/council/actions")
+def council_actions(portfolio: int = 1, session: Session = Depends(get_session)):
+    from .. import council
+
+    return council.actions_for(session, portfolio)
+
+
+@router.get("/council/stock/{ticker}")
+def council_stock(ticker: str, session: Session = Depends(get_session)):
+    from .. import council
+
+    return council.stock_detail(session, ticker)

@@ -51,7 +51,9 @@ def _startup() -> None:
 
         backup.start_scheduler()  # today's backup at the first start of the day, then hourly checks
     if os.environ.get("PORTFOLIO_NO_AI_WORKER") != "1":
-        from . import ai_jobs
+        from . import ai_jobs, council, debate  # noqa: F401 (they register their follow-up rounds)
+
+        council.start_scheduler()
 
         ai_jobs.start_worker()
     if os.environ.get("PORTFOLIO_NO_INBOX") != "1":

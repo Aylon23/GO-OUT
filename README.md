@@ -275,6 +275,63 @@ with 2 fallbacks sent in OpenRouter's `models` array), a call log and queued job
   debt/equity, analysts, revisions, next earnings, dividend yield, beta, factor exposures). Missing fields are marked
   missing, never guessed. Method: `backend/app/context_pack.py`, `stock_pack.py`, `openrouter.py`, `privacy.py`.
 
+## AI scenario debate (What-if → AI debate)
+
+Type a scenario in English or Hebrew ("תהיה מלחמה עם איראן", "oil falls $10 per barrel"). Dollar moves are
+turned into percent at today's price (WTI, Brent or gold). If the horizon or the cause is missing, chips ask
+for it before anything is sent. Then:
+
+1. **Round 1:** four free models each write their own Scenario Spec from the context pack, blind.
+2. **Round 2:** each sees the others (as Model A–D), critiques them and revises. One is the devil's advocate,
+   rotating every debate.
+3. **Judge:** one merged spec, the agreements and a disputes list.
+4. **Engine (not a model):**
+   - widens every range the models disagreed on to at least the spread of their expected moves;
+   - states any minority direction the judge left out;
+   - validates the spec (schema, probabilities, analogs against real prices);
+   - if the judge's spec still fails, keeps each model's view as its own branch.
+
+The merged spec is saved as a researched scenario and run through the factor model. The page shows:
+- **Level 1:** the answer sentence, branch cards, the 5 most hurt and most helped holdings (with the factor
+  that drives each) and the most exposed portfolio.
+- **Level 2:** agreements, disputes, the devil's case, each model's numbers side by side, and the full impact
+  view with the transmission chain and analog replays.
+- **Level 3:** the transcript per round with model ids, requests used and the validation report.
+
+"Save to scenario book" adds it at 10%. "Send top items to action queue" adds suggestions only.
+Each model's round-1 spec and the judge's are scored when the horizon ends (direction, error, inside the
+range) on the scenario leaderboard. After 10 scored debates the judge sees each model's record.
+
+## AI stock council (Council page)
+
+Four free models rate every holding and the watchlist Buy / Hold / Sell against SPY over 12 months.
+"Insufficient data" is allowed. Funds that track the S&P 500 itself are skipped.
+
+- **Rounds, per batch of 5 stocks:**
+  - **Round 1:** blind, with a random stock order per model.
+  - **Round 2:** each model sees the tally and the other theses. The devil's advocate argues against the
+    majority. A change needs a new reason, or the round-1 rating stands.
+  - **Judge:** merged thesis, strongest dissent, and contradictions with the data pack.
+- **Computed in code, never by a model:**
+  - the raw tally, never averaged;
+  - consensus: unanimous, strong (75% or more) or split;
+  - agreement quality: diverse or single reason, from the tags;
+  - the crowded flag: strong Buy within 5% of the 52-week high with analysts already at Buy, and the mirror
+    for Sell;
+  - flip-flops: a change with no new tag and no material data change is flagged and not counted as a change;
+  - a track-record weighted tally, after 20 scored ratings.
+- **Per-person suggestions** go to the action queue and the Holdings "Council" column, e.g. "Hold (at limit)"
+  or "Review sell: est. tax $X". They use a 15% single-stock limit (funds exempt) and a 25% estimated tax rate
+  until each person has a policy.
+- **Runs:** weekly (Sunday by default) or on demand. When the free requests run out, the run continues the
+  next day ("27 of 41 rated").
+- **Scoring:** every rating is stored with its price and SPY level and scored at 3, 6 and 12 months,
+  forward only. The leaderboard covers each model, the council, your calls and "just SPY".
+
+Run either from the command line (uses `.env` and the app's database):
+`.venv/bin/python tools/ai_run.py debate "oil falls $10 per barrel" --horizon 1m --cause supply`,
+`.venv/bin/python tools/ai_run.py council --top 10`.
+
 ## Company logos
 
 Logos are fetched once by the app from free public sources that need no key (Parqet, Financial Modeling

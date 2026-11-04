@@ -243,7 +243,7 @@ function SpecDetail({ id, onBack }: { id: string; onBack: () => void }) {
   );
 }
 
-function SpecImpact({ id }: { id: string }) {
+export function SpecImpact({ id }: { id: string }) {
   const [regime, setRegime] = useState<RegimeChoice>("auto");
   const [edits, setEdits] = useState<ImpactEdit[]>([]);
   const [r, setR] = useState<ImpactResult | null>(null);

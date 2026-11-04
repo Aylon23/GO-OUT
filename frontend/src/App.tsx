@@ -10,6 +10,7 @@ import Risk from "./pages/Risk";
 import Settings from "./pages/Settings";
 import Transactions from "./pages/Transactions";
 import WhatIf from "./pages/Scenarios";
+import Council from "./pages/Council";
 import { AppProvider, useApp } from "./state";
 
 function Routes() {
@@ -22,6 +23,7 @@ function Routes() {
     case "calls": return <Calls />;
     case "transactions": return <Transactions />;
     case "whatif": return <WhatIf />;
+    case "council": return <Council />;
     case "settings": return <Settings />;
     default: return <Dashboard />;
   }

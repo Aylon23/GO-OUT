@@ -11,6 +11,7 @@ const NAV: { route: Route; label: string }[] = [
   { route: "calls", label: "Calls" },
   { route: "transactions", label: "Trades" },
   { route: "whatif", label: "What-if" },
+  { route: "council", label: "Council" },
 ];
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);

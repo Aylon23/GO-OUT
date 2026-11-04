@@ -345,6 +345,42 @@ export interface BackupStatus {
   backups: BackupItem[]; keep: { days: number; months: number };
 }
 
+export interface DebateMover { symbol: string; name: string; move: number; change_amt: number; weight: number; driver: string | null; driver_effect: number | null }
+export interface DebateDispute { topic: string; views: string; why?: string; added_by?: string }
+export interface DebateRow {
+  id: number; text: string; horizon: string; cause: string; phase: "round1" | "round2" | "judge" | "done" | "failed"; note: string; created_at: string;
+  devil: string; spec_id: string; progress: { done: number; total: number }; requests: number; waiting?: string;
+  inputs: { dollar_moves?: { text?: string; pct: number | null }[] };
+  labels?: Record<string, { role: string; models: string[] }>;
+  result?: {
+    answer?: string; currency?: string; empty?: boolean;
+    family?: { median: number; p5: number; p95: number; median_amt: number; p5_amt: number; p95_amt: number; prob_loss: number };
+    most_exposed?: { id: number; name: string; median: number; median_amt: number } | null;
+    hurt?: DebateMover[]; helped?: DebateMover[];
+    branches?: { name: string; probability: number; family: { median: number; p5: number; p95: number; median_amt: number } }[];
+    headline?: { model: string; stage: string; median: number; p5: number; median_amt: number; moves: Record<string, number> }[];
+    agreements: string[]; disputes: DebateDispute[]; minority_views: string[]; devils_case: string; devils_case_assessment: string;
+    widened: { branch: string; factor: string; before: number[]; after: number[]; spread: number }[]; validation: SpecReport; notes: string[];
+  };
+  transcript?: { round: string; label: string; role: string; models: string[]; model_used: string; requests: number; status: string; error: string; answer: unknown }[];
+}
+export type DebateStart = DebateRow | { needs: { horizon?: string[]; cause?: string[] }; read: { dollar_moves: { text?: string }[] } };
+export interface ActionRow { id: number; source: string; source_ref: string; portfolio_id: number | null; who: string; symbol: string; what: string; why: string; suggested: string; impact_amt: number; created_at: string }
+
+export type Rating = "buy" | "hold" | "sell" | "insufficient";
+export interface CouncilVerdictRow {
+  ticker: string; name?: string | null; run_id: number; rated_at: string; tally: Record<Rating, number>; weighted: Record<Rating, number> | null;
+  consensus: "unanimous" | "strong" | "split" | "insufficient"; majority: "" | "buy" | "hold" | "sell"; quality: string; crowded: boolean;
+  thesis: string; dissent: string; contradictions: string[]; flipflops: string[]; change: string; conviction: number | null; upside: number | null;
+  devils_argument: string; anchor_price: number | null; anchor_spy: number | null; from_high?: number | null; move_since?: number | null;
+}
+export interface CouncilRunStatus { id: number; status: string; kind: string; created_at: string; rated: number; total: number; requests: number; devil: string; note: string; waiting: string | null }
+export interface CouncilOverview { run: CouncilRunStatus | null; rows: CouncilVerdictRow[]; label: string; settings: { min_weight: boolean; weekday: number } }
+export interface CouncilModelView { label: string; models: string[]; devil: boolean; final: Rating;
+  round1: { rating: Rating; conviction: number | null; thesis: string; tags: string[]; risk: string };
+  round2: { rating: Rating; conviction: number | null; new_reason: string; tags: string[]; devils_argument: string } | null }
+export interface CouncilStock { ticker: string; verdict: CouncilVerdictRow | null; models: CouncilModelView[]; pack?: StockPack; history?: CouncilVerdictRow[]; label: string }
+
 async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   if (url.startsWith("/api/") && !/[?&]portfolio=/.test(url)) url += (url.includes("?") ? "&" : "?") + portfolioParam();
   let res: Response;
@@ -485,6 +521,20 @@ export const api = {
   backupFolder: (extra_dir: string) => request<BackupStatus>("PUT", "/api/backups/settings", { extra_dir }),
   restore: (stem: string) => request<{ restored: string; safety: string }>("POST", "/api/backups/restore", { stem, confirm: true }),
   undoRestore: () => request<{ restored: string; safety: string }>("POST", "/api/backups/undo-restore"),
+  debateStart: (b: { text: string; horizon?: string; cause?: string }) => request<DebateStart>("POST", "/api/debates", b),
+  debates: () => request<DebateRow[]>("GET", "/api/debates"),
+  debate: (id: number) => request<DebateRow>("GET", `/api/debates/${id}`),
+  debateQueue: (id: number) => request<{ added: number }>("POST", `/api/debates/${id}/queue`),
+  debateBook: (id: number) => request<{ probability: number }>("POST", `/api/debates/${id}/book`),
+  debateBoard: () => request<{ model: string; scenarios: number; direction_hit_rate: number | null; avg_error: number | null; in_range_rate: number | null }[]>("GET", "/api/debates/leaderboard"),
+  actionQueue: (q: { source?: string; portfolio?: number } = {}) => request<ActionRow[]>("GET", `/api/actions?${new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))}`),
+  actionSet: (id: number, status: string, reason = "") => request<{ ok: boolean }>("POST", `/api/actions/${id}`, { status, reason }),
+  council: () => request<CouncilOverview>("GET", "/api/council"),
+  councilRun: (tickers?: string[]) => request<CouncilRunStatus>("POST", "/api/council/run", { tickers: tickers ?? null }),
+  councilSettings: (b: { min_weight?: boolean; weekday?: number }) => request<CouncilOverview>("PUT", "/api/council/settings", b),
+  councilStock: (t: string) => request<CouncilStock>("GET", `/api/council/stock/${encodeURIComponent(t)}`),
+  councilActions: (pid: number) => request<Record<string, { action: string; why: string; majority: string; consensus: string }>>("GET", `/api/council/actions?portfolio=${pid}`),
+  councilBoard: () => request<{ rows: { who: string; horizon: string; rating: string; n: number; hit_rate: number; avg_excess: number }[]; devils_advocate: { scored: number; right: number; rate: number | null } }>("GET", "/api/council/leaderboard"),
   aiStatus: () => request<AiStatus>("GET", "/api/ai/status"),
   aiQuota: (refresh = false) => request<AiQuota>("GET", `/api/ai/quota${refresh ? "?refresh=true" : ""}`),
   aiSave: (b: { free_only?: boolean; roster?: AiRole[]; reset_roster?: boolean }) => request<AiStatus>("PUT", "/api/ai/settings", b),

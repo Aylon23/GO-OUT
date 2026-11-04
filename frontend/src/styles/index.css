@@ -20,6 +20,8 @@
   .btn-primary { @apply btn bg-accent text-accent-text hover:opacity-90; }
   .btn-secondary { @apply btn border border-line-strong bg-surface text-text hover:bg-hover; }
   .btn-ghost { @apply btn px-2 text-muted hover:bg-hover hover:text-text; }
+  .chip { @apply press inline-flex h-7 items-center rounded-full border border-line px-3 text-xs text-muted hover:bg-hover hover:text-text; }
+  .chip-on { @apply border-accent text-text; }
   .link { @apply press text-text underline decoration-line-strong underline-offset-4 hover:decoration-text; }
   .field { @apply h-9 w-full rounded-sm border border-line-strong bg-surface px-3 text-base outline-none transition-colors duration-fast placeholder:text-faint focus:border-accent; }
   .label { @apply mb-1.5 block text-sm font-medium text-text; }

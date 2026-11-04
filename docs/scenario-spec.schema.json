@@ -13,7 +13,7 @@
     "title": { "type": "string", "minLength": 1, "maxLength": 140 },
     "title_he": { "type": "string", "maxLength": 140 },
     "created_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}" },
-    "author": { "enum": ["claude-chat", "scheduled-task", "manual"] },
+    "author": { "enum": ["claude-chat", "scheduled-task", "manual", "ai-debate"] },
     "question": { "type": "string", "description": "The user's original text." },
     "horizon": { "enum": ["1w", "2w", "1m", "3m", "6m", "12m"] },
     "summary": { "type": "string", "minLength": 1, "description": "2-3 sentence bottom line." },

@@ -8,6 +8,7 @@ import { Earnings } from "../components/Earnings";
 import { MemoPanel } from "../components/Memo";
 import { Impact, type RegimeChoice } from "../components/Impact";
 import { NewMoney } from "../components/NewMoney";
+import { AiDebate } from "../components/AiDebate";
 import { Researched } from "../components/Researched";
 import { EmptyState, ErrorLine, Segmented, Signed, Skel } from "../components/ui";
 import {
@@ -22,7 +23,7 @@ const EXAMPLES = ["מלחמה עם איראן", "מחיר הנפט יורד 20%"
 const HORIZONS = [{ value: "1", label: "1 week" }, { value: "2", label: "2 weeks" }, { value: "4.3", label: "1 month" }, { value: "13", label: "3 months" }];
 
 export default function Scenarios() {
-  const [mode, setMode] = useState<"scenario" | "researched" | "book" | "money" | "earnings" | "swap" | "custom">("scenario");
+  const [mode, setMode] = useState<"scenario" | "debate" | "researched" | "book" | "money" | "earnings" | "swap" | "custom">("scenario");
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-8 md:px-8 md:pt-12">
       <h1 className="text-xl font-semibold">What-if</h1>
@@ -31,14 +32,15 @@ export default function Scenarios() {
           : mode === "book" ? "Combine your scenarios into one view of the world, with your own probabilities."
           : mode === "money" ? "Rank where new money would hold up best across your saved scenarios."
           : mode === "researched" ? "Scenarios researched outside the app and imported, checked against real price history."
+          : mode === "debate" ? "Several AI models debate a scenario; the app checks it against real prices and computes the impact."
           : mode === "scenario" ? "Describe something that could happen. See what it would do to each portfolio, why, and what past events like it did."
           : "Replay your own money through a different choice. Same dates, same amounts, same engine as your real numbers."}
       </p>
       <div className="mt-6">
         <Segmented label="What-if tool" value={mode} onChange={setMode}
-          options={[{ value: "scenario", label: "Scenarios" }, { value: "researched", label: "Researched" }, { value: "book", label: "My book" }, { value: "money", label: "New money" }, { value: "earnings", label: "Yesterday's earnings" }, { value: "swap", label: "Swap a holding" }, { value: "custom", label: "Build a portfolio" }]} />
+          options={[{ value: "scenario", label: "Scenarios" }, { value: "debate", label: "AI debate" }, { value: "researched", label: "Researched" }, { value: "book", label: "My book" }, { value: "money", label: "New money" }, { value: "earnings", label: "Yesterday's earnings" }, { value: "swap", label: "Swap a holding" }, { value: "custom", label: "Build a portfolio" }]} />
       </div>
-      {mode === "scenario" ? <ScenarioLab /> : mode === "researched" ? <Researched /> : mode === "money" ? <NewMoney /> : mode === "book" ? <Book /> : mode === "earnings" ? <Earnings /> : mode === "swap" ? <SwapSim /> : <CustomSim />}
+      {mode === "scenario" ? <ScenarioLab /> : mode === "debate" ? <AiDebate /> : mode === "researched" ? <Researched /> : mode === "money" ? <NewMoney /> : mode === "book" ? <Book /> : mode === "earnings" ? <Earnings /> : mode === "swap" ? <SwapSim /> : <CustomSim />}
     </div>
   );
 }

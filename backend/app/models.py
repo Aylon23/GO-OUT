@@ -163,6 +163,8 @@ class Settings(SQLModel, table=True):
     aliases_backfilled: bool = False  # nicknames generated once for portfolios made before nicknames existed
     backup_dir_extra: str = ""  # optional second backup folder (e.g. a synced Google Drive folder)
     ai_free_only: bool = True  # OpenRouter: refuse any model id that is not a :free variant
+    council_min_weight: bool = False  # council: only holdings of at least 2% of some portfolio (plus the watchlist)
+    council_weekday: int = 6  # weekly council run: 0 = Monday … 6 = Sunday; -1 = off
     ai_roster: str = ""  # JSON list of {role, models: [primary, fallback, fallback]}; empty = defaults
 
     def benchmark_list(self) -> list[str]:
@@ -342,6 +344,8 @@ class AiJobStep(SQLModel, table=True):
     result: str = ""
     error: str = ""
     call_id: Optional[int] = None
+    claimed_by: str = ""  # host:pid:boot of the process sending it (so two processes never send the same step)
+    claimed_at: Optional[dt.datetime] = None
 
 
 class StockPackCache(SQLModel, table=True):
@@ -363,3 +367,114 @@ class AuditEntry(SQLModel, table=True):
     detail: str = "{}"  # JSON
     undo: str = ""  # JSON describing how to undo; empty = nothing to undo
     undone_at: Optional[dt.datetime] = None
+
+
+class ActionItem(SQLModel, table=True):
+    """A suggested decision for the owner. Only a suggestion: nothing is recorded until confirmed."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc), index=True)
+    source: str = ""  # council | debate | ...
+    source_ref: str = ""  # e.g. council run id, debate id
+    portfolio_id: Optional[int] = None
+    symbol: str = ""
+    what: str = ""
+    why: str = ""
+    suggested: str = ""
+    impact_amt: float = 0.0  # dollar size used for ranking
+    status: str = "open"  # open | done | snoozed | dismissed
+    snooze_until: Optional[dt.date] = None
+    reason: str = ""
+
+
+class Debate(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    text: str = ""
+    horizon: str = "1m"
+    cause: str = ""
+    inputs: str = "{}"  # JSON: conversions, parsed shocks
+    labels: str = "{}"  # JSON: label -> {role, models}
+    devil: str = ""  # label of the devil's advocate
+    pack: str = "{}"  # JSON context pack, identical in every request of the debate
+    phase: str = "round1"  # round1 | round2 | judge | done | failed
+    jobs: str = "{}"  # JSON: phase -> job id
+    spec_id: str = ""  # the merged spec (saved as a researched spec)
+    result: str = "{}"  # JSON: agreements, disputes, headline numbers, top hurt/helped, validation
+    note: str = ""
+
+
+class DebateSpec(SQLModel, table=True):
+    """Round-1 spec of each model and the judge spec, kept for scoring when the horizon ends."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    debate_id: int = Field(index=True)
+    kind: str = ""  # round1 | judge
+    label: str = ""
+    model: str = ""
+    spec: str = "{}"
+    start: dt.date = Field(default_factory=dt.date.today)
+    horizon: str = "1m"
+    scored_at: Optional[dt.date] = None
+    direction_hits: int = 0
+    direction_n: int = 0
+    abs_error: Optional[float] = None
+    in_range: int = 0
+    range_n: int = 0
+
+
+class CouncilRun(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    kind: str = "full"  # full (scheduled or on demand) | stock
+    status: str = "preparing"  # preparing | running | done | failed
+    universe: str = "[]"  # JSON tickers
+    labels: str = "{}"  # JSON: label -> {role, models}
+    devil: str = ""
+    batches: str = "[]"  # JSON: [{tickers, phase, jobs: {round1, round2, judge}}]
+    note: str = ""
+
+
+class CouncilRating(SQLModel, table=True):
+    """One model's rating of one stock in one round."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int = Field(index=True)
+    ticker: str = Field(index=True)
+    round: int = 1
+    label: str = ""
+    model: str = ""  # the model id requested first (the served one is in the call log)
+    rating: str = ""  # buy | hold | sell | insufficient
+    conviction: Optional[int] = None
+    thesis: str = ""
+    risk: str = ""
+    change_mind: str = ""
+    tags: str = "[]"
+    new_reason: str = ""
+    devils_argument: str = ""
+    rated_at: dt.date = Field(default_factory=dt.date.today)
+    anchor_price: Optional[float] = None
+    anchor_spy: Optional[float] = None
+
+
+class CouncilVerdict(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int = Field(index=True)
+    ticker: str = Field(index=True)
+    rated_at: dt.date = Field(default_factory=dt.date.today)
+    tally: str = "{}"  # JSON raw counts
+    weighted: str = ""  # JSON weighted tally (only with enough track record)
+    consensus: str = ""  # unanimous | strong | split | insufficient
+    majority: str = ""  # buy | hold | sell | "" (split or no votes)
+    quality: str = ""  # diverse | single reason | ""
+    crowded: bool = False
+    thesis: str = ""
+    dissent: str = ""
+    contradictions: str = "[]"
+    flipflops: str = "[]"  # JSON labels flagged
+    change: str = ""  # e.g. "Hold → Sell, 3/5"
+    conviction: Optional[float] = None
+    upside: Optional[float] = None
+    devils_argument: str = ""
+    anchor_price: Optional[float] = None
+    anchor_spy: Optional[float] = None

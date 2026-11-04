@@ -11,7 +11,8 @@ import { dateLong, money, monthYear, num, pct, pp } from "../lib/format";
 import { useData, useMediaQuery } from "../lib/hooks";
 import { useApp } from "../state";
 
-type Key = "ticker" | "quantity" | "avg_cost" | "price" | "value" | "weight" | "unrealized" | "unrealized_pct" | "today" | "range_return" | "contribution";
+type Key = "ticker" | "quantity" | "avg_cost" | "price" | "value" | "weight" | "unrealized" | "unrealized_pct" | "today" | "range_return" | "contribution" | "council";
+type CouncilMap = Record<string, { action: string; why: string; majority: string; consensus: string }>;
 const COLS: { key: Key; label: string; tip?: string; right?: boolean; w: string }[] = [
   { key: "ticker", label: "Symbol", w: "minmax(140px,1.6fr)" },
   { key: "quantity", label: "Qty", right: true, w: "64px" },
@@ -23,6 +24,7 @@ const COLS: { key: Key; label: string; tip?: string; right?: boolean; w: string 
   { key: "today", label: "Today", right: true, w: "88px", tip: "Today's move: last close vs the close before, times your shares." },
   { key: "range_return", label: "Return", right: true, w: "72px", tip: "This holding's return over the selected range, while you held it." },
   { key: "contribution", label: "Contrib.", right: true, w: "80px", tip: "How many percentage points this holding added to or took from your portfolio's return over the range." },
+  { key: "council", label: "Council", w: "150px", tip: "The AI council's rating turned into a suggestion for this portfolio (limit 15% per stock, est. tax 25% of the gain). AI opinion based on the data shown. Not advice." },
 ];
 
 /** A table from 768px. Columns drop as the screen narrows so it never scrolls sideways:
@@ -32,12 +34,16 @@ const useCols = () => {
   const lg = useMediaQuery("(min-width: 1024px)");
   if (xl) return COLS;
   if (lg) return COLS.filter((c) => c.key !== "contribution");
-  return COLS.filter((c) => !["contribution", "quantity", "avg_cost"].includes(c.key));
+  return COLS.filter((c) => !["contribution", "quantity", "avg_cost", "council"].includes(c.key));
 };
 
 export default function Holdings() {
-  const cols = useCols();
-  const { range } = useApp();
+  const { range, portfolioId } = useApp();
+  const council = useData(() => api.councilActions(portfolioId), `council-actions-${portfolioId}`);
+  const councilMap: CouncilMap = council.data ?? {};
+  const hasCouncil = Object.keys(councilMap).length > 0;
+  const allCols = useCols();
+  const cols = hasCouncil ? allCols : allCols.filter((c) => c.key !== "council");
   const key = JSON.stringify(range);
   const q = useData(() => api.holdings(range), `h-${key}`);
   const [sort, setSort] = useState<{ key: Key; dir: 1 | -1 }>({ key: "value", dir: -1 });
@@ -48,11 +54,12 @@ export default function Holdings() {
     if (!d) return [];
     const r = d.rows.filter((x) => showClosed || !x.closed);
     return [...r].sort((a, b) => {
-      const av = a[sort.key], bv = b[sort.key];
+      const get = (x: HoldingRow) => (sort.key === "council" ? councilMap[x.ticker]?.action ?? "" : x[sort.key]);
+      const av = get(a), bv = get(b);
       if (typeof av === "string" || typeof bv === "string") return String(av).localeCompare(String(bv)) * sort.dir;
       return (((av as number) ?? -Infinity) - ((bv as number) ?? -Infinity)) * sort.dir;
     });
-  }, [d, sort, showClosed]);
+  }, [d, sort, showClosed, councilMap]);
 
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-8 md:px-8 md:pt-12">
@@ -88,7 +95,7 @@ export default function Holdings() {
                   </th>
                 ))}
               </tr></thead>
-              <tbody>{rows.map((r) => <TableRow key={r.ticker} r={r} base={d.base} cols={cols} onOpen={() => setOpen(r)} />)}</tbody>
+              <tbody>{rows.map((r) => <TableRow key={r.ticker} r={r} base={d.base} cols={cols} council={councilMap[r.ticker]} onOpen={() => setOpen(r)} />)}</tbody>
             </table>
             <div className="md:hidden" role="list" aria-label="Holdings">
               {rows.map((r) => <Row key={r.ticker} r={r} base={d.base} onOpen={() => setOpen(r)} />)}
@@ -142,7 +149,8 @@ function Row({ r, base, onOpen }: { r: HoldingRow; base: string; onOpen: () => v
   );
 }
 
-function TableRow({ r, base, cols, onOpen }: { r: HoldingRow; base: string; cols: typeof COLS; onOpen: () => void }) {
+function TableRow({ r, base, cols, council, onOpen }: { r: HoldingRow; base: string; cols: typeof COLS; council?: CouncilMap[string]; onOpen: () => void }) {
+  const showInName = council && !cols.some((c) => c.key === "council");
   const missing = r.price_status === "missing";
   const cell = (k: Key): React.ReactNode => {
     switch (k) {
@@ -152,8 +160,10 @@ function TableRow({ r, base, cols, onOpen }: { r: HoldingRow; base: string; cols
           <span className="min-w-0">
             <span className="block font-mono font-semibold leading-5">{r.ticker}</span>
             <span className="block truncate text-xs text-muted">{r.name}</span>
+            {showInName && <span className="block truncate text-xs" title={council.why}>Council: {council.action}</span>}
           </span>
         </span>);
+      case "council": return council ? <span className="block text-left text-xs leading-4" title={council.why}>{council.action}</span> : <span className="text-faint">–</span>;
       case "quantity": return r.closed ? "–" : num(r.quantity, 4);
       case "avg_cost": return r.closed ? "–" : money(r.avg_cost, r.currency, { decimals: 2 });
       case "price": return r.price_status !== "ok"

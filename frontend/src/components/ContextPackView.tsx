@@ -120,7 +120,7 @@ function ptsText(v: number | null | undefined) {
   return <Signed value={v}>{v > 0 ? "+" : v < 0 ? "−" : ""}{Math.abs(v).toFixed(2)} pts</Signed>;
 }
 
-function StockView({ s }: { s: StockPack }) {
+export function StockView({ s }: { s: StockPack }) {
   const v = s.valuation;
   const row = (k: string, m: Multiple) => (
     <tr key={k}>

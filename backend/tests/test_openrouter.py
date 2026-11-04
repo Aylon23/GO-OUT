@@ -307,3 +307,26 @@ def test_no_key_sends_nothing(session, ai, monkeypatch):
     assert ai_jobs.run(session, job.id).status == "queued" and ai.posts == []
     st = TestClient(app).get("/api/ai/status").json()
     assert st["key_set"] is False and st["quota"]["known"] is False
+
+
+def test_two_processes_never_send_the_same_step(session, ai):
+    import os
+    import socket
+
+    finished = []
+    ai_jobs.on_done("race:", lambda s, j: finished.append(j.id))
+    job = ai_jobs.create(session, "race:1", "race", _steps(3))
+    other = session.exec(select(AiJobStep).where(AiJobStep.job_id == job.id, AiJobStep.idx == 1)).one()
+    other.status, other.claimed_by, other.claimed_at = "running", f"{socket.gethostname()}:{os.getppid()}:other", dt.datetime.now(dt.timezone.utc)
+    session.add(other)
+    session.commit()
+    j = ai_jobs.run(session, job.id)
+    assert _sent_questions(ai.posts) == ["Question 0", "Question 2"]  # step 1 belongs to the other (live) process
+    assert j.status == "running" and finished == []  # not finished while the other process still has a step
+    other.status, other.result = "done", OK  # the other process finishes its step...
+    session.add(other)
+    session.commit()
+    ai_jobs.run(session, job.id)
+    ai_jobs.run(session, job.id)
+    assert finished == [job.id]  # ...and the job finishes (and starts what follows) exactly once
+    assert len(ai.posts) == 2
