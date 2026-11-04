@@ -463,12 +463,14 @@ def finalize(session: Session, d: Debate, run_engine: bool = True) -> Debate:
     if not spec or not spec["branches"]:
         notes.append("The judge gave no usable spec; each model's view is kept as its own branch.")
         spec = fallback_merge(final_views, d.text, d.horizon, d.cause)
+    spec["title"] = d.text[:140]  # named after the question, so the book and lists tell debates apart
     spec, widened = enforce_spread(spec, final_views)
     disputes += minority_disputes(spec, final_views, disputes)
     report = specs.validate(session, spec)
     if report["errors"]:
         notes.append("The judge's spec failed validation (" + "; ".join(report["errors"][:3]) + "); each model's view is kept as its own branch.")
         spec = fallback_merge(final_views, d.text, d.horizon, d.cause)
+        spec["title"] = d.text[:140]
         spec, widened = enforce_spread(spec, final_views)
         report = specs.validate(session, spec)
     if report["errors"]:

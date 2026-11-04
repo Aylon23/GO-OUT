@@ -73,7 +73,7 @@ function Card({ c }: { c: EarningsCard }) {
         <div>
           <p className="text-sm">
             {c.today ? <>Reaction on {dateLong(c.today.reaction_date)}: <Signed value={c.today.reaction} className="font-semibold">{pct(c.today.reaction, 1)}</Signed></> : <span className="text-muted">No reaction-day price yet.</span>}
-            {c.bigger_than_share != null && <span className="text-muted"> · bigger than {pct(c.bigger_than_share, 0, false)} of the last {s?.n} reports</span>}
+            {c.bigger_than_share != null && (s?.n ?? 0) >= 4 && <span className="text-muted"> · {c.bigger_than_share <= 0 ? `the smallest move of the last ${s?.n} reports` : c.bigger_than_share >= 1 ? `the biggest move of the last ${s?.n} reports` : `bigger than ${pct(c.bigger_than_share, 0, false)} of the last ${s?.n} reports`}</span>}
           </p>
           <ReactionChart c={c} />
           {s && <p className="mt-1 text-xs text-muted">Last {s.n} reports: typical first-day move ±{pct(s.reaction_abs_avg, 1, false)}; after 20 sessions {pct(s.d20_min, 0)} to {pct(s.d20_max, 0)}.

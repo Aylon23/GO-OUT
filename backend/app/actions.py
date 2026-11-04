@@ -220,7 +220,8 @@ def saved_specs(session: Session) -> list[dict]:
         shocks = json.loads(s.shocks or "[]")
         if not shocks:
             continue
-        spec = impact.spec_from_shocks(session, shocks, s.horizon_weeks, s.name, s.text, json.loads(s.used_events or "[]"))
+        spec = impact.spec_from_shocks(session, shocks, s.horizon_weeks, s.name, s.text, json.loads(s.used_events or "[]"),
+                                       regime=None)  # by cause, like the scenario itself
         out.append({"id": f"saved-{s.id}", "title": s.name, "spec": spec, "kind": "typed"})
     return out
 

@@ -21,6 +21,7 @@ export function Book() {
   if (q.error && !state) return <ErrorLine message={q.error.message} onRetry={q.reload} />;
   if (!state || !entries) return <div className="mt-8 space-y-3"><Skel className="h-24 w-full" /><Skel className="h-40 w-full" /></div>;
   const total = entries.reduce((s, e) => s + e.probability, 0);
+  const over = total - 1 > 1e-9;  // exactly 100% is allowed (sums of decimals are never exact)
   const dirty = JSON.stringify(entries.map((e) => [e.scenario_id, e.probability])) !== JSON.stringify(state.entries.map((e) => [e.scenario_id, e.probability]));
   const title = (id: string) => avail.data?.find((s) => s.id === id)?.title ?? entries.find((e) => e.scenario_id === id)?.title ?? id;
   const save = async () => {
@@ -50,7 +51,7 @@ export function Book() {
             ))}
             <li className="flex items-center justify-between border-b border-line py-3 text-sm">
               <span className="text-muted">Nothing special</span>
-              <span className={clsx("num", total > 1 ? "text-loss" : "text-muted")}>{total > 1 ? `over by ${pct(total - 1, 0, false)}` : pct(1 - total, 0, false)}</span>
+              <span className={clsx("num", over ? "text-loss" : "text-muted")}>{over ? `over by ${pct(total - 1, 1, false)}` : pct(Math.max(0, 1 - total), 1, false)}</span>
             </li>
           </ul>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -60,7 +61,7 @@ export function Book() {
               </select>
             )}
             <input aria-label="Note for this version" className="field h-9 w-56 text-sm" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-            <button type="button" className="btn-primary" disabled={!dirty || total > 1 || busy} onClick={save}><Plus size={14} />{busy ? "Saving" : "Save book"}</button>
+            <button type="button" className="btn-primary" disabled={!dirty || over || busy} onClick={save}><Plus size={14} />{busy ? "Saving" : "Save book"}</button>
             {state.saved_at && <span className="text-xs text-faint">Saved {dateLong(state.saved_at.slice(0, 10))}</span>}
           </div>
           {err && <p className="error-text">{err}</p>}

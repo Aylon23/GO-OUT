@@ -76,7 +76,7 @@ def market_now(session: Session, f: Facts, he: bool) -> list[str]:
 
 
 def build(session: Session, spec: dict, report: dict | None = None, lang: str = "he", regime: str | None = None,
-          n: int = 6000) -> dict:
+          n: int = impact.N_DRAWS) -> dict:
     he = lang == "he"
     from . import services
 
@@ -85,7 +85,7 @@ def build(session: Session, spec: dict, report: dict | None = None, lang: str = 
     res = impact.run(session, spec, regime=regime, n=n)
     if res.get("empty"):
         return {"empty": True}
-    act = actions.actions(session, spec, regime=regime, n=min(n, 4000))
+    act = actions.actions(session, spec, regime=regime, n=n)  # the same run as the headline and the page
     fam = res["blended"][0]
     horizon = {"1w": ("שבוע", "1 week"), "2w": ("שבועיים", "2 weeks"), "1m": ("חודש", "1 month"), "3m": ("3 חודשים", "3 months"),
                "6m": ("חצי שנה", "6 months"), "12m": ("שנה", "12 months")}.get(spec.get("horizon", "1m"), ("", spec.get("horizon", "")))

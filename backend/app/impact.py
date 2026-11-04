@@ -16,6 +16,8 @@ Factors a branch doesn't name don't move.
 from __future__ import annotations
 
 import copy
+import json
+import collections
 import datetime as dt
 import math
 from collections import deque
@@ -215,9 +217,39 @@ def simulate(session: Session, spec: dict, syms: list[str], base: str, regime: s
 
 
 
+_runs: "collections.OrderedDict[str, dict]" = collections.OrderedDict()
+_RUNS_MAX = 12
+
+
 def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAWS, seed: int = SEED,
         edits: list[dict] | None = None, pids: list[int] | None = None, analogs: bool = True, noise: bool = True,
         keep: bool = False) -> dict:
+    """One seeded simulation per scenario run, shared by every view of it (headline, memo, per-person
+    options): the same spec, settings and data give back the same result, not a fresh sample."""
+    if keep:
+        return _run(session, spec, regime, n, seed, edits, pids, analogs, noise, keep)
+    from .market.cache import data_version
+
+    st = services.get_settings(session)
+    key = json.dumps([spec, regime, n, seed, edits or [], pids, noise, services._rev, data_version(), st.band_scale,
+                      st.base_currency, id(session.get_bind())], sort_keys=True, default=str)
+    hit = _runs.get(key)
+    if hit is None:
+        hit = _run(session, spec, regime, n, seed, edits, pids, False, noise, False)
+        _runs[key] = hit
+        while len(_runs) > _RUNS_MAX:
+            _runs.popitem(last=False)
+    else:
+        _runs.move_to_end(key)
+    out = copy.deepcopy(hit)
+    if analogs and not out.get("empty"):  # cheap, and they read the spec's own analogs
+        ports, family = books(session, pids)
+        out["analogs"] = _analogs(session, out["spec"], ports, family, out["branches"], out["warnings"])
+    return out
+
+
+def _run(session: Session, spec: dict, regime: str | None, n: int, seed: int, edits: list[dict] | None,
+         pids: list[int] | None, analogs: bool, noise: bool, keep: bool) -> dict:
     spec = apply_edits(spec, edits or [])
     ports, family = books(session, pids)
     if not family.holdings:
@@ -348,12 +380,43 @@ SYMBOL_FACTOR = {"SPY": "market", "TLT": "rates", "USO": "oil", "GLD": "gold"}
 EXTRA_FACTOR_SYMBOLS = ["IWM", "IWD", "IWF", "MTUM", "QUAL"]
 
 
+TAG_CAUSE = [  # an event tag -> the cause it signals, strongest first
+    ("war", "geopolitical"), ("israel", "geopolitical"), ("iran", "geopolitical"),
+    ("oil", "supply"), ("oil_down", "supply"),
+    ("crash", "demand"), ("recession", "demand"), ("pandemic", "demand"), ("banks", "demand"), ("tech_down", "demand"),
+    ("ai", "demand"), ("china", "demand"),
+    ("rates_up", "policy"), ("rates_down", "policy"), ("inflation", "policy"), ("tariffs", "policy"),
+    ("tariffs_relief", "policy"), ("election", "policy"),
+]
+
+
+def local_cause(text: str = "", used_events: list[str] | None = None) -> str:
+    """The cause of a typed scenario: from the past events it is sized on, else from its words."""
+    from .debate_input import cause_of
+    from .scenario_library import EVENT_BY_ID
+
+    tags = [t for e in used_events or [] for t in (EVENT_BY_ID.get(e) or {}).get("tags", [])]
+    if tags:
+        score = {}
+        for rank, (tag, cause) in enumerate(TAG_CAUSE):
+            if tag in tags:
+                score[cause] = score.get(cause, 0) + tags.count(tag) * (len(TAG_CAUSE) - rank)
+        if score:
+            return max(score, key=score.get)
+    return cause_of(text or "") or "other"
+
+
 def spec_from_shocks(session: Session, shocks: list[dict], horizon_weeks: float = 1.0, title: str = "", question: str = "",
-                     used_events: list[str] | None = None, regime: str = "normal") -> dict:
+                     used_events: list[str] | None = None, regime: str | None = "normal", cause: str | None = None) -> dict:
     """A one-branch spec from local-rule shocks. Factors not shocked take their expected move given the
     shocks (historical relationship, normal or sell-off weeks), with a one-standard-deviation range;
-    shocked moves get a range of half their size either way."""
+    shocked moves get a range of half their size either way. regime None = by cause: the branch's cause
+    (from the events it is sized on, or its words) picks normal or sell-off correlations."""
     from .scenario_library import EVENT_BY_ID
+
+    cause = cause or local_cause(question or title, used_events)
+    if regime not in ("normal", "selloff"):
+        regime = "selloff" if cause in CRISIS_CAUSES else "normal"
 
     as_of = dt.date.today()
     F = factors.factor_returns(session, as_of)
@@ -413,7 +476,7 @@ def spec_from_shocks(session: Session, shocks: list[dict], horizon_weeks: float 
     return {
         "spec_version": 1, "kind": "scenario", "id": "local", "title": title or "Scenario", "created_at": as_of.isoformat(),
         "author": "manual", "question": question, "horizon": horizon, "summary": "", "confidence": "low",
-        "branches": [{"name": "Scenario", "probability": 1.0, "cause": "other" if regime != "selloff" else "demand",
+        "branches": [{"name": (title or question or "Scenario")[:120], "probability": 1.0, "cause": cause,
                       "narrative": "", "factor_moves": moves, "sector_overrides": sectors, "holding_overrides": holding_over,
                       "analogs": analogs, "transmission": [{"from": "trigger", "to": SYMBOL_FACTOR.get(s["symbol"].upper(), "market"),
                                                             "direction": "+" if s["move"] >= 0 else "-"} for s in shocks

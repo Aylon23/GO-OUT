@@ -152,7 +152,7 @@ function ScenarioLab() {
       )}
       {!parsed && shocks.length === 0 && (
         <div className="mt-10 max-w-[66ch] text-sm text-muted">
-          <p>How it works: your sentence becomes a few moves in market factors (oil, rates, the dollar, sectors) or in one company. When you don't give a size, it uses a strong but ordinary week from history, or what past events of the same kind did. Everything else moves the way it has moved alongside those factors over the last ten years.</p>
+          <p>How it works: your sentence becomes a few moves in market factors (oil, rates, gold, sectors) or in one company. When you don't give a size, it uses a strong but ordinary week from history, or what past events of the same kind did. Everything else moves the way it has moved alongside those factors over the last ten years.</p>
           <p className="mt-2">You can edit every move before trusting the result.</p>
         </div>
       )}
@@ -186,7 +186,6 @@ function ReadAs({ parsed }: { parsed: ScenarioParse }) {
         {parsed.themes.length > 0 && <span>· {parsed.themes.map((t) => t.label).join(", ")}</span>}
         {parsed.label && !parsed.themes.length && parsed.parser === "ai" && <span dir="auto">· {parsed.label}</span>}
       </p>
-      {parsed.parser === "rules" && <p className="mt-1 text-xs text-faint">Free-text research coming soon. Local rules understand simple moves like “oil falls 20%”.</p>}
       {parsed.notes.map((n) => <p key={n} className="mt-1 text-xs text-muted">{n}</p>)}
     </div>
   );
@@ -214,14 +213,17 @@ function ShockEditor({ shocks, setShocks, lib, run, horizon, setHorizon }: {
     return g;
   }, [lib]);
   const add = (s: Shock) => { setShocks((xs) => xs.some((x) => x.symbol === s.symbol) ? xs : [...xs, withKey(s)]); setAdding(false); };
-  const horizonValue = HORIZONS.reduce((best, h) => Math.abs(Number(h.value) - horizon) < Math.abs(Number(best.value) - horizon) ? h : best, HORIZONS[0]).value;
+  // the select always shows the horizon actually used (past events can give one that isn't a preset)
+  const exact = HORIZONS.find((h) => Math.abs(Number(h.value) - horizon) < 1e-9);
+  const horizonOptions = exact ? HORIZONS : [...HORIZONS, { value: String(horizon), label: `${Math.round(horizon * 10) / 10} weeks` }].sort((a, b) => Number(a.value) - Number(b.value));
+  const horizonValue = exact ? exact.value : String(horizon);
   return (
     <div className="mt-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h2 className="text-base font-semibold">The moves</h2>
         <label className="flex items-center gap-2 text-sm text-muted">Over
           <select className="field h-8 w-auto py-0 text-sm" value={horizonValue} onChange={(e) => setHorizon(Number(e.target.value))}>
-            {HORIZONS.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
+            {horizonOptions.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
           </select>
         </label>
       </div>

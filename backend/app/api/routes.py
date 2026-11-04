@@ -891,8 +891,8 @@ def impact_shocks(body: ImpactShocksIn, session: Session = Depends(get_session))
     if not body.shocks:
         _bad("Add at least one move.")
     spec = impact.spec_from_shocks(session, [s.model_dump() for s in body.shocks], body.horizon_weeks, body.text[:80], body.text,
-                                   body.used_events, body.regime or "normal")
-    out = impact.run(session, spec, regime=body.regime or "normal", edits=[e.model_dump() for e in body.edits], seed=body.seed)
+                                   body.used_events, body.regime)
+    out = impact.run(session, spec, regime=body.regime, edits=[e.model_dump() for e in body.edits], seed=body.seed)
     return services._clean(out)
 
 
@@ -919,7 +919,7 @@ def _spec_from(body, session):
     if not body.shocks:
         _bad("Give a scenario: a researched one or at least one move.")
     return impact.spec_from_shocks(session, [s.model_dump() for s in body.shocks], body.horizon_weeks, body.text[:80], body.text,
-                                   body.used_events, body.regime or "normal")
+                                   body.used_events, body.regime)
 
 
 @router.post("/actions")
