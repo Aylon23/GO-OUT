@@ -71,7 +71,7 @@ class InvalidAnswer(AiError):
 def _read_env_file(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     try:
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in path.read_text(encoding="utf-8-sig").splitlines():  # utf-8-sig: Notepad may add a byte-order mark
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue

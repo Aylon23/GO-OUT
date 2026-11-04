@@ -92,6 +92,11 @@ def run_council(s: Session, top: int) -> None:
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):  # Hebrew in the Windows console
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("debate")
