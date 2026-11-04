@@ -314,12 +314,46 @@ def status(session: Session, now: dt.datetime | None = None) -> dict:
     }
 
 
+def last(session: Session, now: dt.datetime | None = None) -> dict:
+    """Last backup time and the 'no backup for 3 days' flag (used by the Home queue)."""
+    st = status(session, now)
+    return {"last_backup": st["last_backup"], "days_since": st["days_since"], "no_backup_3_days": st["warn"]}
+
+
+def sync_queue_flag(session: Session, now: dt.datetime | None = None) -> bool:
+    """Keep one open Home-queue item while backups are 3+ days old; close it once a backup succeeds."""
+    from sqlmodel import select
+
+    from . import action_queue
+    from .models import ActionItem
+
+    info = last(session, now)
+    open_items = session.exec(select(ActionItem).where(ActionItem.source == "backup", ActionItem.status == "open")).all()
+    if info["no_backup_3_days"]:
+        if not open_items:
+            when = f"for {int(info['days_since'])} days" if info["days_since"] is not None else "yet"
+            action_queue.add(session, "backup", "", f"No backup {when}",
+                             "If this computer fails, changes since then are lost.", "Back up now (Settings → Data)",
+                             impact_amt=0.0)
+        return True
+    for i in open_items:
+        i.status, i.reason = "done", "A backup was made."
+        session.add(i)
+    session.commit()
+    return False
+
+
 def ensure_daily(session: Session, now: dt.datetime | None = None) -> dict | None:
-    """Make today's backup if there isn't one yet."""
+    """Make today's backup if there isn't one yet, then update the Home-queue flag."""
     now = now or dt.datetime.now()
-    if any(i.day == now.date() and not i.safety for i in scan(primary_dir())):
-        return None
-    return make(session, "daily", now)
+    made = None
+    if not any(i.day == now.date() and not i.safety for i in scan(primary_dir())):
+        try:
+            made = make(session, "daily", now)
+        except Exception as exc:  # the flag below still tells the owner
+            log.warning("Daily backup failed: %s", exc)
+    sync_queue_flag(session, now)
+    return made
 
 
 def start_scheduler(interval: float = 3600.0) -> None:

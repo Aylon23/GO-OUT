@@ -195,3 +195,27 @@ def test_second_folder_gets_a_copy(live, tmp_path):
     assert (extra / f"{m['stem']}.db").exists() and (extra / f"{m['stem']}.xlsx").exists()
     st = backup.status(live, now=dt.datetime(2026, 11, 2, 8, 0, 0))
     assert st["backups"][0]["in_extra"] and st["locations"][1]["ok"]
+
+
+def test_last_backup_endpoint_and_home_queue_flag(live, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import action_queue
+    from app.main import app
+
+    c = TestClient(app)
+    out = c.get("/api/backups/last").json()
+    assert out == {"last_backup": None, "days_since": None, "no_backup_3_days": True}
+    t0 = dt.datetime(2026, 11, 1, 8, 0, 0)
+    assert backup.sync_queue_flag(live, t0) is True
+    items = action_queue.listing(live, source="backup")
+    assert len(items) == 1 and items[0]["what"] == "No backup yet"
+    backup.sync_queue_flag(live, t0)
+    assert len(action_queue.listing(live, source="backup")) == 1  # one item, not one per check
+    backup.ensure_daily(live, now=t0)  # a backup is made: the item closes
+    assert action_queue.listing(live, source="backup") == []
+    later = t0 + dt.timedelta(days=3, hours=1)
+    assert backup.sync_queue_flag(live, later) is True
+    assert action_queue.listing(live, source="backup")[0]["what"] == "No backup for 3 days"
+    info = backup.last(live, later)
+    assert info["no_backup_3_days"] and info["days_since"] >= 3 and info["last_backup"].startswith("2026-11-01")

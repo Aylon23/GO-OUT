@@ -1358,6 +1358,14 @@ class RestoreIn(BaseModel):
     confirm: bool = False
 
 
+@router.get("/backups/last")
+def backups_last(session: Session = Depends(get_session)):
+    """Last backup time and the 'no backup for 3 days' flag."""
+    from .. import backup
+
+    return backup.last(session)
+
+
 @router.get("/backups")
 def backups_status(session: Session = Depends(get_session)):
     from .. import backup
@@ -1373,6 +1381,7 @@ def backups_make(session: Session = Depends(get_session)):
         r = backup.make(session, "manual")
     except backup.BackupError as exc:
         _bad(str(exc))
+    backup.sync_queue_flag(session)
     return {**backup.status(session), "made": r}
 
 
