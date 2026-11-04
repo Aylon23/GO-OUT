@@ -17,6 +17,7 @@ import copy
 import datetime as dt
 import json
 import random
+import threading
 import uuid
 
 from sqlmodel import Session, select
@@ -310,9 +311,10 @@ def _judge_models(session: Session) -> list[str]:
     return (j or openrouter.roster(session)[0])["models"]
 
 
-def start(session: Session, text: str, horizon: str, cause: str, inputs: dict) -> Debate:
+def start(session: Session, text: str, horizon: str, cause: str, inputs: dict, background: bool = True) -> Debate:
+    """Create the debate and return at once; the data is prepared (and round 1 queued) in the background."""
     n_before = len(session.exec(select(Debate.id)).all())
-    d = Debate(text=text, horizon=horizon, cause=cause, inputs=json.dumps(inputs, ensure_ascii=False))
+    d = Debate(text=text, horizon=horizon, cause=cause, inputs=json.dumps(inputs, ensure_ascii=False), phase="preparing")
     session.add(d)
     session.commit()
     session.refresh(d)
@@ -320,18 +322,43 @@ def start(session: Session, text: str, horizon: str, cause: str, inputs: dict) -
     analysts = sorted(labels, key=lambda lbl: labels[lbl]["role"])
     d.labels = json.dumps(labels)
     d.devil = analysts[n_before % len(analysts)]  # rotates by role every debate
-    d.pack = json.dumps(context_pack.build(session, []), ensure_ascii=False)
     session.add(d)
     session.commit()
+    if background:
+        did = d.id
+
+        def prep():
+            from .db import get_engine
+
+            with Session(get_engine()) as s:
+                _prepare(s, s.get(Debate, did))
+
+        threading.Thread(target=prep, name=f"debate-{did}", daemon=True).start()
+    else:
+        _prepare(session, d)
+    return d
+
+
+def _prepare(session: Session, d: Debate) -> None:
+    """Build the context pack (the first time this fetches a lot of price history) and queue round 1."""
+    try:
+        d.pack = json.dumps(context_pack.build(session, []), ensure_ascii=False)
+    except Exception as exc:
+        d.phase, d.note = "failed", f"Couldn't prepare the data: {exc}"[:500]
+        session.add(d)
+        session.commit()
+        return
+    session.add(d)
+    session.commit()
+    labels = json.loads(d.labels)
     msgs = [_pack_message(json.loads(d.pack)),
             {"role": "user", "content": _question_message(d) + "\n\nWrite your own Scenario Spec for this question. "
              "Work independently: you will not see other analysts until the next round."}]
-    job = ai_jobs.create(session, f"debate:{d.id}:round1", f"Debate: {text[:60]} (round 1)", [
+    job = ai_jobs.create(session, f"debate:{d.id}:round1", f"Debate: {d.text[:60]} (round 1)", [
         {"key": lbl, "role": labels[lbl]["role"], "models": labels[lbl]["models"],
          "messages": [{"role": "system", "content": RULES}, *msgs], "schema": model_spec_schema(), "schema_name": "scenario_spec"}
         for lbl in sorted(labels)])
     _set_job(session, d, "round1", job.id)
-    return d
 
 
 def _set_job(session: Session, d: Debate, phase: str, job_id: int) -> None:

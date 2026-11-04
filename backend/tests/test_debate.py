@@ -83,7 +83,7 @@ def test_input_reads_horizon_cause_and_converts_dollars(session, ai):
     r = debate_input.read(session, "war with Iran over the next 3 months")
     assert r["horizon"] == "3m" and r["needs"] == {}
     c = TestClient(app)
-    out = c.post("/api/debates", json={"text": "oil falls $10 per barrel"}).json()
+    out = c.post("/api/debates?wait=true", json={"text": "oil falls $10 per barrel"}).json()
     assert out["needs"] and "id" not in out and ai.posts == []
 
 
@@ -93,7 +93,7 @@ def test_debate_end_to_end(session, ai):
     c = _family(session)
     pv = wire(ai, Answers([spec_like(4, -1), spec_like(8, -3), spec_like(-2, 1), spec_like(6, -2)]))
     pv["v"] = _private_values(session)
-    r = c.post("/api/debates", json={"text": "War with Iran", "horizon": "1m", "cause": "geopolitical"}).json()
+    r = c.post("/api/debates?wait=true", json={"text": "War with Iran", "horizon": "1m", "cause": "geopolitical"}).json()
     did = r["id"]
     ai_jobs.drain(session)
     out = c.get(f"/api/debates/{did}").json()
@@ -114,7 +114,7 @@ def test_debate_end_to_end(session, ai):
     assert c.post(f"/api/debates/{did}/queue").json()["added"] > 0
     assert c.post(f"/api/debates/{did}/book").json()["probability"] > 0
     # the devil's advocate rotates
-    r2 = c.post("/api/debates", json={"text": "Oil falls", "horizon": "1m", "cause": "supply"}).json()
+    r2 = c.post("/api/debates?wait=true", json={"text": "Oil falls", "horizon": "1m", "cause": "supply"}).json()
     assert session.get(Debate, r2["id"]).devil != session.get(Debate, did).devil
 
 
@@ -130,7 +130,7 @@ def test_judge_output_always_passes_the_schema(session, ai):
     ]
     for g in garbage:
         wire(ai, Answers([spec_like(4, -1), spec_like(6, -2)], judge=g))
-        r = c.post("/api/debates", json={"text": "Oil shock", "horizon": "1m", "cause": "supply"}).json()
+        r = c.post("/api/debates?wait=true", json={"text": "Oil shock", "horizon": "1m", "cause": "supply"}).json()
         ai_jobs.drain(session)
         out = c.get(f"/api/debates/{r['id']}").json()
         assert out["phase"] == "done", out["note"]

@@ -38,7 +38,8 @@ def run_debate(s: Session, text: str, horizon: str | None, cause: str | None) ->
         sys.exit(2)
     for c in inp["dollar_moves"]:
         print("Read:", c.get("text") or c)
-    d = debate.start(s, inp["text"], inp["horizon"], inp["cause"], inp)
+    print("Preparing the data (the first time this fetches a lot of price history)...")
+    d = debate.start(s, inp["text"], inp["horizon"], inp["cause"], inp, background=False)
     print(f"Debate #{d.id} started ({quota(s)}).")
     ai_jobs.drain(s)
     s.refresh(d)

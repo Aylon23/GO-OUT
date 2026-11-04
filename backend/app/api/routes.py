@@ -1427,7 +1427,7 @@ class DebateIn(BaseModel):
 
 
 @router.post("/debates")
-def debate_start(body: DebateIn, session: Session = Depends(get_session)):
+def debate_start(body: DebateIn, wait: bool = False, session: Session = Depends(get_session)):
     """Reads the question; if the horizon or cause is missing, returns the chips to ask with (nothing is sent)."""
     from .. import debate, debate_input
 
@@ -1436,7 +1436,7 @@ def debate_start(body: DebateIn, session: Session = Depends(get_session)):
     inp = debate_input.read(session, body.text, body.horizon, body.cause)
     if inp["needs"]:
         return {"needs": inp["needs"], "read": inp}
-    d = debate.start(session, inp["text"], inp["horizon"], inp["cause"], inp)
+    d = debate.start(session, inp["text"], inp["horizon"], inp["cause"], inp, background=not wait)
     return debate.payload(session, d)
 
 
