@@ -16,11 +16,11 @@ type CouncilMap = Record<string, { action: string; why: string; majority: string
 const COLS: { key: Key; label: string; tip?: string; right?: boolean; w: string }[] = [
   { key: "ticker", label: "Symbol", w: "minmax(140px,1.6fr)" },
   { key: "quantity", label: "Qty", right: true, w: "64px" },
-  { key: "avg_cost", label: "Avg cost", right: true, w: "88px", tip: "Average price paid per share you still hold, after splits." },
-  { key: "price", label: "Price", right: true, w: "88px" },
+  { key: "avg_cost", label: "Avg cost (local)", right: true, w: "96px", tip: "Average price paid per share you still hold, after splits, in the stock's own currency." },
+  { key: "price", label: "Price (local)", right: true, w: "96px", tip: "Last price in the stock's own currency." },
   { key: "value", label: "Value", right: true, w: "100px" },
   { key: "weight", label: "Weight", right: true, w: "84px" },
-  { key: "unrealized", label: "Unrealized", right: true, w: "112px", tip: "(Price now minus average cost) x shares. Shown in the stock's own currency for positions imported without dates." },
+  { key: "unrealized", label: "Unrealized", right: true, w: "112px", tip: "(Price now minus average cost) x shares, converted to the display currency at today's rate." },
   { key: "today", label: "Today", right: true, w: "88px", tip: "Today's move: last close vs the close before, times your shares." },
   { key: "range_return", label: "Return", right: true, w: "72px", tip: "This holding's return over the selected range, while you held it." },
   { key: "contribution", label: "Contrib.", right: true, w: "80px", tip: "How many percentage points this holding added to or took from your portfolio's return over the range." },
@@ -144,7 +144,7 @@ function Row({ r, base, onOpen }: { r: HoldingRow; base: string; onOpen: () => v
       <Kv k="Return" v={<Signed value={r.range_return}>{pct(r.range_return, 1)}</Signed>} />
       <Kv k="Contribution" v={<Signed value={r.contribution}>{pp(r.contribution, 2)}</Signed>} />
       <Kv k="Quantity" v={num(r.quantity, 4)} />
-      <Kv k="Price, avg cost" v={r.price_status !== "ok" ? <span className="text-faint">No price</span> : `${money(r.price, r.currency, { decimals: 2 })}, ${money(r.avg_cost, r.currency, { decimals: 2 })}`} />
+      <Kv k="Price, avg cost (local)" v={r.price_status !== "ok" ? <span className="text-faint">No price</span> : `${money(r.price, r.currency, { decimals: 2 })}, ${money(r.avg_cost, r.currency, { decimals: 2 })}`} />
     </div>
   );
 }
@@ -202,7 +202,8 @@ function TableRow({ r, base, cols, council, onOpen }: { r: HoldingRow; base: str
 }
 
 /** Opening positions (imported, no purchase dates) show gain in the security's own currency. */
-const gainOf = (r: HoldingRow, base: string) => (r.opening && r.unrealized_native != null ? { v: r.unrealized_native, c: r.currency } : { v: r.unrealized, c: base });
+// one display currency per screen: only Price and Avg cost stay in the stock's own currency
+const gainOf = (r: HoldingRow, base: string) => ({ v: r.unrealized, c: base });
 
 const Kv = ({ k, v }: { k: string; v: React.ReactNode }) => (
   <div className="flex justify-between gap-2 text-xs"><span className="text-faint">{k}</span><span className="num text-text">{v}</span></div>
