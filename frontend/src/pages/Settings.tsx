@@ -88,9 +88,9 @@ export default function Settings() {
 
 function Item({ title, help, children }: { title: string; help: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-3 border-t border-line py-6 md:grid-cols-[200px_1fr] md:gap-8">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 border-t border-line py-6 md:grid-cols-[200px_minmax(0,1fr)] md:gap-8">
       <dt><div className="text-sm font-medium">{title}</div><p className="mt-1 text-xs text-muted">{help}</p></dt>
-      <dd>{children}</dd>
+      <dd className="min-w-0">{children}</dd>
     </div>
   );
 }
