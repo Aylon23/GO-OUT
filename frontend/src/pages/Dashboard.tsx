@@ -37,6 +37,18 @@ function Headline({ p }: { p: Portfolio }) {
     if (Math.abs(diff) < 0.05) return <span key={b.symbol}>{i === 0 ? "Level" : "level"} with {b.symbol}</span>;
     return <span key={b.symbol}><b className="font-semibold">{Math.abs(diff).toFixed(1)} points</b> {diff > 0 ? "ahead of" : "behind"} {b.symbol}</span>;
   });
+  if (!s.compare_ok) {
+    const b = p.base;
+    return (
+      <>
+        <h1 className="max-w-[30ch] text-2xl font-medium md:text-3xl">
+          Worth <b className="font-semibold">{money(s.value, b, { decimals: 0 })}</b>
+          {s.has_cost_basis && <>, <Signed value={s.cost_gain} className="font-semibold">{money(s.cost_gain, b, { signed: true, decimals: 0 })}</Signed> vs average cost</>}.
+        </h1>
+        <p className="mt-2 text-sm text-muted">Too early to compare with SPY ({s.tracking_days} of {s.min_compare_days} trading days).</p>
+      </>
+    );
+  }
   return (
     <h1 className="max-w-[30ch] text-2xl font-medium md:text-3xl">
       {up ? "Up" : "Down"} <b className="font-semibold">{Math.abs(s.twr * 100).toFixed(1)}%</b> {rangePhrase(short ? "CUSTOM" : p.range.code, start)}.
@@ -80,6 +92,9 @@ function ShadowRows({ p }: { p: Portfolio }) {
           <span className="text-xs text-faint">How this works</span>
         </InfoTip>
       </div>
+      {!p.summary.compare_ok ? (
+        <p className="mt-1 text-sm text-muted">Too early to compare with SPY ({p.summary.tracking_days} of {p.summary.min_compare_days} trading days). This fills in automatically once there are {p.summary.min_compare_days}.</p>
+      ) : <>
       <p className="mt-1 text-sm text-muted">
         {noDiff ? <>No difference yet. Real tracking started on {dateLong(p.range.tracking_since)}.</>
           : best && (beatAll
@@ -104,6 +119,7 @@ function ShadowRows({ p }: { p: Portfolio }) {
         ))}
         <div className="border-t border-line" />
       </dl>
+      </>}
     </section>
   );
 }

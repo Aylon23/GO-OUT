@@ -98,7 +98,9 @@ function chartSeries(d: Overview): SeriesDef[] {
 }
 
 function Headline({ d, code }: { d: Overview; code: string }) {
-  const live = d.rows.filter((r) => !r.empty && r.return != null && r.bench?.SPY != null);
+  const tracked = d.rows.filter((r) => !r.empty && r.return != null && r.bench?.SPY != null);
+  const live = tracked.filter((r) => r.compare_ok !== false);
+  const maxDays = Math.max(0, ...tracked.map((r) => r.trading_days ?? 0));
   const beat = live.filter((r) => (r.return as number) > (r.bench!.SPY as number)).length;
   const n = d.rows.length;
   const gain = d.rows.reduce((s, r) => s + (r.cost_gain ?? 0), 0);
@@ -110,6 +112,9 @@ function Headline({ d, code }: { d: Overview; code: string }) {
         {n} portfolio{n === 1 ? "" : "s"}, <b className="font-semibold">{compactMoney(d.total_value ?? 0, d.base)}</b> in total.
         {live.length > 0 && (
           <span className="text-muted"> {beat === live.length ? (live.length === 1 ? "It is" : "All are") : beat === 0 ? "None are" : `${beat} of ${live.length} are`} ahead of the S&P 500 {allShort && d.since ? `since ${dateLong(d.since)}` : rangePhrase(code, d.since ?? "")}.</span>
+        )}
+        {live.length === 0 && tracked.length > 0 && (
+          <span className="text-muted"> Too early to compare with the S&P 500 ({maxDays} of {d.min_trading_days} trading days).</span>
         )}
       </h1>
       <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">

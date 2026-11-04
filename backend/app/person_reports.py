@@ -117,7 +117,11 @@ def person_data(session: Session, pid: int, start: dt.date, end: dt.date, top_sc
     driver = None
     if lead is not None:
         driver = {"symbol": lead["symbol"], "contribution": lead["contribution"], "sp500": bench.get("SPY")}
-    out = {"id": pid, "name": p.name, "start": start.isoformat(), "end": end.isoformat(), "base": base, "to_amt": to_amt,
+    if not s.get("compare_ok", True):  # too early: no comparison with the indices anywhere in the report
+        bench = {}
+        if driver:
+            driver["sp500"] = None
+    out = {"compare_ok": s.get("compare_ok", True), "tracking_days": s.get("tracking_days"), "id": pid, "name": p.name, "start": start.isoformat(), "end": end.isoformat(), "base": base, "to_amt": to_amt,
            "value_amt": s["value"] * to_amt, "change_amt": change * to_amt if change is not None else None, "return": twr,
            "sp500": bench.get("SPY"), "nasdaq": bench.get("QQQ"), "top": top, "bottom": bottom,
            "dividends_amt": divs + auto, "trades": trades, "recommendations": [{"ticker": r["ticker"], "action": r["action"], "return": r["return"],
@@ -152,10 +156,10 @@ def top_scenario_effects(session: Session) -> dict | None:
 
 # ------------------------------------------------------------------ text
 
-HE = {"weekly": "דוח שבועי", "monthly": "דוח חודשי", "value": "שווי התיק", "change": "שינוי בתקופה", "vs": "מול",
+HE = {"early": "מוקדם להשוות למדד", "weekly": "דוח שבועי", "monthly": "דוח חודשי", "value": "שווי התיק", "change": "שינוי בתקופה", "vs": "מול",
       "best": "הכי טובות", "worst": "הכי חלשות", "divs": "דיבידנדים שהתקבלו", "trades": "פעולות בתקופה", "recs": "המלצות פתוחות",
       "if": "אם", "none": "אין", "family": "סיכום משפחתי", "advice": "זה לא ייעוץ השקעות", "people": "כל התיקים"}
-EN = {"weekly": "Weekly report", "monthly": "Monthly report", "value": "Portfolio value", "change": "Change in the period", "vs": "vs",
+EN = {"early": "Too early to compare with the S&P 500", "weekly": "Weekly report", "monthly": "Monthly report", "value": "Portfolio value", "change": "Change in the period", "vs": "vs",
       "best": "Best", "worst": "Weakest", "divs": "Dividends received", "trades": "Trades in the period", "recs": "Open recommendations",
       "if": "If", "none": "None", "family": "Family summary", "advice": "Not investment advice", "people": "All portfolios"}
 
@@ -209,7 +213,10 @@ def card(d: dict, kind: str, lang: str) -> bytes:
     c.text(T["value"], 26, render.MUTED, gap=0)
     c.text(_amt(d["value_amt"], CCY).lstrip("+"), 64, bold=True, gap=0)
     c.text(f"{_amt(d['change_amt'], CCY)}  ({_pct(d['return'])})", 40, render.sign_color(d["change_amt"]), bold=True, gap=10)
-    c.pair(f"{T['vs']} S&P 500", _pct(d["sp500"]), 28, render.MUTED, render.sign_color(d["sp500"]))
+    if d.get("compare_ok", True):
+        c.pair(f"{T['vs']} S&P 500", _pct(d["sp500"]), 28, render.MUTED, render.sign_color(d["sp500"]))
+    else:
+        c.text(f"{T['early']} ({d.get('tracking_days')}/20)", 24, render.MUTED, gap=8)
     c.pair(f"{T['vs']} Nasdaq 100", _pct(d["nasdaq"]), 28, render.MUTED, render.sign_color(d["nasdaq"]))
     c.y += 6
     c.rule()
@@ -259,7 +266,8 @@ def pdf(d: dict, kind: str, lang: str) -> bytes:
     doc.text(period_label(kind, d["start"], d["end"], he), 24, render.MUTED, gap=20)
     doc.text(f"{T['value']}: {_amt(d['value_amt'], CCY).lstrip('+')}", 30, bold=True)
     doc.text(f"{T['change']}: {_amt(d['change_amt'], CCY)} ({_pct(d['return'])})", 28, render.sign_color(d["change_amt"]))
-    doc.text(f"{T['vs']} S&P 500: {_pct(d['sp500'])} · {T['vs']} Nasdaq 100: {_pct(d['nasdaq'])}", 26, render.MUTED, gap=18)
+    doc.text(f"{T['vs']} S&P 500: {_pct(d['sp500'])} · {T['vs']} Nasdaq 100: {_pct(d['nasdaq'])}" if d.get("compare_ok", True)
+             else f"{T['early']} ({d.get('tracking_days')}/20)", 26, render.MUTED, gap=18)
     line = driver_line(d, he)
     if line:
         doc.text(line, 26, gap=18)
@@ -305,7 +313,8 @@ def family_card(people: list[dict], insights: list[dict], kind: str, start: str,
     c.text(_amt(ch, CCY), 40, render.sign_color(ch), bold=True, gap=14)
     c.rule()
     for p in sorted(people, key=lambda x: -(x["return"] or 0)):
-        c.pair(p["name"], f"{_pct(p['return'])}   S&P {_pct(p['sp500'])}", 30, render.TEXT, render.sign_color(p["return"]))
+        c.pair(p["name"], f"{_pct(p['return'])}   S&P {_pct(p['sp500'])}" if p.get("compare_ok", True) else _pct(p["return"]),
+               30, render.TEXT, render.sign_color(p["return"]))
     c.y += 8
     c.rule()
     for i in insights[:4]:
@@ -323,7 +332,8 @@ def family_pdf(people: list[dict], insights: list[dict], kind: str, start: str, 
     doc.text(T["family"], 44, bold=True, gap=4)
     doc.text(period_label(kind, start, end, he), 24, render.MUTED, gap=20)
     for p in sorted(people, key=lambda x: -(x["value_amt"] or 0)):
-        doc.text(f"{p['name']}: {_amt(p['value_amt'], CCY).lstrip('+')} · {_amt(p['change_amt'], CCY)} ({_pct(p['return'])}) · S&P {_pct(p['sp500'])} · Nasdaq {_pct(p['nasdaq'])}", 25)
+        doc.text(f"{p['name']}: {_amt(p['value_amt'], CCY).lstrip('+')} · {_amt(p['change_amt'], CCY)} ({_pct(p['return'])})"
+                 + (f" · S&P {_pct(p['sp500'])} · Nasdaq {_pct(p['nasdaq'])}" if p.get("compare_ok", True) else f" · {T['early']}"), 25)
     doc.c.y += 14
     for i in insights:
         doc.text(i["text"], 24, render.MUTED)

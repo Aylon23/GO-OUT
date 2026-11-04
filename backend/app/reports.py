@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from .engine.returns import base_index, twr
 from .models import Portfolio, Recommendation
-from .services import Context, cost_summary, get_settings, realized_summary
+from .services import Context, cost_summary, get_settings, realized_summary, MIN_COMPARE_DAYS, tracking_days
 
 PERIODS = {"week": 7, "month": 30, "year": 365}
 WORD = {"week": "השבוע", "month": "החודש", "year": "השנה"}
@@ -51,10 +51,13 @@ def portfolio_report(session: Session, pid: int, period: str = "week") -> dict:
     contrib = s.contribution.iloc[b + 1 : e + 1].sum().sort_values()
     movers = [(t, float(v)) for t, v in contrib.items() if abs(v) > 1e-6]
     since = "" if s.dates[b] <= start else f" (מאז {s.dates[b].strftime('%d/%m')})"
+    tdays = tracking_days(ctx)
+    ok = tdays >= MIN_COMPARE_DAYS
     lines = [f"📊 {name} · {WORD.get(period, period)}{since}",
              f"שווי: {_money(float(s.value.iloc[e]), ctx.base)} ({_money(change, ctx.base, signed=True)})",
-             f"תשואה: {_pct(ret)} · S&P 500: {_pct(spy)}"]
-    if spy is not None:
+             f"תשואה: {_pct(ret)} · S&P 500: {_pct(spy)}" if ok else
+             f"תשואה: {_pct(ret)} · מוקדם להשוות ל-S&P 500 ({tdays} מתוך {MIN_COMPARE_DAYS} ימי מסחר)"]
+    if spy is not None and ok:
         diff = (ret - spy) * 100
         lines.append(("✅ לפני המדד ב-" if diff >= 0 else "🔻 אחרי המדד ב-") + LTR.format(f"{abs(diff):.1f}") + " נקודות")
     lines.append(f"רווח מול שער ממוצע: {_money(cost['gain'], ctx.base)} ({_pct(cost['gain_pct'])})")
@@ -66,7 +69,8 @@ def portfolio_report(session: Session, pid: int, period: str = "week") -> dict:
             lines.append(f"תרם הכי הרבה: {best[0]} ({LTR.format(f'{best[1] * 100:+.1f}')} נק')")
         if worst[1] < 0:
             lines.append(f"פגע הכי הרבה: {worst[0]} ({LTR.format(f'{worst[1] * 100:+.1f}')} נק')")
-    return {"portfolio": name, "empty": False, "return": ret, "spy": spy, "value": float(s.value.iloc[e]), "text": "\n".join(lines),
+    return {"portfolio": name, "empty": False, "return": ret, "spy": spy if ok else None, "compare_ok": ok, "tracking_days": tdays,
+            "value": float(s.value.iloc[e]), "text": "\n".join(lines),
             "since": s.dates[b] if s.dates[b] > start else None, "days": (s.dates[e] - s.dates[b]).days}
 
 
@@ -83,15 +87,19 @@ def all_report(session: Session, period: str = "week") -> dict:
     total = sum(r["value"] for r in rows)
     full = [r for r in rows if r["since"] is None and r["spy"] is not None]
     spy = full[0]["spy"] if full else None
-    ahead = lambda r: r["spy"] is not None and r["days"] >= 1 and (r["return"] - r["spy"]) > 0.0005
-    scored = [r for r in rows if r["spy"] is not None and r["days"] >= 1]
+    ahead = lambda r: r["compare_ok"] and r["spy"] is not None and (r["return"] - r["spy"]) > 0.0005
+    scored = [r for r in rows if r["compare_ok"] and r["spy"] is not None]
     parts.append(f"📈 סיכום {WORD.get(period, period)} · {len(rows)} תיקים · {_money(total, base)}")
     head = f"S&P 500: {_pct(spy)}" if spy is not None else "S&P 500"
-    parts.append(f"{head} · {sum(1 for r in scored if ahead(r))} מתוך {len(scored)} לפני המדד")
+    parts.append(f"{head} · {sum(1 for r in scored if ahead(r))} מתוך {len(scored)} לפני המדד" if scored else
+                 f"{head} · מוקדם להשוות למדד (פחות מ-{MIN_COMPARE_DAYS} ימי מסחר)")
     parts.append("")
     for r in sorted(rows, key=lambda r: -(r["return"] or 0)):
         if r["days"] < 1:
             parts.append(f"⏳ {r['portfolio']}: נוסף היום, אין עדיין תוצאות")
+            continue
+        if not r["compare_ok"]:
+            parts.append(f"⏳ {r['portfolio']}: {_pct(r['return'])} · מוקדם להשוות ({r['tracking_days']} מתוך {MIN_COMPARE_DAYS} ימי מסחר)")
             continue
         mark = "✅" if ahead(r) else ("➖" if r["spy"] is not None and abs(r["return"] - r["spy"]) <= 0.0005 else "🔻")
         extra = f" (מאז {r['since'].strftime('%d/%m')}, S&P {_pct(r['spy'])})" if r["since"] is not None else ""

@@ -85,6 +85,19 @@ def refresh_prices(session: Session) -> None:
     refresh_latest(session, [t for t in held if t] + get_settings(session).benchmark_list() + [FX_TICKER])
 
 
+MIN_COMPARE_DAYS = 20  # below this many trading days, a return vs the S&P 500 is noise: never shown as ahead/behind
+
+
+def tracking_days(ctx: "Context") -> int:
+    """Trading days since the first real trade (sessions on the portfolio's calendar)."""
+    from .engine.returns import base_index
+
+    if ctx.series is None or not ctx.txs:
+        return 0
+    s = ctx.series
+    return max(0, len(s.dates) - 1 - base_index(s.dates, min(t.date for t in ctx.txs)))
+
+
 def to_tx(t: Transaction) -> Tx:
     return Tx(t.ticker.upper(), t.type.value if hasattr(t.type, "value") else t.type, t.date, t.quantity, t.price,
               t.currency, t.fees, t.id, t.note, t.cost_price)
@@ -376,6 +389,9 @@ def portfolio_payload(session: Session, code: str = "1Y", start: str | None = No
             "xirr": _f(range_xirr(s.value, s.flow, b, e)) if (cal[e] - cal[b]).days >= 30 else None,
             "benchmarks": [{"symbol": k, "twr": _f(perf[k].iloc[-1] / 100 - 1)} for k in bench],
             "start_value": _f(s.value.iloc[b]),
+            "tracking_days": tracking_days(ctx),
+            "compare_ok": tracking_days(ctx) >= MIN_COMPARE_DAYS,
+            "min_compare_days": MIN_COMPARE_DAYS,
         },
         "series": {
             "dates": [cal[i].isoformat() for i in pos],

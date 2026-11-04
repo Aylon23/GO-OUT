@@ -33,6 +33,7 @@ export interface Portfolio {
     cost_gain: number; cost_gain_pct: number | null; has_cost_basis: boolean; realized: number | null;
     value: number; invested: number; total_gain: number; range_gain: number; today_change: number; today_pct: number | null; today_date: string | null;
     twr: number; xirr: number | null; benchmarks: { symbol: string; twr: number | null }[]; start_value: number;
+    tracking_days: number; compare_ok: boolean; min_compare_days: number;
   };
   series: Series;
   shadow: { actual: number; rows: { symbol: string; value: number; diff: number; diff_pct: number | null }[] };
@@ -75,7 +76,7 @@ export interface OverviewRow {
   today_pct?: number | null; today_change?: number | null; tracking_since?: string; holdings?: number;
   period_start?: string; short_history?: boolean; return?: number | null; bench?: Record<string, number | null>;
   since_return?: number | null; since_spy?: number | null; since_vs_spy?: number | null; trading_days?: number; spark?: (number | null)[];
-  cost_gain_amt?: number | null; last_activity?: string;
+  cost_gain_amt?: number | null; last_activity?: string; compare_ok?: boolean;
 }
 export interface Insight { kind: "winner" | "loser" | "shared" | "stock" | "sector"; tone: "gain" | "loss" | "warn" | "info"; text: string; symbol?: string }
 export interface Overview {

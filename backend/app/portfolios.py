@@ -183,6 +183,7 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
             "since_spy": _f(since_spy),
             "since_vs_spy": _f(since_ret - since_spy) if since_spy is not None and since_ret is not None else None,
             "trading_days": int(e - b0),
+            "compare_ok": int(e - b0) >= MIN_TRADING_DAYS,
             "spark": spark,
             "cost_gain_amt": _f(cost["gain"]),  # in the display currency
             "last_activity": max(t.date for t in ctx.txs).isoformat(),
@@ -220,7 +221,7 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
     }
 
 
-MIN_TRADING_DAYS = 20  # before this, a portfolio's return vs the S&P 500 is too early to read
+from .services import MIN_COMPARE_DAYS as MIN_TRADING_DAYS  # noqa: E402 (one rule: before this, vs the S&P 500 is too early)
 STOCK_LIMIT = 0.25
 SECTOR_LIMIT = 0.35
 
