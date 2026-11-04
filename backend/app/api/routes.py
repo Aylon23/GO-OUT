@@ -1592,3 +1592,103 @@ def council_stock(ticker: str, session: Session = Depends(get_session)):
     from .. import council
 
     return council.stock_detail(session, ticker)
+
+
+# ---------------------------------------------------------------- history import with reconciliation
+
+class HistoryIn(BaseModel):
+    portfolio: int
+    text: str
+    filename: str = ""
+
+
+class ApplyIn(BaseModel):
+    decisions: dict[str, str] = {}
+
+
+def _history_call(fn, *args):
+    from .. import history_import
+
+    try:
+        return fn(*args)
+    except history_import.HistoryError as exc:
+        _bad(str(exc))
+
+
+@router.post("/history/validate")
+def history_validate(body: HistoryIn, session: Session = Depends(get_session)):
+    """Per-row results (new / duplicate / error) with errors and warnings. Nothing is saved."""
+    from .. import history_import
+
+    return _history_call(history_import.validate, session, body.portfolio, body.text)
+
+
+@router.post("/history/preview")
+def history_preview(body: HistoryIn, session: Session = Depends(get_session)):
+    """Validation plus the reconciliation diff against opening positions. Nothing is saved."""
+    from .. import history_import
+
+    return _history_call(history_import.preview, session, body.portfolio, body.text)
+
+
+@router.post("/history/import")
+def history_import_rows(body: HistoryIn, session: Session = Depends(get_session)):
+    """Stage the new rows; applied at once when the portfolio has no opening positions, else waits for /apply."""
+    from .. import history_import
+
+    return _history_call(history_import.import_rows, session, body.portfolio, body.text, body.filename)
+
+
+@router.get("/history/batches")
+def history_batches(portfolio: int | None = None, session: Session = Depends(get_session)):
+    from .. import history_import
+
+    return history_import.batches(session, portfolio)
+
+
+@router.get("/history/batches/{batch_id}/reconcile")
+def history_reconcile(batch_id: int, session: Session = Depends(get_session)):
+    from .. import history_import
+    from ..models import ImportBatch
+
+    b = session.get(ImportBatch, batch_id)
+    if b is None:
+        _bad("That import isn't there.", 404)
+    return history_import.reconcile_view(session, b)
+
+
+@router.post("/history/batches/{batch_id}/apply")
+def history_apply(batch_id: int, body: ApplyIn, session: Session = Depends(get_session)):
+    from .. import history_import
+
+    return _history_call(history_import.apply, session, batch_id, body.decisions)
+
+
+@router.post("/history/batches/{batch_id}/undo")
+def history_undo(batch_id: int, session: Session = Depends(get_session)):
+    from .. import history_import
+
+    return _history_call(history_import.undo, session, batch_id)
+
+
+@router.get("/history/suggested-calls")
+def history_suggested(refresh: bool = False, session: Session = Depends(get_session)):
+    from .. import history_import
+
+    if refresh:
+        history_import.infer_calls(session)
+    return history_import.suggested(session)
+
+
+@router.post("/history/suggested-calls/{rec_id}/approve")
+def history_suggested_approve(rec_id: int, session: Session = Depends(get_session)):
+    from .. import history_import
+
+    return _history_call(history_import.decide_suggestion, session, rec_id, True)
+
+
+@router.post("/history/suggested-calls/{rec_id}/dismiss")
+def history_suggested_dismiss(rec_id: int, session: Session = Depends(get_session)):
+    from .. import history_import
+
+    return _history_call(history_import.decide_suggestion, session, rec_id, False)

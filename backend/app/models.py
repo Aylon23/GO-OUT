@@ -20,6 +20,7 @@ class TxType(str, Enum):
     DIVIDEND = "DIVIDEND"
     DEPOSIT = "DEPOSIT"
     WITHDRAWAL = "WITHDRAWAL"
+    FEE = "FEE"  # account or custody fee: lowers the return, not money taken out
 
 
 CASH_TYPES = {TxType.DEPOSIT, TxType.WITHDRAWAL}
@@ -50,6 +51,9 @@ class Transaction(SQLModel, table=True):
     # market value; this field keeps the real cost basis for gain/loss.
     cost_price: Optional[float] = None
     rec_id: Optional[int] = Field(default=None, index=True)  # the recommendation this trade followed
+    origin: str = ""  # "opening" (holdings list, average cost), "history" (imported history), "" (entered here)
+    source_hash: str = Field(default="", index=True)  # history imports: identical rows are never imported twice
+    batch_id: Optional[int] = Field(default=None, index=True)  # the history import that added it
 
     @property
     def amount(self) -> float:
@@ -109,6 +113,9 @@ class Recommendation(SQLModel, table=True):
     target: Optional[float] = None
     closed_date: Optional[dt.date] = None  # a BUY call ends when you call SELL on the same ticker
     created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    status: str = "approved"  # approved | suggested (inferred from trades, not yet confirmed) | dismissed
+    source: str = ""  # "" = made here; "inferred" = from trades of 2+ portfolios close together
+    people: str = ""  # inferred calls: JSON list of portfolio ids that traded
 
 
 class RealizedEntry(SQLModel, table=True):
@@ -121,6 +128,8 @@ class RealizedEntry(SQLModel, table=True):
     currency: str = "USD"
     date: Optional[dt.date] = None
     note: str = ""
+    archived_batch: Optional[int] = None  # set when a history import's sells replace this realized line
+
 
 
 class Fundamentals(SQLModel, table=True):
@@ -478,3 +487,64 @@ class CouncilVerdict(SQLModel, table=True):
     devils_argument: str = ""
     anchor_price: Optional[float] = None
     anchor_spy: Optional[float] = None
+
+
+class ImportBatch(SQLModel, table=True):
+    """One history import for one portfolio."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    portfolio_id: int = Field(index=True)
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    filename: str = ""
+    status: str = "staged"  # staged (waiting for reconciliation) | applied | undone
+    rows_total: int = 0
+    rows_new: int = 0
+    rows_duplicate: int = 0
+    rows_error: int = 0
+    first_date: Optional[dt.date] = None
+    applied_at: Optional[dt.datetime] = None
+    decisions: str = "{}"  # JSON symbol -> "history" | "opening"
+
+
+class HistoryRow(SQLModel, table=True):
+    """A validated row of a history import, kept until (and after) it is applied."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    batch_id: int = Field(index=True)
+    idx: int = 0
+    date: dt.date
+    type: str = ""
+    symbol: str = ""
+    quantity: float = 0.0
+    price: float = 0.0
+    currency: str = "USD"
+    fees: float = 0.0
+    note: str = ""
+    source_line: str = ""
+    hash: str = Field(default="", index=True)
+    status: str = "staged"  # staged | applied | kept_out (opening position kept) | info (SPLIT) | undone
+
+
+class ArchivedTransaction(SQLModel, table=True):
+    """A transaction taken out of the books (replaced by a history import, or an undone import). Never deleted."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    original_id: Optional[int] = None
+    portfolio_id: int = Field(index=True)
+    ticker: str = ""
+    type: str = ""
+    date: dt.date
+    quantity: float = 0.0
+    price: float = 0.0
+    currency: str = "USD"
+    fees: float = 0.0
+    note: str = ""
+    cost_price: Optional[float] = None
+    rec_id: Optional[int] = None
+    origin: str = ""
+    source_hash: str = ""
+    original_batch_id: Optional[int] = None
+    archived_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    archived_by_batch: Optional[int] = Field(default=None, index=True)
+    reason: str = ""
+    restored: bool = False

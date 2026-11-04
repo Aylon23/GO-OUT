@@ -600,7 +600,7 @@ def leaderboard(session: Session, today: dt.date | None = None) -> dict:
     for v in session.exec(select(CouncilVerdict)).all():
         if v.majority:
             add("Council", v.majority, v.ticker, v.rated_at)
-    for rec in session.exec(select(Recommendation)).all():
+    for rec in session.exec(select(Recommendation).where(Recommendation.status == "approved")).all():
         add("My calls", "buy" if rec.action == "BUY" else "sell", rec.ticker, rec.date)
     out = []
     for name, hs in rows.items():

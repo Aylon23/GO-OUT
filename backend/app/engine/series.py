@@ -143,7 +143,7 @@ def _map_to_calendar(d: dt.date, calendar: list[dt.date]) -> int:
     return min(i, len(calendar) - 1)
 
 
-TYPE_ORDER = {"DEPOSIT": 0, "WITHDRAWAL": 1, "DIVIDEND": 2, "SELL": 3, "BUY": 4}
+TYPE_ORDER = {"DEPOSIT": 0, "WITHDRAWAL": 1, "DIVIDEND": 2, "SELL": 3, "BUY": 4, "FEE": 5}
 
 
 def neutral_fx(fx: pd.Series) -> pd.Series:
@@ -238,6 +238,11 @@ def build_series(
                 amt = convert(t.price - t.fees, t.currency, base, rate)
                 cash += amt
                 tick_cash[col[t.ticker.upper()]] += amt
+            elif typ == "FEE":  # a cost: lowers value and return, and is not money taken out
+                amt = convert(t.price + t.fees, t.currency, base, rate)
+                cash -= amt
+                if t.ticker and t.ticker.upper() in col:
+                    tick_cash[col[t.ticker.upper()]] -= amt
             elif typ in ("BUY", "SELL"):
                 tk = t.ticker.upper()
                 factor = split_factor_after(market[tk].splits, t.date)

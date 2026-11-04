@@ -97,7 +97,7 @@ def all_report(session: Session, period: str = "week") -> dict:
         extra = f" (מאז {r['since'].strftime('%d/%m')}, S&P {_pct(r['spy'])})" if r["since"] is not None else ""
         parts.append(f"{mark} {r['portfolio']}: {_pct(r['return'])}{extra}")
     since = dt.date.today() - dt.timedelta(days=PERIODS.get(period, 7))
-    calls = session.exec(select(Recommendation).where(Recommendation.date >= since)).all()
+    calls = session.exec(select(Recommendation).where(Recommendation.date >= since, Recommendation.status == "approved")).all()
     if calls:
         parts.append("")
         parts.append("המלצות בתקופה: " + ", ".join(f"{'קנייה' if c.action == 'BUY' else 'מכירה'} {c.ticker}" for c in calls))

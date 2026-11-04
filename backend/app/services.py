@@ -298,7 +298,8 @@ def realized_summary(ctx: Context) -> dict:
             r = holding_lots(ctx.txs, t, ctx.market[t].splits, ctx.fx, ctx.base)["realized_base"]
             if abs(r) > 1e-9:
                 per[t] = per.get(t, 0.0) + r
-    entries = ctx.session.exec(select(RealizedEntry).where(RealizedEntry.portfolio_id == ctx.pid)).all()
+    entries = ctx.session.exec(select(RealizedEntry).where(RealizedEntry.portfolio_id == ctx.pid,
+                                                           RealizedEntry.archived_batch.is_(None))).all()
     if entries:
         if ctx.fx is None:
             ctx.fx = fx_series(ctx.session)

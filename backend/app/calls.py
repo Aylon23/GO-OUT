@@ -31,6 +31,7 @@ def create_call(session: Session, ticker: str, action: str, date: dt.date, thesi
     session.add(rec)
     if action == "SELL":  # selling closes any open BUY call on the same ticker
         for open_buy in session.exec(select(Recommendation).where(Recommendation.ticker == ticker, Recommendation.action == "BUY",
+                                                                    Recommendation.status == "approved",
                                                                     Recommendation.closed_date == None)).all():  # noqa: E711
             if open_buy.date <= rec.date:
                 open_buy.closed_date = rec.date
@@ -61,7 +62,8 @@ def call_rows(session: Session) -> list[dict]:
     fx = fx_series(session)
     names = {p.id: p.name for p in session.exec(select(Portfolio)).all()}
     rows = []
-    for rec in session.exec(select(Recommendation).order_by(Recommendation.date.desc(), Recommendation.id.desc())).all():
+    for rec in session.exec(select(Recommendation).where(Recommendation.status == "approved")
+                            .order_by(Recommendation.date.desc(), Recommendation.id.desc())).all():
         followers = session.exec(select(Transaction).where(Transaction.rec_id == rec.id)).all()
         row = {"id": rec.id, "ticker": rec.ticker, "action": rec.action, "date": rec.date.isoformat(), "price": _f(rec.price),
                "thesis": rec.thesis, "target": _f(rec.target), "closed_date": rec.closed_date.isoformat() if rec.closed_date else None,

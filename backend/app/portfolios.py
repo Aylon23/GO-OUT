@@ -539,7 +539,7 @@ def import_holdings(session: Session, pid: int, rows: list[dict], as_of: dt.date
                                              "type": "ETF" if m.get("type") == "ETF" else "Stock", "currency": r["currency"]})
             session.add(Transaction(portfolio_id=target, ticker=r["ticker"], type=TxType.BUY, date=dt.date.fromisoformat(r["price_date"]),
                                     quantity=r["quantity"], price=r["price"], currency=r["currency"],
-                                    cost_price=r["avg_price"], note="Imported holding (average cost)"))
+                                    cost_price=r["avg_price"], note="Imported holding (average cost)", origin="opening"))
             n += 1
     session.commit()
     return {"imported": n, "realized_imported": realized_n, "portfolios": len(targets), "created": created}
