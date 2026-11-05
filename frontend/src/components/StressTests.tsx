@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api, ApiError, type ReverseStress, type RiskBook, type StressTest } from "../lib/api";
 import { amt, dateLong, pct } from "../lib/format";
 import { useData } from "../lib/hooks";
-import { ErrorLine, InfoTip, Signed, Skel } from "./ui";
+import { ErrorLine, InfoTip, Signed, Skel, Blank } from "./ui";
 
 const fmt = (v: number | null | undefined, signed = true) => amt(v, signed);
 
@@ -37,8 +37,8 @@ function RiskSummary() {
       <dl className="mt-4 grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4">
         <Stat k="Bad week (1 in 20)" tip="Historical 95% value at risk: in 1 week out of 20 the loss was at least this." v={fmt(-b.var_1w_amt)} sub={pct(-b.var_1w, 1)} />
         <Stat k="Beyond it, on average" tip="Average loss in those worst weeks (expected shortfall, CVaR)." v={fmt(-b.cvar_1w_amt)} sub={pct(-b.cvar_1w, 1)} />
-        <Stat k="Bad month (1 in 20)" tip="The same for 4-week stretches." v={b.var_1m_amt != null ? fmt(-b.var_1m_amt) : "–"} sub={b.var_1m != null ? pct(-b.var_1m, 1) : ""} />
-        <Stat k="Independent bets" tip="How many truly separate bets the portfolio's risk is spread over (effective number of bets). Far below the number of holdings means they move together." v={b.effective_bets != null ? b.effective_bets.toFixed(1) : "–"} sub={`of ${b.holdings} holdings`} />
+        <Stat k="Bad month (1 in 20)" tip="The same for 4-week stretches." v={b.var_1m_amt != null ? fmt(-b.var_1m_amt) : <Blank why="Needs at least a year of weekly prices for these holdings." />} sub={b.var_1m != null ? pct(-b.var_1m, 1) : ""} />
+        <Stat k="Independent bets" tip="How many truly separate bets the portfolio's risk is spread over (effective number of bets). Far below the number of holdings means they move together." v={b.effective_bets != null ? b.effective_bets.toFixed(1) : <Blank why="Needs at least a year of weekly prices for these holdings." />} sub={`of ${b.holdings} holdings`} />
       </dl>
       <div className="mt-6 max-w-[560px]">
         <p className="text-sm font-medium">Where the risk comes from</p>
@@ -57,7 +57,7 @@ function RiskSummary() {
   );
 }
 
-function Stat({ k, v, sub, tip }: { k: string; v: string; sub: string; tip: string }) {
+function Stat({ k, v, sub, tip }: { k: string; v: React.ReactNode; sub: string; tip: string }) {
   return (
     <div><dt className="flex items-center gap-1 text-xs text-muted">{k}<InfoTip text={tip} /></dt>
       <dd className="num mt-1 text-xl font-semibold text-loss">{v}</dd><dd className="num text-xs text-faint">{sub}</dd></div>
@@ -103,10 +103,10 @@ function StressTests() {
                 <td className="border-b border-line py-2.5"><span className="font-medium">{t.name}</span>
                   <span className="block text-xs text-faint">{t.data ? `${dateLong(t.used_start!)} – ${dateLong(t.used_end!)}` : `${dateLong(t.start)} – ${dateLong(t.end)} · no price data`}
                     {t.family.estimated_share != null && t.family.estimated_share > 0.01 && ` · ${pct(t.family.estimated_share, 0, false)} estimated`}</span></td>
-                <td className="num border-b border-line py-2.5 pl-3 text-right">{t.sp500_usd != null ? <Signed value={t.sp500_usd}>{pct(t.sp500_usd, 1)}</Signed> : "–"}</td>
-                <td className="num border-b border-line py-2.5 pl-3 text-right font-semibold">{t.family.impact != null ? <Signed value={t.family.impact}>{pct(t.family.impact, 1)}</Signed> : "–"}</td>
-                <td className="num border-b border-line py-2.5 pl-3 text-right">{t.family.change_amt != null ? <Signed value={t.family.change_amt}>{fmt(t.family.change_amt)}</Signed> : "–"}</td>
-                {t.portfolios.map((p) => <td key={p.id} className="num border-b border-line py-2.5 pl-3 text-right">{p.impact != null ? <Signed value={p.impact}>{pct(p.impact, 1)}</Signed> : "–"}</td>)}
+                <td className="num border-b border-line py-2.5 pl-3 text-right">{t.sp500_usd != null ? <Signed value={t.sp500_usd}>{pct(t.sp500_usd, 1)}</Signed> : <Blank why="No S&P 500 prices for this period." />}</td>
+                <td className="num border-b border-line py-2.5 pl-3 text-right font-semibold">{t.family.impact != null ? <Signed value={t.family.impact}>{pct(t.family.impact, 1)}</Signed> : <Blank why="None of the holdings has prices or factor estimates for this period." />}</td>
+                <td className="num border-b border-line py-2.5 pl-3 text-right">{t.family.change_amt != null ? <Signed value={t.family.change_amt}>{fmt(t.family.change_amt)}</Signed> : <Blank why="None of the holdings has prices or factor estimates for this period." />}</td>
+                {t.portfolios.map((p) => <td key={p.id} className="num border-b border-line py-2.5 pl-3 text-right">{p.impact != null ? <Signed value={p.impact}>{pct(p.impact, 1)}</Signed> : <Blank why="This portfolio's holdings have no prices or factor estimates for this period." />}</td>)}
               </tr>
             ))}</tbody>
           </table>

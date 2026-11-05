@@ -152,3 +152,8 @@ export function Signed({ value, children, className }: { value: number | null | 
   }, [value]);
   return <span className={clsx("num", c, flash === "up" && "tick-up", flash === "down" && "tick-down", className)}>{children}</span>;
 }
+
+/** A blank metric always says why: the dash carries the reason on hover and for screen readers. */
+export function Blank({ why }: { why: string }) {
+  return <span className="cursor-help text-faint" title={why} aria-label={why}>–</span>;
+}

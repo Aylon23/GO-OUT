@@ -35,6 +35,7 @@ export interface Portfolio {
     twr: number; xirr: number | null; benchmarks: { symbol: string; twr: number | null }[]; start_value: number;
     tracking_days: number; compare_ok: boolean; min_compare_days: number;
     today_word: string; today_label: string;
+    xirr_why: string | null;
   };
   series: Series;
   shadow: { actual: number; rows: { symbol: string; value: number; diff: number; diff_pct: number | null }[] };

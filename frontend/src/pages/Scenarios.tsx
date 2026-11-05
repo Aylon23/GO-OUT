@@ -10,7 +10,7 @@ import { Impact, type RegimeChoice } from "../components/Impact";
 import { NewMoney } from "../components/NewMoney";
 import { AiDebate } from "../components/AiDebate";
 import { Researched } from "../components/Researched";
-import { EmptyState, ErrorLine, Segmented, Signed, Skel } from "../components/ui";
+import { EmptyState, ErrorLine, Segmented, Signed, Skel, Blank } from "../components/ui";
 import {
   api, ApiError, type ImpactEdit, type ImpactResult, type ModelCheck, type SavedScenario, type ScenarioLibrary,
   type ScenarioParse, type ScenarioRun, type Shock,
@@ -367,7 +367,7 @@ function ModelCheckPanel() {
                       <td className="py-2 text-right"><Signed value={e.sp500}>{pct(e.sp500, 1)}</Signed></td>
                       <td className="py-2 text-right"><Signed value={e.family_predicted}>{pct(e.family_predicted, 1)}</Signed></td>
                       <td className="py-2 text-right"><Signed value={e.family_actual}>{pct(e.family_actual, 1)}</Signed></td>
-                      <td className="num py-2 text-right text-muted">{e.hit_rate == null ? "–" : pct(e.hit_rate, 0, false)}</td>
+                      <td className="num py-2 text-right text-muted">{e.hit_rate == null ? <Blank why="No outcomes scored yet." /> : pct(e.hit_rate, 0, false)}</td>
                     </tr>))}
                   </tbody>
                 </table>

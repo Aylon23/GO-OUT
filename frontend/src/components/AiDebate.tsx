@@ -6,7 +6,7 @@ import { useData } from "../lib/hooks";
 import { AiQuota } from "./AiQuota";
 import { Avatar } from "./Avatar";
 import { FACTOR_LABEL, Report, SpecImpact } from "./Researched";
-import { ErrorLine, Signed } from "./ui";
+import { ErrorLine, Signed, Blank } from "./ui";
 
 const HORIZON_LABEL: Record<string, string> = { "1w": "1 week", "1m": "1 month", "3m": "3 months", "6m": "6 months" };
 const PHASE: Record<string, string> = { round1: "Round 1: each model writes its own scenario", round2: "Round 2: they challenge each other", judge: "The judge merges them", done: "Done", failed: "Stopped" };
@@ -193,7 +193,7 @@ function Level2({ d }: { d: DebateRow }) {
                   <td className="border-b border-line py-1.5">{h.model}</td><td className="border-b border-line py-1.5 text-muted">{h.stage}</td>
                   <td className="num border-b border-line py-1.5 pl-3 text-right"><Signed value={h.median}>{pct(h.median, 1)}</Signed></td>
                   <td className="num border-b border-line py-1.5 pl-3 text-right">{pct(h.p5, 1)}</td>
-                  {facs.map((f) => <td key={f} className="num border-b border-line py-1.5 pl-3 text-right">{h.moves[f] != null ? `${h.moves[f] > 0 ? "+" : ""}${h.moves[f].toFixed(1)}%` : "–"}</td>)}
+                  {facs.map((f) => <td key={f} className="num border-b border-line py-1.5 pl-3 text-right">{h.moves[f] != null ? `${h.moves[f] > 0 ? "+" : ""}${h.moves[f].toFixed(1)}%` : <Blank why="No exposure to this factor estimated for this holding." />}</td>)}
                 </tr>
               ))}</tbody>
             </table>
@@ -237,9 +237,9 @@ function Leaderboard() {
           <thead><tr className="text-muted">{["Model", "Scored", "Direction right", "Average error", "Inside the range"].map((h, i) => <th key={h} className={clsx("border-b border-line py-1.5 font-medium", i ? "pl-3 text-right" : "text-left")}>{h}</th>)}</tr></thead>
           <tbody>{rows.map((x) => (
             <tr key={x.model}><td className="border-b border-line py-1.5">{x.model}</td><td className="num border-b border-line py-1.5 pl-3 text-right">{x.scenarios}</td>
-              <td className="num border-b border-line py-1.5 pl-3 text-right">{x.direction_hit_rate != null ? pct(x.direction_hit_rate, 0, false) : "–"}</td>
-              <td className="num border-b border-line py-1.5 pl-3 text-right">{x.avg_error != null ? `${x.avg_error.toFixed(1)} pts` : "–"}</td>
-              <td className="num border-b border-line py-1.5 pl-3 text-right">{x.in_range_rate != null ? pct(x.in_range_rate, 0, false) : "–"}</td></tr>
+              <td className="num border-b border-line py-1.5 pl-3 text-right">{x.direction_hit_rate != null ? pct(x.direction_hit_rate, 0, false) : <Blank why="No scored debates yet: scores come in after the horizon ends." />}</td>
+              <td className="num border-b border-line py-1.5 pl-3 text-right">{x.avg_error != null ? `${x.avg_error.toFixed(1)} pts` : <Blank why="No scored debates yet: scores come in after the horizon ends." />}</td>
+              <td className="num border-b border-line py-1.5 pl-3 text-right">{x.in_range_rate != null ? pct(x.in_range_rate, 0, false) : <Blank why="No scored debates yet: scores come in after the horizon ends." />}</td></tr>
           ))}</tbody>
         </table>
       )}

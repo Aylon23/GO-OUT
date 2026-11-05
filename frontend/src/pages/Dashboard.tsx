@@ -67,7 +67,7 @@ function SecondaryLine({ p }: { p: Portfolio }) {
     <span key="t">{s.today_word} <Signed value={s.today_change} className="font-medium">{money(s.today_change, b, { signed: true, decimals: 0 })} ({pct(s.today_pct)})</Signed></span>,
     <span key="x" className="inline-flex items-center gap-1">
       <InfoTip text="XIRR: your personal annual return, counting when you added or took out money.">XIRR</InfoTip>
-      <Signed value={s.xirr} className="font-medium">{s.xirr === null ? "–" : pct(s.xirr, 1)}</Signed>
+      {s.xirr === null ? <span className="text-faint">{s.xirr_why?.includes(" Import ") ? <>{s.xirr_why.split(" Import ")[0]} <a href="#/transactions?import=csv" className="link">Import {s.xirr_why.split(" Import ")[1].replace(/\.$/, "")}</a>.</> : s.xirr_why ?? "Not enough data."}</span> : <Signed value={s.xirr} className="font-medium">{pct(s.xirr, 1)}</Signed>}
     </span>,
   ];
   return (

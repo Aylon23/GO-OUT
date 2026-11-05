@@ -5,7 +5,7 @@ import { api, type ExposureBook, type ExposureFactor } from "../lib/api";
 import { dateLong, pct } from "../lib/format";
 import { useData, useMediaQuery } from "../lib/hooks";
 import { Avatar } from "./Avatar";
-import { ErrorLine, InfoTip, Skel } from "./ui";
+import { ErrorLine, InfoTip, Skel, Blank } from "./ui";
 
 const MAIN = ["market", "rates", "oil", "gold"];
 const MORE = ["size", "value", "momentum", "quality"];
@@ -71,7 +71,7 @@ export function Exposures() {
                             <span className="font-mono font-semibold">{h.symbol}</span>
                             <span className="ml-1.5 text-faint">{pct(h.weight, 1, false)}</span>
                             <span className="block text-faint">
-                              R² {h.r2 == null ? "–" : h.r2.toFixed(2)} · residual vol {h.resid_vol == null ? "–" : pct(h.resid_vol, 0, false)} · {h.weeks} wk
+                              R² {h.r2 == null ? <Blank why="Too few weeks of prices to fit." /> : h.r2.toFixed(2)} · residual vol {h.resid_vol == null ? <Blank why="Too few weeks of prices to fit." /> : pct(h.resid_vol, 0, false)} · {h.weeks} wk
                               {h.low_confidence && <span className="ml-1.5 font-medium text-text">low confidence</span>}
                               {h.short_history && <span className="ml-1.5 font-medium text-text">short history</span>}
                             </span>

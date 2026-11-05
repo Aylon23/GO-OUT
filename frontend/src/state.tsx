@@ -46,7 +46,7 @@ export const useApp = () => {
 };
 
 const readRoute = (): Route => {
-  const h = window.location.hash.replace(/^#\/?/, "") as Route;
+  const h = window.location.hash.replace(/^#\/?/, "").split("?")[0] as Route;
   return ROUTES.includes(h) ? h : "dashboard";
 };
 const readRange = (): RangeParams => {

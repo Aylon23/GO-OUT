@@ -22,7 +22,7 @@ export default function Transactions() {
   const [fTo, setFTo] = useState("");
   const [confirmDel, setConfirmDel] = useState<number | null>(null);
   const [delErr, setDelErr] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(() => window.location.hash.includes("import=csv"));
   const [holdingsOpen, setHoldingsOpen] = useState(false);
   const { portfolio } = useApp();
   const base = settings?.base_currency ?? "USD";

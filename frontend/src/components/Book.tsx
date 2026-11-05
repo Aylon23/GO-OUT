@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type BookCompare, type BookEntry, type BookState } from "../lib/api";
 import { amt, dateLong, pct } from "../lib/format";
 import { invalidate, useData } from "../lib/hooks";
-import { EmptyState, ErrorLine, InfoTip, Signed, Skel } from "./ui";
+import { EmptyState, ErrorLine, InfoTip, Signed, Skel, Blank } from "./ui";
 
 const fmt = (v: number | null | undefined, signed = true) => amt(v, signed);
 const HORIZON: Record<string, string> = { "1w": "1 week", "2w": "2 weeks", "1m": "1 month", "3m": "3 months", "6m": "6 months", "12m": "12 months" };
@@ -103,7 +103,7 @@ function Positioning({ state }: { state: BookState }) {
             {scen.map(([id]) => {
               const x = p.by_scenario.find((y) => y.scenario_id === id);
               const worst = p.hurts_most[0]?.title === r.scenario_titles[id];
-              return <td key={id} className={clsx("num border-b border-line py-2.5 pl-3 text-right", worst && "font-semibold")}>{x ? <Signed value={x.median}>{pct(x.median, 1)}</Signed> : "–"}</td>;
+              return <td key={id} className={clsx("num border-b border-line py-2.5 pl-3 text-right", worst && "font-semibold")}>{x ? <Signed value={x.median}>{pct(x.median, 1)}</Signed> : <Blank why="This scenario has not been run for this portfolio yet." />}</td>;
             })}
           </tr>
         ))}</tbody>

@@ -287,6 +287,17 @@ def day_change(ctx: Context) -> dict:
             "date": latest.isoformat() if latest else None}
 
 
+def _xirr_why(ctx: Context, days: int, value) -> str | None:
+    """Why XIRR is blank, in one sentence; None when it has a value."""
+    if value is not None and not (isinstance(value, float) and math.isnan(value)):
+        return None
+    if all(t.cost_price for t in ctx.txs if t.type in ("BUY", "SELL")):
+        return "XIRR needs dated cash flows. Import transaction history."
+    if days < 30:
+        return f"XIRR needs at least a month of history ({days} days in this range)."
+    return "XIRR has no solution for these cash flows."
+
+
 def _day_names(date: str | None) -> dict:
     """"Today" only while that US session runs; otherwise "Last session, Tue 3 Nov (close)"."""
     from .market import clock
@@ -394,7 +405,8 @@ def portfolio_payload(session: Session, code: str = "1Y", start: str | None = No
             **_day_names(today["date"]),
             "twr": _f(port_twr),
             # an annual rate from a few days of history is noise; wait for a month
-            "xirr": _f(range_xirr(s.value, s.flow, b, e)) if (cal[e] - cal[b]).days >= 30 else None,
+            "xirr": _f(xirr_v := range_xirr(s.value, s.flow, b, e)) if (cal[e] - cal[b]).days >= 30 else None,
+            "xirr_why": _xirr_why(ctx, (cal[e] - cal[b]).days, xirr_v if (cal[e] - cal[b]).days >= 30 else None),
             "benchmarks": [{"symbol": k, "twr": _f(perf[k].iloc[-1] / 100 - 1)} for k in bench],
             "start_value": _f(s.value.iloc[b]),
             "tracking_days": tracking_days(ctx),

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AiQuota } from "../components/AiQuota";
 import { Avatar } from "../components/Avatar";
 import { StockView } from "../components/ContextPackView";
-import { ErrorLine, Segmented, SidePanel, Signed, Skel } from "../components/ui";
+import { ErrorLine, Segmented, SidePanel, Signed, Skel, Blank } from "../components/ui";
 import { api, ApiError, type CouncilOverview, type CouncilStock, type CouncilVerdictRow, type Rating } from "../lib/api";
 import { dateLong, num, pct } from "../lib/format";
 import { useData } from "../lib/hooks";
@@ -97,11 +97,11 @@ export default function Council() {
                   {x.crowded && <span title="Crowded: strong agreement near the 52-week extreme, with analysts already there" className="inline-flex items-center gap-0.5 text-xs text-loss"><Warning size={12} weight="fill" />crowded</span>}</span></td>
                 <td className="border-b border-line py-2 pl-3"><TallyBar t={x.tally} majority={x.majority} /></td>
                 <td className="border-b border-line py-2 pl-3 text-right">{x.consensus}{x.flipflops.length > 0 && <span className="block text-xs text-faint">{x.flipflops.length} flip-flop{x.flipflops.length > 1 ? "s" : ""}</span>}</td>
-                <td className="border-b border-line py-2 pl-3 text-right text-muted">{x.quality || "–"}</td>
+                <td className="border-b border-line py-2 pl-3 text-right text-muted">{x.quality || <Blank why="No quality rating returned for this stock." />}</td>
                 <td className="border-b border-line py-2 pl-3 text-right">{x.change || <span className="text-faint">–</span>}</td>
-                <td className="num border-b border-line py-2 pl-3 text-right">{x.conviction != null ? x.conviction.toFixed(1) : "–"}</td>
-                <td className="num border-b border-line py-2 pl-3 text-right">{x.upside != null ? <Signed value={x.upside}>{pct(x.upside, 1)}</Signed> : "–"}</td>
-                <td className="num border-b border-line py-2 pl-3 text-right">{x.from_high != null ? pct(x.from_high, 1) : "–"}</td>
+                <td className="num border-b border-line py-2 pl-3 text-right">{x.conviction != null ? x.conviction.toFixed(1) : <Blank why="Not enough council votes to score conviction." />}</td>
+                <td className="num border-b border-line py-2 pl-3 text-right">{x.upside != null ? <Signed value={x.upside}>{pct(x.upside, 1)}</Signed> : <Blank why="No price target from the council for this stock." />}</td>
+                <td className="num border-b border-line py-2 pl-3 text-right">{x.from_high != null ? pct(x.from_high, 1) : <Blank why="Less than a year of prices." />}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -158,7 +158,7 @@ function StockCouncil({ ticker }: { ticker: string }) {
   if (!v) return <p className="text-sm text-muted">Not rated yet.</p>;
   return (
     <div className="space-y-6 text-sm">
-      <p className="text-xs text-faint">{s.label} Rated {dateLong(v.rated_at)} at {v.anchor_price != null ? num(v.anchor_price, 2) : "–"} (SPY {v.anchor_spy != null ? num(v.anchor_spy, 2) : "–"}).</p>
+      <p className="text-xs text-faint">{s.label} Rated {dateLong(v.rated_at)} at {v.anchor_price != null ? num(v.anchor_price, 2) : <Blank why="No price on the rating day." />} (SPY {v.anchor_spy != null ? num(v.anchor_spy, 2) : <Blank why="No SPY price on the rating day." />}).</p>
       <div className="flex flex-wrap items-center gap-4"><TallyBar t={v.tally} majority={v.majority} /><span>{v.consensus}{v.quality && ` · ${v.quality}`}</span>
         {v.crowded && <span className="text-loss">Crowded</span>}{v.change && <span>{v.change}</span>}</div>
       {v.weighted && <p className="text-muted">Weighted by track record: {Object.entries(v.weighted).map(([k, n]) => `${R_LABEL[k as Rating]} ${n}`).join(", ")} (the raw tally above is the default).</p>}

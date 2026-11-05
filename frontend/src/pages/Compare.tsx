@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { useEffect, useMemo, useState } from "react";
 import { ChartSkeleton, colorFor, InlineLegend, SeriesChart, type SeriesDef } from "../components/chart/SeriesChart";
 import { SymbolSearch } from "../components/SymbolSearch";
-import { ErrorLine, InfoTip, Segmented, Skel } from "../components/ui";
+import { ErrorLine, InfoTip, Segmented, Skel, Blank } from "../components/ui";
 import { api, type MetricRow, type Metrics } from "../lib/api";
 import { pct, ratio } from "../lib/format";
 import { useData } from "../lib/hooks";
@@ -128,9 +128,9 @@ export default function Compare() {
                       <span className={clsx(r.kind === "symbol" && "font-mono font-semibold")}>{r.label}</span>
                       {r.kind === "symbol" && r.name && r.name !== r.label && <span className="truncate text-xs text-faint">{r.name}</span>}</span></td>
                     <td className="num py-2.5 text-right">{ratio(r.beta)}</td>
-                    <td className="num py-2.5 text-right">{r.trailing_pe?.toFixed(1) ?? "–"}</td>
-                    <td className="num py-2.5 text-right">{r.forward_pe?.toFixed(1) ?? "–"}</td>
-                    <td className="num py-2.5 text-right">{r.dividend_yield == null ? "–" : pct(r.dividend_yield, 2, false)}</td>
+                    <td className="num py-2.5 text-right">{r.trailing_pe?.toFixed(1) ?? <Blank why="No trailing earnings, or earnings are negative." />}</td>
+                    <td className="num py-2.5 text-right">{r.forward_pe?.toFixed(1) ?? <Blank why="No analyst earnings estimate, or it is negative." />}</td>
+                    <td className="num py-2.5 text-right">{r.dividend_yield == null ? <Blank why="Pays no dividend, or none reported." /> : pct(r.dividend_yield, 2, false)}</td>
                   </tr>))}
                 </tbody>
               </table>

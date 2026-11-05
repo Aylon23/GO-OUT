@@ -2,7 +2,7 @@ import clsx from "clsx";
 import type { Stat } from "../lib/api";
 import { dateLong, pct, ratio } from "../lib/format";
 import { colorFor } from "./chart/SeriesChart";
-import { InfoTip, Signed } from "./ui";
+import { InfoTip, Signed, Blank } from "./ui";
 
 const ROWS: { key: string; label: string; tip: string; render: (s: Stat) => React.ReactNode }[] = [
   { key: "cagr", label: "CAGR", tip: "Compound annual growth rate: the steady yearly return that gets you from start to end. Not annualized for ranges under a year.", render: (s) => <Signed value={s.cagr}>{pct(s.cagr, 1)}</Signed> },
@@ -38,7 +38,7 @@ export function StatsTable({ columns, stats, labels = {} }: { columns: string[];
           {ROWS.map((r) => (
             <tr key={r.key} className="border-b border-line align-top">
               <th scope="row" className="py-2.5 pr-4 text-left font-normal text-muted"><InfoTip text={r.tip}>{r.label}</InfoTip></th>
-              {columns.map((c) => <td key={c} className={clsx("py-2.5 pl-4 text-right", c === "portfolio" && "font-medium")}>{stats[c] ? r.render(stats[c]) : "–"}</td>)}
+              {columns.map((c) => <td key={c} className={clsx("py-2.5 pl-4 text-right", c === "portfolio" && "font-medium")}>{stats[c] ? r.render(stats[c]) : <Blank why="Not enough prices in this range to compute it." />}</td>)}
             </tr>
           ))}
         </tbody>
