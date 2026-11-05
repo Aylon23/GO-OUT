@@ -187,13 +187,23 @@ function Bars({ rows, value, fmt, colorOf, marker, markerLabel, sub }: {
   );
 }
 
+/** Under the P/E chart: which holdings each portfolio's P/E pair stands on, and what is missing or stale. */
 function Coverage({ rows }: { rows: MetricRow[] }) {
-  const notes = rows.filter((r) => r.kind === "portfolio" && r.trailing_pe_missing && r.trailing_pe_missing.length);
+  const notes = rows.filter((r) => r.kind === "portfolio" && r.pe_basis);
   if (!notes.length) return null;
+  const list = (xs: string[]) => (xs.length > 4 ? `${xs.slice(0, 4).join(", ")} and ${xs.length - 4} more` : xs.join(", "));
   return (
-    <div className="mt-3 space-y-1 text-xs text-faint">
+    <div className="mt-3 space-y-1.5 text-xs text-faint">
       {notes.map((r) => (
-        <p key={r.key}>{r.label}: P/E covers {pct(r.trailing_pe_coverage ?? 0, 0, false)} of the value. No P/E (no earnings, or a fund without one) for {r.trailing_pe_missing!.join(", ")}.</p>
+        <p key={r.key}>
+          <span className="text-muted">{r.label}:</span>{" "}
+          {r.pe_basis === "same holdings"
+            ? <>P/E and forward P/E both on the same {pct(r.pe_basis_coverage ?? 0, 0, false)} of the value. Forward covers {pct(r.forward_pe_coverage ?? 0, 0, false)}.</>
+            : r.pe_basis === "trailing only" ? <>P/E covers {pct(r.trailing_pe_coverage ?? 0, 0, false)} of the value. No forward estimates for these holdings.</>
+            : <>No P/E for any holding.</>}
+          {!!r.forward_pe_missing?.length && r.pe_basis === "same holdings" && <> No forward estimate: {list(r.forward_pe_missing)}.</>}
+          {!!r.pe_stale?.length && <> Not refreshed in 3 days: {list(r.pe_stale)}.</>}
+        </p>
       ))}
     </div>
   );

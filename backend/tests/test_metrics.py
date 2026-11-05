@@ -57,3 +57,19 @@ def test_beta_and_pe_rows(client):
     assert rows["p1"]["trailing_pe"] == 50.0 and rows["SPY"]["trailing_pe"] == 25.0
     rb = [x for x in m["rolling"]["series"]["LEV"] if x is not None]
     assert rb and all(abs(x - 2.0) < 1e-6 for x in rb)
+
+
+def test_trailing_and_forward_use_the_same_holdings(client, session, fake):
+    """P0-9: with growing estimates forward P/E is below trailing. A holding without an estimate used to
+    stay in the trailing side only and could push forward above trailing."""
+    infos = {"G1": {"trailingPE": 30.0, "forwardPE": 25.0}, "G2": {"trailingPE": 20.0, "forwardPE": 16.0},
+             "NOEST": {"trailingPE": 8.0}}
+    fake.info = lambda t: infos.get(t, {})
+    v = weighted_valuation(session, {"G1": 0.5, "G2": 0.5})
+    assert v["forward_pe"] < v["trailing_pe"] and v["pe_basis"] == "same holdings" and abs(v["pe_basis_coverage"] - 1) < 1e-12
+    v = weighted_valuation(session, {"G1": 0.45, "G2": 0.45, "NOEST": 0.10})
+    # both on G1 + G2 only: 0.9 / (0.45/30 + 0.45/20) = 24 trailing, 0.9 / (0.45/25 + 0.45/16) = 19.5 forward
+    assert abs(v["trailing_pe"] - 24.0) < 1e-9 and abs(v["forward_pe"] - 0.9 / (0.45 / 25 + 0.45 / 16)) < 1e-9
+    assert v["forward_pe"] < v["trailing_pe"]
+    assert v["forward_pe_missing"] == ["NOEST"] and abs(v["forward_pe_coverage"] - 0.9) < 1e-12 and abs(v["trailing_pe_coverage"] - 1) < 1e-12
+    assert abs(v["pe_basis_coverage"] - 0.9) < 1e-12 and v["pe_stale"] == []

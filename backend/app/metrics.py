@@ -66,22 +66,32 @@ def fundamentals(session: Session, ticker: str) -> Fundamentals:
 
 
 def weighted_valuation(session: Session, weights: dict[str, float]) -> dict:
-    """Harmonic-weighted P/E and forward P/E, weighted dividend yield, with coverage."""
-    out = {}
+    """Harmonic-weighted P/E and forward P/E, weighted dividend yield, with coverage.
+
+    Trailing and forward are computed on the same holdings (those that have both), so the pair compares
+    like with like: a holding with a trailing P/E but no estimate would otherwise pull only one side.
+    Without any forward estimate the trailing P/E stands on its own and forward is blank."""
+    out: dict = {}
     funds = {t: fundamentals(session, t) for t in weights}
-    for field in ("trailing_pe", "forward_pe"):
-        num = den = covered = 0.0
-        missing = []
-        for t, w in weights.items():
-            pe = getattr(funds[t], field)
-            if pe and pe > 0:
-                covered += w
-                den += w / pe
-            else:
-                missing.append(t)
-        out[field] = (covered / den) if den > 0 else None
-        out[f"{field}_coverage"] = covered
-        out[f"{field}_missing"] = missing
+    has = {f: {t for t in weights if (getattr(funds[t], f) or 0) > 0} for f in ("trailing_pe", "forward_pe")}
+    both = has["trailing_pe"] & has["forward_pe"]
+    basis = both if both else has["trailing_pe"]
+
+    def harmonic(field: str, names: set[str]) -> float | None:
+        den = sum(weights[t] / getattr(funds[t], field) for t in names)
+        cov = sum(weights[t] for t in names)
+        return cov / den if den > 0 else None
+
+    out["trailing_pe"] = harmonic("trailing_pe", basis)
+    out["forward_pe"] = harmonic("forward_pe", both) if both else None
+    out["pe_basis"] = "same holdings" if both else ("trailing only" if basis else "none")
+    out["pe_basis_coverage"] = sum(weights[t] for t in basis)
+    for f in ("trailing_pe", "forward_pe"):
+        out[f"{f}_coverage"] = sum(weights[t] for t in has[f])
+        out[f"{f}_missing"] = sorted(t for t in weights if t not in has[f])
+    now = dt.datetime.now(dt.timezone.utc)
+    out["pe_stale"] = sorted(t for t in weights if now - (funds[t].fetched_at if funds[t].fetched_at.tzinfo
+                                                          else funds[t].fetched_at.replace(tzinfo=dt.timezone.utc)) > 3 * TTL)
     dys = [(w, funds[t].dividend_yield) for t, w in weights.items()]
     out["dividend_yield"] = sum(w * (d or 0.0) for w, d in dys) if any(d is not None for _, d in dys) else None
     return out
