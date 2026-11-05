@@ -202,9 +202,9 @@ def memo_card(memo: dict) -> bytes:
     c.y = 70
     c.text(memo["title"], 50, bold=True, gap=10)
     a = memo["answer"]
-    c.text(("התרחיש הסביר למשפחה" if he else "Most likely for the family"), 30, MUTED, gap=2)
+    c.text(("התרחיש האופייני למשפחה" if he else "Typical for the family"), 30, MUTED, gap=2)
     c.text(f"{_amt(a['median_amt'], memo.get('currency', 'USD'))}  ({_pct(a['median'])})", 72, sign_color(a["median_amt"]), bold=True, gap=4)
-    c.text((f"במקרה רע (1 מתוך 20): {_amt(a['p5_amt'], memo.get('currency', 'USD'))}" if he else f"Bad case (1 in 20): {_amt(a['p5_amt'], memo.get('currency', 'USD'))}"), 32, MUTED, gap=28)
+    c.text((f"הגרוע מתוך 20: {_amt(a['p5_amt'], memo.get('currency', 'USD'))}" if he else f"Worst of 20: {_amt(a['p5_amt'], memo.get('currency', 'USD'))}"), 32, MUTED, gap=28)
     c.rule()
     for b in memo["branches"][:4]:
         c.pair(f"{b['name']}  {round(b['probability'] * 100)}%", _pct(b["median"]), 32, TEXT, sign_color(b["median"]))

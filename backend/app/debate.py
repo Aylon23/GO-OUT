@@ -555,9 +555,8 @@ def answer_sentence(spec: dict, fam: dict, worst: dict | None, currency: str = "
         return f"{sym}{abs(v):,.0f}"
 
     verb = "loses" if fam["median"] < 0 else "gains"
-    s = (f"Most likely the family {verb} about {amt(fam['median_amt'])} ({fam['median'] * 100:+.1f}%) over "
-         f"{HORIZON_WORDS.get(spec['horizon'], spec['horizon'])}; in a bad case (1 in 20) {amt(fam['p5_amt'])} "
-         f"({fam['p5'] * 100:+.1f}%).")
+    s = (f"Typical: the family {verb} {abs(fam['median']) * 100:.1f}% ({amt(fam['median_amt'])}) over "
+         f"{HORIZON_WORDS.get(spec['horizon'], spec['horizon'])}. Worst of 20: {fam['p5'] * 100:+.1f}% ({amt(fam['p5_amt'])}).")
     if worst:
         s += (f" {worst['name']} is the most exposed ({worst['median'] * 100:+.1f}%)." if worst["median"] < 0
               else f" Every portfolio gains; {worst['name']} the least ({worst['median'] * 100:+.1f}%).")

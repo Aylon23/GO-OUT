@@ -95,11 +95,11 @@ def build(session: Session, spec: dict, report: dict | None = None, lang: str = 
 
     # 1 bottom line
     if he:
-        lines = [f"בטווח של {hz}: התרחיש הסביר למשפחה {f.amt(fam['median_amt'])} ({f.pct(fam['median'])}). במקרה רע (1 מתוך 20) {f.amt(fam['p5_amt'])} ({f.pct(fam['p5'])}). "
+        lines = [f"בטווח של {hz}: התרחיש האופייני למשפחה {f.pct(fam['median'])} ({f.amt(fam['median_amt'])}). הגרוע מתוך 20: {f.pct(fam['p5'])} ({f.amt(fam['p5_amt'])}). "
                  f"הסיכוי להפסד {f.pct(fam['prob_loss'], 0, False)}."]
     else:
-        lines = [f"Over {hz}: most likely the family {f.amt(fam['median_amt'])} ({f.pct(fam['median'])}). Bad case (1 in 20): {f.amt(fam['p5_amt'])} "
-                 f"({f.pct(fam['p5'])}). Chance of a loss: {f.pct(fam['prob_loss'], 0, False)}."]
+        lines = [f"Over {hz}: typical for the family {f.pct(fam['median'])} ({f.amt(fam['median_amt'])}). Worst of 20: {f.pct(fam['p5'])} "
+                 f"({f.amt(fam['p5_amt'])}). Chance of a loss: {f.pct(fam['prob_loss'], 0, False)}."]
     if spec.get("summary"):
         lines.append(f.text(spec["summary"]))
     S.append(("שורה תחתונה" if he else "Bottom line", lines))
@@ -159,10 +159,10 @@ def build(session: Session, spec: dict, report: dict | None = None, lang: str = 
     lines = []
     for p in sorted(act["people"], key=lambda x: x["median_amt"]):
         if he:
-            lines.append(f"{f.text(p['name'])}: {f.amt(p['median_amt'])} ({f.pct(p['median'])}), במקרה רע {f.amt(p['bad_amt'])}. "
+            lines.append(f"{f.text(p['name'])}: {f.amt(p['median_amt'])} ({f.pct(p['median'])}), הגרוע מתוך 20 {f.amt(p['bad_amt'])}. "
                          + (f"מה שמשפיע: {f.text(', '.join(h['symbol'] for h in p['drivers_holdings']))}." if p["drivers_holdings"] else ""))
         else:
-            lines.append(f"{f.text(p['name'])}: {f.amt(p['median_amt'])} ({f.pct(p['median'])}), bad case {f.amt(p['bad_amt'])}. "
+            lines.append(f"{f.text(p['name'])}: {f.amt(p['median_amt'])} ({f.pct(p['median'])}), worst of 20 {f.amt(p['bad_amt'])}. "
                          + (f"Driven by {f.text(', '.join(h['symbol'] for h in p['drivers_holdings']))}." if p["drivers_holdings"] else ""))
     S.append(("השלכות לכל אחד" if he else "Implications per person", lines))
 

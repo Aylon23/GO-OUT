@@ -100,7 +100,7 @@ def test_debate_end_to_end(session, ai):
     assert out["phase"] == "done", out["note"]
     assert out["requests"] == 9  # 4 analysts, 4 revisions, 1 judge
     res = out["result"]
-    assert res["answer"].startswith("Most likely the family")
+    assert res["answer"].startswith("Typical: the family")
     assert res["hurt"] and all(h["change_amt"] < 0 for h in res["hurt"]) and len(res["hurt"]) <= 5
     assert res["most_exposed"]["name"] in ("My portfolio", "Keren")
     assert {h["stage"] for h in res["headline"]} == {"round 1", "round 2"} and len(res["headline"]) == 8
