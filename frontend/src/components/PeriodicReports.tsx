@@ -25,9 +25,8 @@ export function PeriodicReports() {
     groups.set(k, [...(groups.get(k) ?? []), r]);
   }
   return (
-    <section className="mt-16" aria-label="Periodic reports">
-      <h2 className="text-lg font-semibold">Reports</h2>
-      <p className="mt-1 max-w-[72ch] text-sm text-muted">A phone-sized card and a short PDF for each person and for the family, made every Sunday (last week) and on the 1st (last month) while the app runs. They go only to you: here, and to your Telegram chat if it's connected. Forward them yourself.</p>
+    <section aria-label="Periodic reports">
+      <p className="max-w-[72ch] text-sm text-muted">A phone-sized card and a short PDF for each person and for the family, made every Sunday (last week) and on the 1st (last month) while the app runs. They go only to you: here, and to your Telegram chat if it's connected. Forward them yourself.</p>
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" className="btn-secondary" disabled={!!busy} onClick={() => make("weekly", false)}>{busy === "weeklyfalse" ? "Making" : "Make last week's"}</button>
         <button type="button" className="btn-secondary" disabled={!!busy} onClick={() => make("monthly", false)}>{busy === "monthlyfalse" ? "Making" : "Make last month's"}</button>
