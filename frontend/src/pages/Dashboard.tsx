@@ -8,7 +8,7 @@ import { ChartSkeleton } from "../components/chart/SeriesChart";
 import { PortfolioChart } from "../components/PortfolioChart";
 import { RangeSelector } from "../components/RangeSelector";
 import { SymbolSearch } from "../components/SymbolSearch";
-import { ErrorLine, InfoTip, Signed, Skel } from "../components/ui";
+import { ErrorLine, InfoTip, Signed, Skel, Updated } from "../components/ui";
 import { api, ApiError, type Portfolio } from "../lib/api";
 import { compactMoney, dateLong, fullMonthYear, money, pct } from "../lib/format";
 import { invalidate, useData } from "../lib/hooks";
@@ -169,10 +169,10 @@ export default function Dashboard() {
   if (p.empty) return <Page><Empty /></Page>;
   return (
     <Page>
-      <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
+      <div className={clsx("transition-opacity duration", q.loading && !q.stale && "opacity-60")}>
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 [&>h1]:min-w-0">
           <Headline p={p} />
-          <button type="button" className="btn-ghost shrink-0" onClick={() => setReport(true)}><FileText size={16} /> Report</button>
+          <span className="flex shrink-0 items-center gap-3"><Updated at={q.updatedAt} refreshing={q.stale && q.loading} /><button type="button" className="btn-ghost shrink-0" onClick={() => setReport(true)}><FileText size={16} /> Report</button></span>
         </div>
         <SecondaryLine p={p} />
         {p.range.short_history && (

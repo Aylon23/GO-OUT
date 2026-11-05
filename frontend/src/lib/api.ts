@@ -387,8 +387,42 @@ export interface CouncilModelView { label: string; models: string[]; devil: bool
   round2: { rating: Rating; conviction: number | null; new_reason: string; tags: string[]; devils_argument: string } | null }
 export interface CouncilStock { ticker: string; verdict: CouncilVerdictRow | null; models: CouncilModelView[]; pack?: StockPack; history?: CouncilVerdictRow[]; label: string }
 
+/* Stale-while-revalidate: the last good answer of every GET, kept in memory and in localStorage, so a
+   page paints at once and refreshes in the background. Per URL, so one portfolio never shows another's. */
+type Cached = { data: unknown; at: number };
+const SWR_KEY = "benchmark:swr:v1";
+const SWR_MAX_ENTRY = 300_000; // characters; bigger answers stay in memory only
+let swr: Map<string, Cached> | null = null;
+const swrMap = (): Map<string, Cached> => {
+  if (swr) return swr;
+  swr = new Map();
+  try { const raw = localStorage.getItem(SWR_KEY); if (raw) for (const [k, v] of JSON.parse(raw) as [string, Cached][]) swr.set(k, v); } catch { /* storage off */ }
+  return swr;
+};
+let saveTimer: number | undefined;
+const flush = () => {
+  clearTimeout(saveTimer); saveTimer = undefined;
+  try {
+    const entries = [...swrMap().entries()].filter(([, v]) => JSON.stringify(v.data).length < SWR_MAX_ENTRY).sort((a, b) => b[1].at - a[1].at).slice(0, 60);
+    localStorage.setItem(SWR_KEY, JSON.stringify(entries));
+  } catch { /* full or off: memory only */ }
+};
+const persist = () => { clearTimeout(saveTimer); saveTimer = window.setTimeout(flush, 300); };
+// a reload or a closed tab right after an answer still keeps it
+if (typeof window !== "undefined") window.addEventListener("pagehide", () => { if (saveTimer !== undefined) flush(); });
+let capture: string[] | null = null;
+/** Runs `fn` and returns the GET URLs it asked for (request() resolves its URL before its first await). */
+export function captureUrls<T>(fn: () => T): { result: T; urls: string[] } {
+  capture = [];
+  try { return { result: fn(), urls: capture }; } finally { capture = null; }
+}
+export const cachedAnswer = (url: string): Cached | undefined => swrMap().get(url);
+/** After a change (a trade, an import), older answers must not be painted as if current. */
+export const dropCached = () => { swrMap().clear(); try { localStorage.removeItem(SWR_KEY); } catch { /* off */ } };
+
 async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   if (url.startsWith("/api/") && !/[?&]portfolio=/.test(url)) url += (url.includes("?") ? "&" : "?") + portfolioParam();
+  if (method === "GET" && capture) capture.push(url);
   let res: Response;
   try {
     res = await fetch(url, {
@@ -414,8 +448,14 @@ async function request<T>(method: string, url: string, body?: unknown, signal?: 
     throw new ApiError(res.status, msg, fields);
   }
   const ct = res.headers.get("content-type") ?? "";
-  return (ct.includes("json") ? res.json() : res.text()) as Promise<T>;
+  const out = (await (ct.includes("json") ? res.json() : res.text())) as T;
+  if (method === "GET" && ct.includes("json")) { swrMap().set(url, { data: out, at: Date.now() }); persist(); }
+  else if (method !== "GET") dropCachedSoon();
+  return out;
 }
+// any write may change what GETs return; keep painting, but mark everything for a fresh fetch
+let dropTimer: number | undefined;
+const dropCachedSoon = () => { clearTimeout(dropTimer); dropTimer = window.setTimeout(() => { for (const v of swrMap().values()) v.at = 0; persist(); }, 0); };
 
 /** POSTs JSON and saves the file the server returns (PDF, PNG). */
 export async function download(url: string, body: unknown, filename: string): Promise<void> {

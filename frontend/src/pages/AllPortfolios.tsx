@@ -8,7 +8,7 @@ import { PeriodicReports } from "../components/PeriodicReports";
 import { ReportPanel } from "../components/ReportPanel";
 import { HoldingsImport } from "../components/HoldingsImport";
 import { ChartSkeleton, colorFor, InlineLegend, SeriesChart, type SeriesDef } from "../components/chart/SeriesChart";
-import { EmptyState, ErrorLine, InfoTip, Segmented, Signed, Skel } from "../components/ui";
+import { EmptyState, ErrorLine, InfoTip, Segmented, Signed, Skel, Updated } from "../components/ui";
 import { api, ApiError, type Overview, type OverviewRow } from "../lib/api";
 import { compactMoney, dateLong, money, pct, pp, rangeStartDate } from "../lib/format";
 import { useData } from "../lib/hooks";
@@ -34,10 +34,10 @@ export default function AllPortfolios() {
     <div className="mx-auto max-w-content px-4 pb-24 pt-10 md:px-8 md:pt-16">
       <BackupWarning />
       {q.error && !d ? <ErrorLine message={q.error.message} onRetry={q.reload} /> : !d ? <OverviewSkeleton /> : (
-        <div className={clsx("transition-opacity duration", q.loading && "opacity-60")}>
+        <div className={clsx("transition-opacity duration", q.loading && !q.stale && "opacity-60")}>
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 [&>h1]:min-w-0">
             <Headline d={d} code={code} />
-            {!d.rows.every((r) => r.empty) && <button type="button" className="btn-ghost shrink-0" onClick={() => setReport(true)}><FileText size={16} /> Report</button>}
+            <span className="flex shrink-0 items-center gap-3"><Updated at={q.updatedAt} refreshing={q.stale && q.loading} />{!d.rows.every((r) => r.empty) && <button type="button" className="btn-ghost shrink-0" onClick={() => setReport(true)}><FileText size={16} /> Report</button>}</span>
           </div>
           {d.rows.every((r) => r.empty) ? (
             <EmptyState title="No holdings yet in any portfolio." body="Import an Excel file with your portfolios (one table per portfolio, under its name), or add a portfolio and fill it in.">

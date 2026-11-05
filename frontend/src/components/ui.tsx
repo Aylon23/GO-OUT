@@ -157,3 +157,16 @@ export function Signed({ value, children, className }: { value: number | null | 
 export function Blank({ why }: { why: string }) {
   return <span className="cursor-help text-faint" title={why} aria-label={why}>–</span>;
 }
+
+/** "Updated 13:40" for data on screen; "refreshing" while a saved answer shows and a fresh one loads. */
+export function Updated({ at, refreshing }: { at: number | null; refreshing: boolean }) {
+  if (!at && !refreshing) return null;
+  const d = at ? new Date(at) : null;
+  const hm = d ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` : "";
+  const day = d && d.toDateString() !== new Date().toDateString() ? `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]} ` : "";
+  return (
+    <span className="shrink-0 self-center text-xs text-faint" aria-live="polite">
+      {d ? `Updated ${day}${hm}` : "Saved view"}{refreshing && <span className="text-muted">, refreshing</span>}
+    </span>
+  );
+}
