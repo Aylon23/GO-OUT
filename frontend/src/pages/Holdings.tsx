@@ -8,7 +8,7 @@ import { ChartSkeleton } from "../components/chart/SeriesChart";
 import { RangeSelector } from "../components/RangeSelector";
 import { EmptyState, ErrorLine, InfoTip, SidePanel, Signed, Skel } from "../components/ui";
 import { api, type HoldingRow, type Holdings as H } from "../lib/api";
-import { dateLong, money, monthYear, num, pct, pp } from "../lib/format";
+import { dateLong, dateShort, money, monthYear, num, pct, pp } from "../lib/format";
 import { useData, useMediaQuery } from "../lib/hooks";
 import { useApp } from "../state";
 
@@ -21,10 +21,10 @@ const COLS: { key: Key; label: string; tip?: string; right?: boolean; w: string 
   { key: "price", label: "Price (local)", right: true, w: "96px", tip: "Last price in the stock's own currency." },
   { key: "value", label: "Value", right: true, w: "100px" },
   { key: "weight", label: "Weight", right: true, w: "84px" },
-  { key: "unrealized", label: "Unrealized", right: true, w: "112px", tip: "(Price now minus average cost) x shares, converted to the display currency at today's rate." },
+  { key: "unrealized", label: "Gain since bought", right: true, w: "120px", tip: "(Price now minus average cost) x shares, converted to the display currency at today's rate." },
   { key: "today", label: "Today", right: true, w: "88px", tip: "The last session's move: its close (or the live price while the market is open) vs the close before, times your shares." },
-  { key: "range_return", label: "Return", right: true, w: "72px", tip: "This holding's return over the selected range, while you held it." },
-  { key: "contribution", label: "Contrib.", right: true, w: "80px", tip: "How many percentage points this holding added to or took from your portfolio's return over the range." },
+  { key: "range_return", label: "Return", right: true, w: "104px", tip: "This holding's return over the selected range, while you held it." },
+  { key: "contribution", label: "Contrib.", right: true, w: "104px", tip: "How many percentage points this holding added to or took from your portfolio's return over the range." },
   { key: "council", label: "Council", w: "150px", tip: "The AI council's rating turned into a suggestion for this portfolio (limit 15% per stock, est. tax 25% of the gain). AI opinion based on the data shown. Not advice." },
 ];
 
@@ -51,6 +51,7 @@ export default function Holdings() {
   const [open, setOpen] = useState<HoldingRow | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const d = q.data;
+  const period = periodOf(d && !d.empty ? d.range : null);
   const rows = useMemo(() => {
     if (!d) return [];
     const r = d.rows.filter((x) => showClosed || !x.closed);
@@ -88,7 +89,8 @@ export default function Holdings() {
                     className={clsx("sticky top-14 z-10 border-b border-line bg-bg py-2 text-xs font-medium text-muted", c.right ? "text-right" : "text-left", c.key !== "ticker" && "pl-2")}>
                     <span className={clsx("inline-flex items-center gap-1", c.right && "justify-end")}>
                       <button type="button" className="press flex items-center gap-1 rounded-sm hover:text-text" onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? (s.dir === 1 ? -1 : 1) : c.key === "ticker" ? 1 : -1 }))}>
-                        {c.key === "today" ? <DayWord /> : c.label}
+                        {c.key === "today" ? <DayWord /> : c.key === "range_return" || c.key === "contribution"
+                          ? <span className="block leading-4">{c.label}, {period.name}<span className="block font-normal text-faint">{period.since}</span></span> : c.label}
                         {sort.key === c.key ? (sort.dir === 1 ? <CaretUp size={10} /> : <CaretDown size={10} />) : <span className="w-[10px]" />}
                       </button>
                       {c.tip && <InfoTip text={c.tip} />}
@@ -99,7 +101,7 @@ export default function Holdings() {
               <tbody>{rows.map((r) => <TableRow key={r.ticker} r={r} base={d.base} cols={cols} council={councilMap[r.ticker]} onOpen={() => setOpen(r)} />)}</tbody>
             </table>
             <div className="md:hidden" role="list" aria-label="Holdings">
-              {rows.map((r) => <Row key={r.ticker} r={r} base={d.base} onOpen={() => setOpen(r)} />)}
+              {rows.map((r) => <Row key={r.ticker} r={r} base={d.base} period={period} onOpen={() => setOpen(r)} />)}
             </div>
             <div className="flex items-center justify-between border-b border-line py-3 text-sm">
               <span className="text-muted">Cash</span>
@@ -126,7 +128,7 @@ export default function Holdings() {
   );
 }
 
-function Row({ r, base, onOpen }: { r: HoldingRow; base: string; onOpen: () => void }) {
+function Row({ r, base, period, onOpen }: { r: HoldingRow; base: string; period: Period; onOpen: () => void }) {
   return (
     <div role="listitem" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       aria-label={`${r.ticker}, open details`}
@@ -140,9 +142,9 @@ function Row({ r, base, onOpen }: { r: HoldingRow; base: string; onOpen: () => v
       {r.price_status !== "ok" && <p className="col-span-2 text-xs text-faint">No price{r.price_date ? ` · last ${dateLong(r.price_date)}` : ""}</p>}
       <Kv k="Weight" v={pct(r.weight, 1, false)} />
       {r.closed ? <Kv k="Realized" v={<Signed value={r.realized}>{money(r.realized, base, { signed: true, decimals: 0 })}</Signed>} />
-        : <Kv k="Unrealized" v={r.price_status === "missing" ? <span className="text-faint">–</span> : <Signed value={gainOf(r, base).v}>{money(gainOf(r, base).v, gainOf(r, base).c, { signed: true, decimals: 0 })} ({pct(r.unrealized_pct, 1)})</Signed>} />}
+        : <Kv k="Gain since bought" v={r.price_status === "missing" ? <span className="text-faint">–</span> : <Signed value={gainOf(r, base).v}>{money(gainOf(r, base).v, gainOf(r, base).c, { signed: true, decimals: 0 })} ({pct(r.unrealized_pct, 1)})</Signed>} />}
       <Kv k={<DayWord />} v={r.price_status !== "ok" ? <span className="text-faint">–</span> : <Signed value={r.today}>{money(r.today, base, { signed: true, decimals: 0 })} ({pct(r.today_pct, 2)})</Signed>} />
-      <Kv k="Return" v={<Signed value={r.range_return}>{pct(r.range_return, 1)}</Signed>} />
+      <Kv k={`Return, ${period.name} (${period.since})`} v={<Signed value={r.range_return}>{pct(r.range_return, 1)}</Signed>} />
       <Kv k="Contribution" v={<Signed value={r.contribution}>{pp(r.contribution, 2)}</Signed>} />
       <Kv k="Quantity" v={num(r.quantity, 4)} />
       <Kv k="Price, avg cost (local)" v={r.price_status !== "ok" ? <span className="text-faint">No price</span> : `${money(r.price, r.currency, { decimals: 2 })}, ${money(r.avg_cost, r.currency, { decimals: 2 })}`} />
@@ -204,6 +206,12 @@ function TableRow({ r, base, cols, council, onOpen }: { r: HoldingRow; base: str
 
 /** Opening positions (imported, no purchase dates) show gain in the security's own currency. */
 // one display currency per screen: only Price and Avg cost stay in the stock's own currency
+type Period = { name: string; since: string };
+const RANGE_NAME: Record<string, string> = { "1M": "1M", "3M": "3M", YTD: "YTD", "1Y": "1Y", "3Y": "3Y", "5Y": "5Y", MAX: "Max", CUSTOM: "Custom" };
+/** The selected range as a column header carries it: "Max" and "since 30 Oct". */
+export const periodOf = (r: { code: string; start: string } | null): Period =>
+  r ? { name: RANGE_NAME[r.code] ?? r.code, since: `since ${dateShort(r.start)}` } : { name: "", since: "" };
+
 const gainOf = (r: HoldingRow, base: string) => ({ v: r.unrealized, c: base });
 
 const Kv = ({ k, v }: { k: React.ReactNode; v: React.ReactNode }) => (
@@ -268,7 +276,7 @@ function HoldingPanel({ row, onClose }: { row: HoldingRow; onClose: () => void }
       <p className="-mt-2 text-sm text-muted">{row.name}</p>
       <div className="mt-5 grid grid-cols-3 gap-4 border-y border-line py-3 text-sm">
         <div><div className="text-xs text-faint">Value</div><div className="num font-medium">{money(row.value, base, { decimals: 0 })}</div></div>
-        <div><div className="text-xs text-faint">Unrealized</div><Signed value={row.unrealized_pct} className="font-medium">{pct(row.unrealized_pct, 1)}</Signed></div>
+        <div><div className="text-xs text-faint">Gain since bought</div><Signed value={row.unrealized_pct} className="font-medium">{pct(row.unrealized_pct, 1)}</Signed></div>
         <div><div className="text-xs text-faint">Weight</div><div className="num font-medium">{pct(row.weight, 1, false)}</div></div>
       </div>
       <div className="mt-6">

@@ -202,8 +202,8 @@ function PortfolioTable({ d, onOpen }: { d: Overview; code: string; onOpen: (r: 
           <Th k="name">Person</Th>
           <th scope="col" className="sticky top-14 z-10 hidden border-b border-line bg-bg py-2 pl-3 text-left text-xs font-medium text-muted lg:table-cell">Since tracking</th>
           <Th k="value" right>Value</Th>
-          <Th k="gain" right tip="Market value of open positions minus what they cost (your average price).">Gain vs cost</Th>
-          <Th k="vs" right tip={`Return since tracking began minus the S&P 500 (SPY, dividends included) over exactly the same days. Shown after ${min} trading days.`}>vs S&P 500</Th>
+          <Th k="gain" right tip="Market value of open positions minus what they cost (your average price).">Gain since bought</Th>
+          <Th k="vs" right tip={`Return since tracking began minus the S&P 500 (SPY, dividends included) over exactly the same days. Shown after ${min} trading days.`}><span className="block leading-4">vs S&P 500<span className="block font-normal text-faint">since start</span></span></Th>
           <Th k="today" right><DayWord /></Th>
           <Th k="activity" right className="hidden lg:table-cell">Last activity</Th>
         </tr></thead>
@@ -242,8 +242,8 @@ function PortfolioTable({ d, onOpen }: { d: Overview; code: string; onOpen: (r: 
               <span className="ml-auto"><Spark values={r.spark ?? []} /></span>
               <span className="num font-medium">{money(r.value, d.base, { decimals: 0 })}</span>
             </span>
-            <Kv k="Gain vs cost" v={<Signed value={r.cost_gain_amt}>{money(r.cost_gain_amt, d.base, { signed: true, decimals: 0 })} ({pct(r.cost_gain_pct, 1)})</Signed>} />
-            <Kv k="vs S&P 500" v={early(r) ? <span className="text-faint">Too early · {r.trading_days ?? 0}d</span> : <Signed value={r.since_vs_spy}>{pp(r.since_vs_spy, 1)}</Signed>} />
+            <Kv k="Gain since bought" v={<Signed value={r.cost_gain_amt}>{money(r.cost_gain_amt, d.base, { signed: true, decimals: 0 })} ({pct(r.cost_gain_pct, 1)})</Signed>} />
+            <Kv k="vs S&P 500 since start" v={early(r) ? <span className="text-faint">Too early, {r.trading_days ?? 0} of {min} days</span> : <Signed value={r.since_vs_spy}>{pp(r.since_vs_spy, 1)}</Signed>} />
             <Kv k={<DayWord />} v={<Signed value={r.today_change}>{money(r.today_change, d.base, { signed: true, decimals: 0 })} ({pct(r.today_pct, 2)})</Signed>} />
             <Kv k="Last activity" v={r.last_activity ? dateLong(r.last_activity) : "–"} />
           </div>
