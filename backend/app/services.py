@@ -287,6 +287,17 @@ def day_change(ctx: Context) -> dict:
             "date": latest.isoformat() if latest else None}
 
 
+def sector_rows(sectors: dict[str, float]) -> list[dict]:
+    """Sectors for display: anything under 1% is grouped as "Other", and nothing that rounds to 0% is
+    listed (Cash keeps its own row when it shows)."""
+    big = {k: v for k, v in sectors.items() if v >= 0.01 or (k == "Cash" and v >= 0.005)}
+    other = sum(v for k, v in sectors.items() if k not in big)
+    rows = [{"sector": k, "weight": _f(v)} for k, v in sorted(big.items(), key=lambda kv: -kv[1])]
+    if other >= 0.005:
+        rows.append({"sector": "Other", "weight": _f(other)})
+    return rows
+
+
 def _xirr_why(ctx: Context, days: int, value) -> str | None:
     """Why XIRR is blank, in one sentence; None when it has a value."""
     if value is not None and not (isinstance(value, float) and math.isnan(value)):
@@ -559,7 +570,7 @@ def holdings_payload(session: Session, code: str = "1Y", start: str | None = Non
         "rows": sorted(rows, key=lambda r: -(r["value"] or 0)),
         "best": [r["ticker"] for r in reversed(ranked[-3:]) if (r["range_return"] or 0) > 0],
         "worst": [r["ticker"] for r in ranked[:3] if (r["range_return"] or 0) < 0],
-        "sectors": [{"sector": k, "weight": _f(v)} for k, v in sorted(sectors.items(), key=lambda kv: -kv[1])],
+        "sectors": sector_rows(sectors),
         "concentrated": [r["ticker"] for r in open_rows if (r["weight"] or 0) > 0.25],
     }
 
