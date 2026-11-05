@@ -73,3 +73,25 @@ def test_trailing_and_forward_use_the_same_holdings(client, session, fake):
     assert v["forward_pe"] < v["trailing_pe"]
     assert v["forward_pe_missing"] == ["NOEST"] and abs(v["forward_pe_coverage"] - 0.9) < 1e-12 and abs(v["trailing_pe_coverage"] - 1) < 1e-12
     assert abs(v["pe_basis_coverage"] - 0.9) < 1e-12 and v["pe_stale"] == []
+
+
+def test_beta_carries_r2_window_and_other_windows(client):
+    """P0-10: LEV is exactly 2x SPY: beta 2 with R² 1 in every window; SPY vs itself is 1 with R² 1."""
+    client.post("/api/transactions?portfolio=1", json={"ticker": "LEV", "type": "BUY", "date": (TODAY - dt.timedelta(days=400)).isoformat(),
+                                                       "quantity": 10, "price": 100, "currency": "USD"})
+    rows = {r["key"]: r for r in client.get("/api/metrics?portfolios=1&symbols=SPY,LEV&range=1Y").json()["rows"]}
+    lev = rows["LEV"]
+    assert abs(lev["r2"] - 1) < 1e-9 and lev["beta_window"] == "1Y daily" and not lev["beta_low_r2"]
+    assert abs(lev["beta_windows"]["3M"] - 2) < 1e-6 and abs(lev["beta_windows"]["1Y"] - 2) < 1e-6
+    assert lev["beta_windows"]["3Y"] is None  # only 500 days of prices: no 3-year figure rather than a short one
+
+
+def test_low_r2_beta_is_flagged():
+    import numpy as np
+    import pandas as pd
+    from app.metrics import LOW_R2, _beta_r2
+    rng = np.random.default_rng(1)
+    m = pd.Series(rng.normal(0, 0.01, 300))
+    noisy = 0.5 * m + pd.Series(rng.normal(0, 0.02, 300))
+    beta, r2 = _beta_r2(noisy, m)
+    assert r2 < LOW_R2 and 0.2 < beta < 0.8

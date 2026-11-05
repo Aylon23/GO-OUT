@@ -110,6 +110,22 @@ def _beta(rx: pd.Series, rm: pd.Series) -> float | None:
     return float(np.cov(x, m, ddof=1)[0, 1] / v) if v > 0 else None
 
 
+LOW_R2 = 0.3  # below this the market explains under 30% of the moves: beta says little
+WINDOWS = {"3M": 63, "1Y": 252, "3Y": 756}  # trading days
+
+
+def _beta_r2(rx: pd.Series, rm: pd.Series) -> tuple[float | None, float | None]:
+    df = pd.concat([rx, rm], axis=1).dropna()
+    if len(df) < 20:
+        return None, None
+    x, m = df.iloc[:, 0].to_numpy(), df.iloc[:, 1].to_numpy()
+    v = np.var(m, ddof=1)
+    if v <= 0 or np.var(x, ddof=1) <= 0:
+        return None, None
+    c = float(np.corrcoef(x, m)[0, 1])
+    return float(np.cov(x, m, ddof=1)[0, 1] / v), c * c
+
+
 def _rolling_beta(rx: pd.Series, rm: pd.Series) -> pd.Series:
     cov = rx.rolling(WINDOW, min_periods=WINDOW).cov(rm)
     var = rm.rolling(WINDOW, min_periods=WINDOW).var()
@@ -123,7 +139,8 @@ def metrics_payload(session: Session, pids: list[int], symbols: list[str], code:
     ref = market_data(session, REF)
     last = ref.frame.index.max()
     start = range_start(code if code.upper() != "CUSTOM" else "1Y", last, ref.frame.index.min())
-    warm = start - dt.timedelta(days=int(WINDOW * 1.6))  # history before the range for the rolling window
+    # history before the range for the rolling window, and three years back for the 3Y beta on hover
+    warm = min(start - dt.timedelta(days=int(WINDOW * 1.6)), last - dt.timedelta(days=int(WINDOWS["3Y"] * 1.47)))
     cal_all = [d for d in ref.frame.index if d >= warm]
     ref_tr = total_return_in_base(ref, fx, cal_all, base)
     rm = _returns_on(cal_all, ref_tr)
@@ -134,10 +151,16 @@ def metrics_payload(session: Session, pids: list[int], symbols: list[str], code:
 
     def add(key: str, label: str, kind: str, price: pd.Series, val: dict, note: str = ""):
         rx = _returns_on(cal_all, price)
-        beta = _beta(rx.iloc[b + 1 :], rm.iloc[b + 1 :])
+        beta, r2 = _beta_r2(rx.iloc[b + 1 :], rm.iloc[b + 1 :])
+        windows = {}
+        for w, n in WINDOWS.items():  # each window counted back from the last day, on daily returns
+            ok = rx.iloc[-n:].notna().sum() >= int(n * 0.9) and len(rx) > n
+            windows[w] = _f(_beta_r2(rx.iloc[-n:], rm.iloc[-n:])[0]) if ok else None
         rb = _rolling_beta(rx, rm).iloc[b:]
         rolling[key] = rb
-        rows.append({"key": key, "label": label, "kind": kind, "beta": _f(beta), "note": note,
+        rows.append({"key": key, "label": label, "kind": kind, "beta": _f(beta), "r2": _f(r2),
+                     "beta_window": f"{code.upper() if code.upper() != 'CUSTOM' else '1Y'} daily", "beta_windows": windows,
+                     "beta_low_r2": r2 is not None and r2 < LOW_R2, "note": note,
                      **{k: (_f(v) if isinstance(v, (int, float)) or v is None else v) for k, v in val.items()}})
 
     for pid in pids:

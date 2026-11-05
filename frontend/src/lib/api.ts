@@ -98,6 +98,7 @@ export interface HoldingImport {
 
 export interface MetricRow {
   key: string; label: string; kind: "portfolio" | "symbol"; name?: string; note: string; beta: number | null;
+  r2?: number | null; beta_window?: string; beta_windows?: Record<string, number | null>; beta_low_r2?: boolean;
   trailing_pe: number | null; forward_pe: number | null; dividend_yield: number | null;
   trailing_pe_coverage?: number; trailing_pe_missing?: string[]; forward_pe_coverage?: number;
   forward_pe_missing?: string[]; pe_basis?: "same holdings" | "trailing only" | "none"; pe_basis_coverage?: number; pe_stale?: string[];

@@ -92,7 +92,10 @@ export default function Compare() {
               <h2 id="beta-h" className="text-lg font-semibold">
                 <InfoTip text="How much it tends to move when SPY moves 1%. Above 1 swings more than the market, below 1 less. Measured from daily returns over the range.">Beta vs SPY</InfoTip>
               </h2>
-              <Bars rows={d.rows} value={(r) => r.beta} fmt={ratio} colorOf={colorOf} marker={1} markerLabel="Market = 1" />
+              <Bars rows={d.rows} value={(r) => r.beta} fmt={(v) => (v == null ? "–" : `β ${ratio(v)}`)} colorOf={colorOf} marker={1} markerLabel="Market = 1"
+                sub={(r) => r.r2 == null ? "" : `R² ${r.r2.toFixed(2)}, ${r.beta_window}${r.beta_low_r2 ? ", unreliable" : ""}`}
+                hint={(r) => r.beta_windows && Object.entries(r.beta_windows).map(([w, v]) => `${w} ${v == null ? "not enough history" : ratio(v)}`).join(", ")} />
+              <p className="mt-2 text-xs text-faint">R² is how much of the daily moves the market explains. Below 0.30 the beta says little and is marked unreliable. Hover a value for 3M, 1Y and 3Y.</p>
             </section>
             <section aria-labelledby="pe-h">
               <h2 id="pe-h" className="text-lg font-semibold">
@@ -127,7 +130,7 @@ export default function Compare() {
                     <td className="py-2.5"><span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: colorOf(r, i) }} />
                       <span className={clsx(r.kind === "symbol" && "font-mono font-semibold")}>{r.label}</span>
                       {r.kind === "symbol" && r.name && r.name !== r.label && <span className="truncate text-xs text-faint">{r.name}</span>}</span></td>
-                    <td className="num py-2.5 text-right">{ratio(r.beta)}</td>
+                    <td className="num py-2.5 text-right" title={r.beta_windows && Object.entries(r.beta_windows).map(([w, v]) => `${w} ${v == null ? "not enough history" : ratio(v)}`).join(", ")}>{ratio(r.beta)}{r.r2 != null && <span className={clsx("block text-xs", r.beta_low_r2 ? "text-muted" : "text-faint")}>R² {r.r2.toFixed(2)}{r.beta_low_r2 && ", unreliable"}</span>}</td>
                     <td className="num py-2.5 text-right">{r.trailing_pe?.toFixed(1) ?? <Blank why="No trailing earnings, or earnings are negative." />}</td>
                     <td className="num py-2.5 text-right">{r.forward_pe?.toFixed(1) ?? <Blank why="No analyst earnings estimate, or it is negative." />}</td>
                     <td className="num py-2.5 text-right">{r.dividend_yield == null ? <Blank why="Pays no dividend, or none reported." /> : pct(r.dividend_yield, 2, false)}</td>
@@ -160,9 +163,9 @@ function Answer({ d, current }: { d: Metrics; current: string }) {
   );
 }
 
-function Bars({ rows, value, fmt, colorOf, marker, markerLabel, sub }: {
+function Bars({ rows, value, fmt, colorOf, marker, markerLabel, sub, hint }: {
   rows: MetricRow[]; value: (r: MetricRow) => number | null; fmt: (v: number | null) => string; colorOf: (r: MetricRow, i: number) => string;
-  marker?: number; markerLabel?: string; sub?: (r: MetricRow) => string;
+  marker?: number; markerLabel?: string; sub?: (r: MetricRow) => string; hint?: (r: MetricRow) => string | undefined;
 }) {
   const max = Math.max(...rows.map((r) => value(r) ?? 0), marker ?? 0) * 1.08 || 1;
   return (
@@ -176,7 +179,7 @@ function Bars({ rows, value, fmt, colorOf, marker, markerLabel, sub }: {
               {v != null && v > 0 && <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(v / max) * 100}%`, background: colorOf(r, i) }} />}
               {marker !== undefined && <span aria-hidden title={markerLabel} className="absolute -inset-y-1 w-px bg-text opacity-40" style={{ left: `${(marker / max) * 100}%` }} />}
             </span>
-            <span className="num w-24 text-right">
+            <span className="num w-32 text-right" title={hint?.(r)}>
               {fmt(v)}{v == null && r.note && <span className="block text-xs text-faint">{r.note}</span>}
               {sub && sub(r) && <span className="block text-xs text-faint">{sub(r)}</span>}
             </span>
