@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, CheckCircle, DownloadSimple, Tray, Warning, XCir
 import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { api, ApiError, type ImpactEdit, type ImpactResult, type ScenarioSpec, type SpecReport } from "../lib/api";
-import { dateLong } from "../lib/format";
+import { causeLabel, dateLong } from "../lib/format";
 import { useData } from "../lib/hooks";
 import { PersonActionsPanel } from "./Actions";
 import { MemoPanel } from "./Memo";
@@ -144,7 +144,7 @@ function SpecDetail({ id, onBack }: { id: string; onBack: () => void }) {
         {s.branches.map((b) => (
           <li key={b.name} className="rounded-md border border-line p-4">
             <div className="flex items-baseline justify-between gap-3"><p className="font-medium">{b.name}</p><p className="num text-xl font-semibold">{Math.round(b.probability * 100)}%</p></div>
-            <p className="text-xs text-faint">{b.cause}</p>
+            <p className="text-xs text-faint">{causeLabel(b.cause)}</p>
             <p className="mt-2 text-sm text-muted">{b.narrative}</p>
             {b.transmission?.length ? (
               <ul className="mt-3 space-y-1 text-xs text-muted">{b.transmission.map((t, i) => (

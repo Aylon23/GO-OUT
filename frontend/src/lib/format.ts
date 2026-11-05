@@ -27,6 +27,20 @@ export const displayCurrency = () => DISPLAY;
 /** An amount in the display currency, whole units. */
 export const amt = (v: number | null | undefined, signed = true) => money(v, DISPLAY, { decimals: 0, signed });
 
+const CAUSES: Record<string, string> = { geopolitical: "Geopolitical", supply: "Supply shock", demand: "Demand shock", policy: "Policy", other: "" };
+/** A scenario cause for people: "Supply shock", never the key; the catch-all "other" shows nothing. */
+export const causeLabel = (c: string | null | undefined) => (c == null ? "" : CAUSES[c] ?? humanize(c));
+/** Any internal key as words: "after_hours" becomes "After hours". */
+export const humanize = (k: string) => (k ? (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, " ") : k);
+
+/** A probability without false precision: "> 99%" and "< 1%" at the extremes. */
+export function prob(v: number | null | undefined): string {
+  if (v == null || !isFinite(v)) return "–";
+  if (v > 0.99) return "> 99%";
+  if (v < 0.01) return "< 1%";
+  return `${Math.round(v * 100)}%`;
+}
+
 export function pct(v: number | null | undefined, decimals = 2, signed = true): string {
   if (v === null || v === undefined || !isFinite(v)) return "–";
   const s = Math.abs(v * 100).toFixed(decimals);

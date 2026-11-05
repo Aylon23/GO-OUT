@@ -2,7 +2,7 @@ import { Plus, X } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { api, ApiError, type BookCompare, type BookEntry, type BookState } from "../lib/api";
-import { amt, dateLong, pct } from "../lib/format";
+import { amt, dateLong, humanize, pct } from "../lib/format";
 import { invalidate, useData } from "../lib/hooks";
 import { EmptyState, ErrorLine, InfoTip, Signed, Skel, Blank } from "./ui";
 
@@ -72,8 +72,8 @@ export function Book() {
         <div className={clsx("mt-12", dirty && "opacity-60")}>
           {dirty && <p className="mb-2 text-xs text-faint">Showing the saved book. Save to update.</p>}
           <p className="max-w-[60ch] text-2xl font-medium leading-snug">
-            Across the book, most likely: <Signed value={r.answer.median_amt}>{fmt(r.answer.median_amt)}</Signed> (<Signed value={r.answer.median}>{pct(r.answer.median, 1)}</Signed>).{" "}
-            <span className="text-muted">Bad case (1 in 20): <Signed value={r.answer.p5_amt}>{fmt(r.answer.p5_amt)}</Signed>.</span>
+            Across the book, typical: <Signed value={r.answer.median}>{pct(r.answer.median, 1)}</Signed> <span className="whitespace-nowrap">(<Signed value={r.answer.median_amt}>{fmt(r.answer.median_amt)}</Signed>).</span>{" "}
+            <span className="text-muted">Worst of 20: <Signed value={r.answer.p5}>{pct(r.answer.p5, 1)}</Signed> <span className="whitespace-nowrap">(<Signed value={r.answer.p5_amt}>{fmt(r.answer.p5_amt)}</Signed>).</span></span>
           </p>
           <p className="mt-1 text-sm text-muted">Over {HORIZON[r.horizon] ?? r.horizon}. Stock performance only, currency effects excluded{r.most_fragile && <> · most fragile: <span className="font-medium text-text">{r.most_fragile.name}</span></>}.</p>
           <Positioning state={state} />
@@ -125,7 +125,7 @@ function Signposts({ state }: { state: BookState }) {
           <span className="min-w-0"><span className="font-medium">{s.indicator}</span>{s.symbol && <span className="ml-1.5 font-mono text-xs text-faint">{s.symbol}</span>}
             <span className="num ml-1.5">{s.condition} {s.value}</span><span className="block truncate text-xs text-faint">{s.scenario} · {s.meaning}</span></span>
           <span className="num col-span-2 text-xs text-muted sm:col-span-1 sm:text-right">{s.current != null ? <>now {s.current.toFixed(2)}{s.distance != null && s.status !== "triggered" && <> · {pct(Math.abs(s.distance), 1, false)} away</>}</> : ""}</span>
-          <span className={clsx("col-start-2 row-start-1 h-6 self-start rounded-sm px-2 text-xs leading-6 sm:col-start-3", chip[s.status])}>{s.status}</span>
+          <span className={clsx("col-start-2 row-start-1 h-6 self-start rounded-sm px-2 text-xs leading-6 sm:col-start-3", chip[s.status])}>{humanize(s.status)}</span>
         </li>
       ))}</ul>
     </div>
@@ -160,7 +160,7 @@ function Versions({ onLoaded }: { onLoaded: () => void }) {
           {[cmp.a, cmp.b].map((v) => (
             <div key={v.id} className="rounded-md border border-line p-3">
               <p className="text-xs text-faint">{dateLong(v.created_at.slice(0, 10))}</p>
-              {v.result ? <p className="mt-1">Most likely <Signed value={v.result.answer.median_amt}>{fmt(v.result.answer.median_amt)}</Signed> · bad case <Signed value={v.result.answer.p5_amt}>{fmt(v.result.answer.p5_amt)}</Signed>
+              {v.result ? <p className="mt-1">Typical <Signed value={v.result.answer.median}>{pct(v.result.answer.median, 1)}</Signed> <Signed value={v.result.answer.median_amt}>{fmt(v.result.answer.median_amt)}</Signed>, worst of 20 <Signed value={v.result.answer.p5}>{pct(v.result.answer.p5, 1)}</Signed> <Signed value={v.result.answer.p5_amt}>{fmt(v.result.answer.p5_amt)}</Signed>
                 {v.result.most_fragile && <span className="block text-xs text-muted">most fragile: {v.result.most_fragile.name}</span>}</p> : <p className="mt-1 text-muted">Empty book</p>}
             </div>
           ))}

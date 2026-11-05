@@ -45,7 +45,7 @@ function Person({ p }: { p: PersonActions }) {
     <li className="border-t border-line pt-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <p className="text-base font-semibold">{p.name}</p>
-        <p className="text-sm text-muted">Most likely <Signed value={p.median_amt}>{fmt(p.median_amt, true)}</Signed> · bad case <Signed value={p.bad_amt}>{fmt(p.bad_amt, true)}</Signed></p>
+        <p className="text-sm text-muted">Typical <Signed value={p.median}>{pct(p.median, 1)}</Signed> <Signed value={p.median_amt}>{fmt(p.median_amt, true)}</Signed>, worst of 20 <Signed value={p.bad}>{pct(p.bad, 1)}</Signed> <Signed value={p.bad_amt}>{fmt(p.bad_amt, true)}</Signed></p>
       </div>
       <p className="mt-1 text-sm text-muted">{p.line}</p>
       <div className="mt-3 overflow-x-auto">

@@ -1,3 +1,4 @@
+import { humanize } from "../lib/format";
 import { useEffect, useState } from "react";
 import { api, ApiError, type AiRole, type AiStatus } from "../lib/api";
 import { useData } from "../lib/hooks";
@@ -110,7 +111,7 @@ function CallLog() {
                 <td className="num border-b border-line py-1.5 pr-3">{new Date(r.at).toLocaleString()}</td>
                 <td className="border-b border-line py-1.5 pr-3">{r.role}</td>
                 <td className="border-b border-line py-1.5 pr-3 font-mono">{r.model_used || r.models[0]}</td>
-                <td className={"border-b border-line py-1.5 pr-3 " + (r.status === "ok" ? "" : "text-loss")}>{r.status}</td>
+                <td className={"border-b border-line py-1.5 pr-3 " + (r.status === "ok" ? "" : "text-loss")}>{humanize(r.status)}</td>
                 <td className="num border-b border-line py-1.5 pr-3">{r.requests}</td>
                 <td className="num border-b border-line py-1.5 pr-3">{r.prompt_tokens.toLocaleString()} / {r.completion_tokens.toLocaleString()}</td>
                 <td className="num border-b border-line py-1.5 pr-3">{(r.latency_ms / 1000).toFixed(1)}s</td>

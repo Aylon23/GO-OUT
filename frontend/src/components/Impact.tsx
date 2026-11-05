@@ -2,7 +2,7 @@ import { CaretDown, Warning } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { Fragment, useMemo, useState } from "react";
 import type { ImpactEdit, ImpactResult, ImpactStats } from "../lib/api";
-import { amt, dateLong, pct } from "../lib/format";
+import { amt, causeLabel, dateLong, pct, prob } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { FACTOR_LABEL, Report } from "./Researched";
 import { InfoTip, Signed } from "./ui";
@@ -25,13 +25,13 @@ export function Impact({ r, regime, setRegime, onEdit, busy }: {
     <div className={clsx("mt-10 transition-opacity duration-fast", busy && "opacity-60")}>
       {/* Level 1 */}
       <p className="max-w-[60ch] text-2xl font-medium leading-snug md:text-3xl">
-        Most likely: {who} {verb(r.answer.median_amt)} about <Signed value={r.answer.median_amt}>{fmt(Math.abs(r.answer.median_amt), false)}</Signed>{" "}
-        (<Signed value={r.answer.median}>{pct(r.answer.median, 1)}</Signed>).{" "}
-        <span className="text-muted">Bad case (1 in 20): <Signed value={r.answer.p5_amt}>{fmt(r.answer.p5_amt)}</Signed>.</span>
+        Typical: {who} {verb(r.answer.median_amt)} <Signed value={r.answer.median}>{pct(Math.abs(r.answer.median), 1, false)}</Signed>{" "}
+        <span className="whitespace-nowrap">(<Signed value={r.answer.median_amt}>{fmt(r.answer.median_amt)}</Signed>).</span>{" "}
+        <span className="text-muted">Worst of 20: <Signed value={r.answer.p5}>{pct(r.answer.p5, 1)}</Signed> <span className="whitespace-nowrap">(<Signed value={r.answer.p5_amt}>{fmt(r.answer.p5_amt)}</Signed>).</span></span>
       </p>
       <p className="mt-2 text-sm text-muted">
-        Over {HORIZON[r.horizon] ?? r.horizon}. Stock performance only, currency effects excluded. Chance of a loss: {pct(r.answer.prob_loss, 0, false)}.
-        <InfoTip text={`From ${r.n.toLocaleString("en-US")} simulated outcomes: which branch happens, how big each move is, and each holding's own noise. "Most likely" is the middle outcome; the bad case is the 5th percentile.`} />
+        Over {HORIZON[r.horizon] ?? r.horizon}. Stock performance only, currency effects excluded. Chance of a loss: {prob(r.answer.prob_loss)}.
+        <InfoTip text={`From ${r.n.toLocaleString("en-US")} simulated outcomes: which branch happens, how big each move is, and each holding's own noise. "Typical" is the middle outcome; worst of 20 and best of 20 are the 5th and 95th percentiles.`} />
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted">Correlations:</span>
@@ -49,8 +49,8 @@ export function Impact({ r, regime, setRegime, onEdit, busy }: {
           const f = b.books[0];
           return (
             <li key={b.name} className="min-w-[78%] snap-start rounded-md border border-line p-4 sm:min-w-[46%] md:min-w-0">
-              <div className="flex items-baseline justify-between gap-2"><p className="font-medium">{b.name}</p><p className="num text-lg font-semibold">{Math.round(b.probability * 100)}%</p></div>
-              <p className="text-xs text-faint">{b.cause}{b.regime === "selloff" ? " · sell-off correlations" : ""}</p>
+              <div className="flex items-baseline justify-between gap-2"><p className="font-medium">{b.name}</p>{r.branches.length > 1 && <p className="num text-lg font-semibold">{prob(b.probability)}</p>}</div>
+              <p className="text-xs text-faint">{[causeLabel(b.cause), b.regime === "selloff" ? "sell-off correlations" : ""].filter(Boolean).join(", ") || "\u00a0"}</p>
               <p className="mt-3"><Signed value={f.median} className="text-xl font-semibold">{pct(f.median, 1)}</Signed> <Signed value={f.median_amt} className="text-sm">{fmt(f.median_amt)}</Signed></p>
               <p className="num text-xs text-muted">{pct(f.p5, 1)} to {pct(f.p95, 1)}</p>
             </li>
@@ -72,13 +72,18 @@ export function Impact({ r, regime, setRegime, onEdit, busy }: {
   );
 }
 
+/** One outcome cell: percent first, then the amount. */
+function Outcome({ p, amt }: { p: number; amt: number }) {
+  return <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={p}>{pct(p, 1)}</Signed> <Signed value={amt} className="text-xs">{fmt(amt)}</Signed></td>;
+}
+
 function BookTable({ r, view, setView }: { r: ImpactResult; view: string; setView: (v: string) => void }) {
   const rows = r.blended;
   return (
     <div className="mt-8 overflow-x-auto">
       <table className="w-full min-w-[560px] border-separate border-spacing-0 text-sm">
         <thead><tr className="text-xs text-muted">
-          {["", "Most likely", "", "Bad case (1 in 20)", "Good case", "Chance of loss"].map((h, i) => (
+          {["", "Typical", "Worst of 20", "Best of 20", "Chance of loss"].map((h, i) => (
             <th key={i} className={clsx("border-b border-line py-2 font-medium", i === 0 ? "text-left" : "pl-3 text-right")}>{h}</th>))}
         </tr></thead>
         <tbody>{rows.map((b: ImpactStats, i) => {
@@ -87,11 +92,10 @@ function BookTable({ r, view, setView }: { r: ImpactResult; view: string; setVie
             <tr key={key} tabIndex={0} onClick={() => setView(key)} onKeyDown={(e) => { if (e.key === "Enter") setView(key); }}
               className={clsx("cursor-pointer transition-colors duration-fast hover:bg-hover", view === key && "bg-hover")}>
               <td className={clsx("border-b border-line py-2.5", i === 0 && "font-semibold")}>{b.name}</td>
-              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.median}>{pct(b.median, 1)}</Signed></td>
-              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.median_amt}>{fmt(b.median_amt)}</Signed></td>
-              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.p5_amt}>{fmt(b.p5_amt)}</Signed> <span className="text-xs text-faint">{pct(b.p5, 1)}</span></td>
-              <td className="num border-b border-line py-2.5 pl-3 text-right"><Signed value={b.p95_amt}>{fmt(b.p95_amt)}</Signed></td>
-              <td className="num border-b border-line py-2.5 pl-3 text-right">{pct(b.prob_loss, 0, false)}</td>
+              <Outcome p={b.median} amt={b.median_amt} />
+              <Outcome p={b.p5} amt={b.p5_amt} />
+              <Outcome p={b.p95} amt={b.p95_amt} />
+              <td className="num border-b border-line py-2.5 pl-3 text-right">{prob(b.prob_loss)}</td>
             </tr>
           );
         })}</tbody>
@@ -253,9 +257,9 @@ function Histogram({ r }: { r: ImpactResult }) {
           const mid = (edges[i] + edges[i + 1]) / 2;
           return <rect key={i} x={i * bw + 0.5} y={h - (c / max) * h} width={bw - 1} height={(c / max) * h} className={mid < 0 ? "fill-loss" : "fill-gain"} opacity={0.55} />;
         })}
-        {[["5%", f.p5], ["Median", f.median], ["95%", f.p95]].map(([t, v]) => (
+        {[["Worst of 20", f.p5], ["Typical", f.median], ["Best of 20", f.p95]].map(([t, v]) => (
           <g key={t as string}>
-            <line x1={x(v as number)} x2={x(v as number)} y1={0} y2={h} className="stroke-text" strokeWidth={1} strokeDasharray={t === "Median" ? "" : "3 3"} />
+            <line x1={x(v as number)} x2={x(v as number)} y1={0} y2={h} className="stroke-text" strokeWidth={1} strokeDasharray={t === "Typical" ? "" : "3 3"} />
             <text x={x(v as number)} y={h + 16} textAnchor="middle" className="fill-muted text-xs">{t} {pct(v as number, 1)}</text>
           </g>
         ))}
@@ -279,7 +283,7 @@ function Details({ r }: { r: ImpactResult }) {
       </div>
       <div>
         <h3 className="text-base font-semibold">Regime</h3>
-        <ul className="mt-2 text-muted">{r.branches.map((b) => <li key={b.name}>{b.name}: {b.regime === "selloff" ? "sell-off" : "normal"} correlations ({b.cause}) · {b.draws.toLocaleString("en-US")} draws</li>)}</ul>
+        <ul className="mt-2 text-muted">{r.branches.map((b) => <li key={b.name}>{b.name}: {b.regime === "selloff" ? "sell-off" : "normal"} correlations{causeLabel(b.cause) ? ` (${causeLabel(b.cause).toLowerCase()})` : ""}, {b.draws.toLocaleString("en-US")} draws</li>)}</ul>
       </div>
       <div>
         <h3 className="text-base font-semibold">Assumptions</h3>

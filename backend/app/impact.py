@@ -16,6 +16,7 @@ Factors a branch doesn't name don't move.
 from __future__ import annotations
 
 import copy
+import re
 import json
 import collections
 import datetime as dt
@@ -221,11 +222,29 @@ _runs: "collections.OrderedDict[str, dict]" = collections.OrderedDict()
 _RUNS_MAX = 12
 
 
+RAW_NAME = re.compile(r"^\s*(other|base|base case|default|main|scenario|branch|path|single|none|null|supply|demand|policy|geopolitical)?\s*\d*\s*$", re.I)
+
+
+def readable_branches(spec: dict) -> dict:
+    """Branch names are shown to people: never a raw key like "other" or "branch 1". A single branch takes
+    the scenario's own name (or "Single path"); several get "Path 1", "Path 2"."""
+    brs = spec.get("branches") or []
+    if not any(RAW_NAME.match(str(b.get("name") or "")) for b in brs):
+        return spec
+    title = next((t.strip() for t in (spec.get("title"), spec.get("question")) if t and not RAW_NAME.match(t)), "")
+    out = copy.deepcopy(spec)
+    for i, b in enumerate(out["branches"]):
+        if RAW_NAME.match(str(b.get("name") or "")):
+            b["name"] = (title[:120] or "Single path") if len(brs) == 1 else f"Path {i + 1}"
+    return out
+
+
 def run(session: Session, spec: dict, regime: str | None = None, n: int = N_DRAWS, seed: int = SEED,
         edits: list[dict] | None = None, pids: list[int] | None = None, analogs: bool = True, noise: bool = True,
         keep: bool = False) -> dict:
     """One seeded simulation per scenario run, shared by every view of it (headline, memo, per-person
     options): the same spec, settings and data give back the same result, not a fresh sample."""
+    spec = readable_branches(spec)
     if keep:
         return _run(session, spec, regime, n, seed, edits, pids, analogs, noise, keep)
     from .market.cache import data_version

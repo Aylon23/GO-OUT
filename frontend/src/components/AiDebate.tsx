@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { useEffect, useState } from "react";
 import { api, ApiError, type DebateMover, type DebateRow } from "../lib/api";
-import { dateLong, money, pct } from "../lib/format";
+import { causeLabel, dateLong, humanize, money, pct } from "../lib/format";
 import { useData } from "../lib/hooks";
 import { AiQuota } from "./AiQuota";
 import { Avatar } from "./Avatar";
@@ -116,7 +116,7 @@ function DebateView({ id, onChange }: { id: number; onChange: () => void }) {
   const act = async (fn: () => Promise<string>) => { setMsg(null); try { setMsg(await fn()); } catch (e) { setMsg(e instanceof ApiError ? e.message : "That didn't work."); } };
   return (
     <article className="mt-10" aria-label="Debate result">
-      <p className="text-xs text-muted" dir="auto">{d.text} · {HORIZON_LABEL[d.horizon] ?? d.horizon} · {d.cause}</p>
+      <p className="text-xs text-muted" dir="auto">{d.text} · {HORIZON_LABEL[d.horizon] ?? d.horizon}{causeLabel(d.cause) && <> · {causeLabel(d.cause)}</>}</p>
       {r?.answer && <h2 className="mt-2 max-w-[60ch] text-xl font-semibold leading-snug">{r.answer}</h2>}
       <p className="mt-2 text-xs text-faint">AI opinion based on the data shown. Not advice. {d.requests} requests used.</p>
 
@@ -214,7 +214,7 @@ function Level3({ d }: { d: DebateRow }) {
         <p className="text-muted">{d.requests} requests. Model {d.devil} was the devil's advocate. {r.notes.join(" ")}</p>
         {(d.transcript ?? []).map((t, i) => (
           <details key={i} className="rounded-sm border border-line p-2">
-            <summary className="cursor-pointer">{t.round.replace("round", "Round ")} · {t.label === "judge" ? "Judge" : `Model ${t.label}`} · {t.model_used || t.models[0]} · {t.status}{t.requests ? ` · ${t.requests} requests` : ""}</summary>
+            <summary className="cursor-pointer">{t.round.replace("round", "Round ")} · {t.label === "judge" ? "Judge" : `Model ${t.label}`} · {t.model_used || t.models[0]} · {humanize(t.status)}{t.requests ? ` · ${t.requests} requests` : ""}</summary>
             <p className="mt-1 text-faint">Asked: {t.models.join(", ")}</p>
             {t.error && <p className="mt-1 text-loss">{t.error}</p>}
             {t.answer != null && <pre className="mt-2 max-h-[320px] overflow-auto whitespace-pre-wrap rounded-sm bg-sunken p-2 text-[11px]">{JSON.stringify(t.answer, null, 2)}</pre>}

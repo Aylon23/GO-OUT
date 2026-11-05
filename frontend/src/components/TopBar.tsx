@@ -65,7 +65,7 @@ export function TopBar() {
           <span className="hidden flex-1 text-left 2xl:inline">Search or add</span>
           <kbd className="hidden rounded-[4px] border border-line px-1.5 font-sans text-xs text-faint md:inline">{isMac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
-        <button type="button" className="btn-ghost h-8 w-8 shrink-0 px-0" aria-label={`Theme: ${theme}. Switch to ${nextTheme}`} title={`Theme: ${theme}`}
+        <button type="button" className="btn-ghost hidden h-8 w-8 shrink-0 px-0 sm:inline-flex" aria-label={`Theme: ${theme}. Switch to ${nextTheme}`} title={`Theme: ${theme}`}
           onClick={() => saveSettings({ theme: nextTheme })}>
           <ThemeIcon size={18} />
         </button>
