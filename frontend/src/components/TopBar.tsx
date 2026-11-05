@@ -60,9 +60,9 @@ export function TopBar() {
         </nav>
         <span className="ml-auto lg:ml-0"><MarketChip /></span>
         <button type="button" onClick={() => setPaletteOpen(true)} aria-label="Search symbols or add a trade"
-          className="press flex h-8 shrink-0 items-center gap-2 rounded-sm border border-line bg-surface px-2.5 text-sm text-faint hover:border-line-strong hover:text-muted lg:ml-0 2xl:w-48">
+          className="press flex h-8 shrink-0 items-center gap-2 rounded-sm border border-line bg-surface px-2.5 text-sm text-faint hover:border-line-strong hover:text-muted lg:ml-0">
           <MagnifyingGlass size={16} />
-          <span className="hidden flex-1 text-left 2xl:inline">Search or add</span>
+          <span className="sr-only">Search or add</span>
           <kbd className="hidden rounded-[4px] border border-line px-1.5 font-sans text-xs text-faint md:inline">{isMac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
         <button type="button" className="btn-ghost hidden h-8 w-8 shrink-0 px-0 sm:inline-flex" aria-label={`Theme: ${theme}. Switch to ${nextTheme}`} title={`Theme: ${theme}`}

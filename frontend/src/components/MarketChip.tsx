@@ -40,7 +40,6 @@ export function MarketChip() {
       title={`US market: ${m.label}. Prices as of ${asOfText(m.as_of)}, your time. Pre-market and after-hours quotes are never counted in returns.`}>
       <span aria-hidden className={clsx("h-1.5 w-1.5 rounded-full", open ? "bg-text" : "border border-faint")} />
       <span className="font-medium text-text">{m.label}</span>
-      <span className="hidden text-faint 2xl:inline">as of {asOfText(m.as_of)}</span>
     </span>
   );
 }

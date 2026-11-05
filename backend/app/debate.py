@@ -384,6 +384,18 @@ def _specs_of(session: Session, d: Debate, phase: str) -> dict[str, dict]:
     return out
 
 
+def _why_round1_failed(session: Session, job: AiJob, usable: int) -> str:
+    """Say what actually stopped round 1: the privacy guard, the network, or answers that were not usable."""
+    calls = session.exec(select(AiCall).where(AiCall.job_id == job.id)).all()
+    refused = [c for c in calls if c.status == "refused"]
+    if refused and len(refused) >= len(calls) - usable:
+        return f"Nothing was sent: {refused[-1].error.removeprefix('Not sent: ').rstrip('.')}. No AI requests were used."
+    errors = [c.error for c in calls if c.status == "failed" and c.error]
+    if errors and not usable:
+        return f"The AI models did not answer ({errors[-1][:160]}). Try again in a few minutes."
+    return f"Only {usable} model(s) wrote a usable scenario in round 1; a debate needs two. Try again, or a different wording."
+
+
 def _on_done(session: Session, job: AiJob) -> None:
     _, did, phase = job.kind.split(":")
     d = session.get(Debate, int(did))
@@ -392,7 +404,7 @@ def _on_done(session: Session, job: AiJob) -> None:
     if phase == "round1":
         r1 = _specs_of(session, d, "round1")
         if len(r1) < 2:
-            d.phase, d.note = "failed", f"Only {len(r1)} model(s) wrote a usable spec in round 1; a debate needs two."
+            d.phase, d.note = "failed", _why_round1_failed(session, job, len(r1))
             session.add(d)
             session.commit()
             return

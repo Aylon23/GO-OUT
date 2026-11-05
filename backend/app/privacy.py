@@ -128,7 +128,10 @@ def scan(session: Session, payload) -> list[str]:
             if x < MIN_AMOUNT:
                 continue
             # a leaked amount shows up to the cent, or rounded to a whole number
-            if int(round(x * 100)) in cents or (x == int(x) and int(x) in whole):
+            # a whole number that reads as a year (the 2023 in "October 2023") is not an amount; an amount
+            # with cents still matches exactly
+            year = x == int(x) and 1900 <= x <= 2100
+            if int(round(x * 100)) in cents or (x == int(x) and int(x) in whole and not year):
                 problems.append(f"an amount from the portfolios ({x:,.0f})")
                 break
     return problems

@@ -9,7 +9,7 @@ import { FACTOR_LABEL, Report, SpecImpact } from "./Researched";
 import { ErrorLine, Signed, Blank } from "./ui";
 
 const HORIZON_LABEL: Record<string, string> = { "1w": "1 week", "1m": "1 month", "3m": "3 months", "6m": "6 months" };
-const PHASE: Record<string, string> = { round1: "Round 1: each model writes its own scenario", round2: "Round 2: they challenge each other", judge: "The judge merges them", done: "Done", failed: "Stopped" };
+const PHASE: Record<string, string> = { preparing: "Preparing the market data (the first time can take a minute)", round1: "Round 1: each model writes its own scenario", round2: "Round 2: they challenge each other", judge: "The judge merges them", done: "Done", failed: "Stopped" };
 const EXAMPLES = ["תהיה מלחמה עם איראן", "oil falls $10 per barrel", "The Fed cuts rates by 0.5% next month"];
 
 /** Scenarios → AI debate: several models write and challenge a scenario; the engine computes the impact. */
@@ -108,7 +108,7 @@ function DebateView({ id, onChange }: { id: number; onChange: () => void }) {
     return (
       <div className="mt-8 text-sm" aria-live="polite">
         <p className="font-medium" dir="auto">{d.text}</p>
-        <p className={clsx("mt-1", d.phase === "failed" ? "text-loss" : "text-muted")}>{d.phase === "failed" ? d.note : PHASE[d.phase]} · {d.progress.done} of {d.progress.total} answers · {d.requests} requests</p>
+        <p className={clsx("mt-1", d.phase === "failed" ? "text-loss" : "text-muted")}>{d.phase === "failed" ? d.note : PHASE[d.phase] ?? d.phase}{d.progress.total > 0 && <> · {d.progress.done} of {d.progress.total} answers · {d.requests} requests</>}</p>
         {d.waiting && <p className="mt-1 text-muted">{d.waiting}</p>}
       </div>
     );
