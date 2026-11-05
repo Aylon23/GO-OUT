@@ -287,6 +287,13 @@ def day_change(ctx: Context) -> dict:
             "date": latest.isoformat() if latest else None}
 
 
+def _day_names(date: str | None) -> dict:
+    """"Today" only while that US session runs; otherwise "Last session, Tue 3 Nov (close)"."""
+    from .market import clock
+    lab = clock.session_label(dt.date.fromisoformat(date) if date else None)
+    return {"today_word": lab["word"], "today_label": lab["title"]}
+
+
 def cost_summary(ctx: Context) -> dict:
     """Open positions' gain vs average cost, summed with position_gain (the one definition)."""
     if ctx.series is None:
@@ -384,6 +391,7 @@ def portfolio_payload(session: Session, code: str = "1Y", start: str | None = No
             "today_change": _f(today_change),
             "today_pct": _f(today_pct),
             "today_date": today["date"],
+            **_day_names(today["date"]),
             "twr": _f(port_twr),
             # an annual rate from a few days of history is noise; wait for a month
             "xirr": _f(range_xirr(s.value, s.flow, b, e)) if (cal[e] - cal[b]).days >= 30 else None,

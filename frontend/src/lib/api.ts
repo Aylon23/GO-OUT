@@ -34,6 +34,7 @@ export interface Portfolio {
     value: number; invested: number; total_gain: number; range_gain: number; today_change: number; today_pct: number | null; today_date: string | null;
     twr: number; xirr: number | null; benchmarks: { symbol: string; twr: number | null }[]; start_value: number;
     tracking_days: number; compare_ok: boolean; min_compare_days: number;
+    today_word: string; today_label: string;
   };
   series: Series;
   shadow: { actual: number; rows: { symbol: string; value: number; diff: number; diff_pct: number | null }[] };
@@ -312,6 +313,7 @@ let currentPortfolio = 1;
 export const setApiPortfolio = (id: number) => { currentPortfolio = id; };
 export const portfolioParam = () => `portfolio=${currentPortfolio}`;
 
+export interface MarketStatus { state: "pre" | "open" | "after" | "closed"; label: string; et_date: string; last_session: string; last_close_at: string; as_of: string; day_word: string }
 export interface AiRole { role: string; label: string; models: string[] }
 export interface AiQuota { known: boolean; key_set: boolean; limit?: number; used?: number; remaining?: number; as_of?: string | null; error?: string; stale_day?: boolean }
 export interface AiJob { id: number; kind: string; title: string; status: string; note: string; created_at: string; resume_after: string | null; total: number; done: number; failed: number }
@@ -474,6 +476,7 @@ export const api = {
   custom: (body: { holdings: { symbol: string; weight: number }[]; start: string; initial: number; monthly: number; rebalance: string }) =>
     request<Custom>("POST", "/api/whatif/custom", body),
   settings: () => request<Settings>("GET", "/api/settings"),
+  marketStatus: () => request<MarketStatus>("GET", "/api/market/status"),
   saveSettings: (s: Partial<Settings>) => request<Settings>("PUT", "/api/settings", s),
   demo: () => request<{ loaded: number }>("POST", "/api/demo"),
   portfolios: () => request<PortfolioInfo[]>("GET", "/api/portfolios"),

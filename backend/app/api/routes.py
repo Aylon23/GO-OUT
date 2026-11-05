@@ -191,6 +191,26 @@ def portfolio(range: str = "1Y", start: str | None = None, end: str | None = Non
     return _wrap(services.portfolio_payload, session, range, start, end, pid)
 
 
+@router.get("/market/status")
+def market_status(session: Session = Depends(get_session)):
+    """US market state for the header chip, and when the prices on screen are from: the last check while
+    the market is open, otherwise the last session's closing bell."""
+    import datetime as dt
+
+    from sqlmodel import func
+
+    from ..market import clock
+    from ..models import PriceCoverage
+    st = clock.status()
+    checked = session.exec(select(func.max(PriceCoverage.checked_at))).first()
+    if checked is not None and checked.tzinfo is None:
+        checked = checked.replace(tzinfo=dt.timezone.utc)
+    close = dt.datetime.fromisoformat(st["last_close_at"])
+    as_of = checked if st["state"] == "open" and checked else min(checked, close) if checked else close
+    lab = clock.session_label(dt.date.fromisoformat(st["et_date"]) if st["state"] in ("open", "after") else dt.date.fromisoformat(st["last_session"]))
+    return {**st, "as_of": as_of.isoformat(), "day_word": lab["word"]}
+
+
 @router.get("/holdings")
 def holdings(range: str = "1Y", start: str | None = None, end: str | None = None, pid: int = PID, session: Session = Depends(get_session)):
     return _wrap(services.holdings_payload, session, range, start, end, pid)

@@ -40,13 +40,13 @@ function Headline({ p }: { p: Portfolio }) {
   if (!s.compare_ok) {
     const b = p.base;
     return (
-      <>
+      <div className="min-w-0">
         <h1 className="max-w-[30ch] text-2xl font-medium md:text-3xl">
           Worth <b className="font-semibold">{money(s.value, b, { decimals: 0 })}</b>
           {s.has_cost_basis && <>, <Signed value={s.cost_gain} className="font-semibold">{money(s.cost_gain, b, { signed: true, decimals: 0 })}</Signed> vs average cost</>}.
         </h1>
         <p className="mt-2 text-sm text-muted">Too early to compare with SPY ({s.tracking_days} of {s.min_compare_days} trading days).</p>
-      </>
+      </div>
     );
   }
   return (
@@ -64,7 +64,7 @@ function SecondaryLine({ p }: { p: Portfolio }) {
     <span key="v">Value <span className="num font-medium text-text">{money(s.value, b, { decimals: 0 })}</span></span>,
     <span key="g" className="inline-flex items-center gap-1"><InfoTip text="Open positions: (price now minus average cost) x shares, in each stock's currency, converted at today's rate. Same number on every screen.">Gain vs cost</InfoTip> <Signed value={s.cost_gain} className="font-medium">{money(s.cost_gain, b, { signed: true, decimals: 0 })} ({pct(s.cost_gain_pct, 1)})</Signed></span>,
     ...(s.realized && Math.abs(s.realized) >= 0.5 ? [<span key="r" className="inline-flex items-center gap-1"><InfoTip text="Profit or loss already taken on shares you sold, including realized lines imported from your spreadsheet.">Realized</InfoTip> <Signed value={s.realized} className="font-medium">{money(s.realized, b, { signed: true, decimals: 0 })}</Signed></span>] : []),
-    <span key="t">Today <Signed value={s.today_change} className="font-medium">{money(s.today_change, b, { signed: true, decimals: 0 })} ({pct(s.today_pct)})</Signed></span>,
+    <span key="t">{s.today_word} <Signed value={s.today_change} className="font-medium">{money(s.today_change, b, { signed: true, decimals: 0 })} ({pct(s.today_pct)})</Signed></span>,
     <span key="x" className="inline-flex items-center gap-1">
       <InfoTip text="XIRR: your personal annual return, counting when you added or took out money.">XIRR</InfoTip>
       <Signed value={s.xirr} className="font-medium">{s.xirr === null ? "–" : pct(s.xirr, 1)}</Signed>

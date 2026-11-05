@@ -1,4 +1,5 @@
 import { CaretDown, CaretUp } from "@phosphor-icons/react";
+import { DayWord } from "../components/MarketChip";
 import clsx from "clsx";
 import { useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -21,7 +22,7 @@ const COLS: { key: Key; label: string; tip?: string; right?: boolean; w: string 
   { key: "value", label: "Value", right: true, w: "100px" },
   { key: "weight", label: "Weight", right: true, w: "84px" },
   { key: "unrealized", label: "Unrealized", right: true, w: "112px", tip: "(Price now minus average cost) x shares, converted to the display currency at today's rate." },
-  { key: "today", label: "Today", right: true, w: "88px", tip: "Today's move: last close vs the close before, times your shares." },
+  { key: "today", label: "Today", right: true, w: "88px", tip: "The last session's move: its close (or the live price while the market is open) vs the close before, times your shares." },
   { key: "range_return", label: "Return", right: true, w: "72px", tip: "This holding's return over the selected range, while you held it." },
   { key: "contribution", label: "Contrib.", right: true, w: "80px", tip: "How many percentage points this holding added to or took from your portfolio's return over the range." },
   { key: "council", label: "Council", w: "150px", tip: "The AI council's rating turned into a suggestion for this portfolio (limit 15% per stock, est. tax 25% of the gain). AI opinion based on the data shown. Not advice." },
@@ -87,7 +88,7 @@ export default function Holdings() {
                     className={clsx("sticky top-14 z-10 border-b border-line bg-bg py-2 text-xs font-medium text-muted", c.right ? "text-right" : "text-left", c.key !== "ticker" && "pl-2")}>
                     <span className={clsx("inline-flex items-center gap-1", c.right && "justify-end")}>
                       <button type="button" className="press flex items-center gap-1 rounded-sm hover:text-text" onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? (s.dir === 1 ? -1 : 1) : c.key === "ticker" ? 1 : -1 }))}>
-                        {c.label}
+                        {c.key === "today" ? <DayWord /> : c.label}
                         {sort.key === c.key ? (sort.dir === 1 ? <CaretUp size={10} /> : <CaretDown size={10} />) : <span className="w-[10px]" />}
                       </button>
                       {c.tip && <InfoTip text={c.tip} />}
@@ -140,7 +141,7 @@ function Row({ r, base, onOpen }: { r: HoldingRow; base: string; onOpen: () => v
       <Kv k="Weight" v={pct(r.weight, 1, false)} />
       {r.closed ? <Kv k="Realized" v={<Signed value={r.realized}>{money(r.realized, base, { signed: true, decimals: 0 })}</Signed>} />
         : <Kv k="Unrealized" v={r.price_status === "missing" ? <span className="text-faint">–</span> : <Signed value={gainOf(r, base).v}>{money(gainOf(r, base).v, gainOf(r, base).c, { signed: true, decimals: 0 })} ({pct(r.unrealized_pct, 1)})</Signed>} />}
-      <Kv k="Today" v={r.price_status !== "ok" ? <span className="text-faint">–</span> : <Signed value={r.today}>{money(r.today, base, { signed: true, decimals: 0 })} ({pct(r.today_pct, 2)})</Signed>} />
+      <Kv k={<DayWord />} v={r.price_status !== "ok" ? <span className="text-faint">–</span> : <Signed value={r.today}>{money(r.today, base, { signed: true, decimals: 0 })} ({pct(r.today_pct, 2)})</Signed>} />
       <Kv k="Return" v={<Signed value={r.range_return}>{pct(r.range_return, 1)}</Signed>} />
       <Kv k="Contribution" v={<Signed value={r.contribution}>{pp(r.contribution, 2)}</Signed>} />
       <Kv k="Quantity" v={num(r.quantity, 4)} />
@@ -205,7 +206,7 @@ function TableRow({ r, base, cols, council, onOpen }: { r: HoldingRow; base: str
 // one display currency per screen: only Price and Avg cost stay in the stock's own currency
 const gainOf = (r: HoldingRow, base: string) => ({ v: r.unrealized, c: base });
 
-const Kv = ({ k, v }: { k: string; v: React.ReactNode }) => (
+const Kv = ({ k, v }: { k: React.ReactNode; v: React.ReactNode }) => (
   <div className="flex justify-between gap-2 text-xs"><span className="text-faint">{k}</span><span className="num text-text">{v}</span></div>
 );
 

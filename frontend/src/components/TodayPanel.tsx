@@ -4,10 +4,12 @@ import { api, type Portfolio } from "../lib/api";
 import { dateLong, money, num, pct } from "../lib/format";
 import { useData } from "../lib/hooks";
 import { Avatar } from "./Avatar";
+import { asOfText, useMarket } from "./MarketChip";
 import { Signed, Skel } from "./ui";
 
 /** Today's move, the way broker apps show it: the portfolio's P&L for the day, then every holding. */
 export function TodayPanel({ p }: { p: Portfolio }) {
+  const m = useMarket();
   const q = useData(() => api.holdings({ range: "1M" }), "today-holdings");
   const [all, setAll] = useState(false);
   const s = p.summary;
@@ -16,7 +18,7 @@ export function TodayPanel({ p }: { p: Portfolio }) {
   return (
     <section aria-labelledby="today-h" className="mt-10 border-y border-line py-5">
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <h2 id="today-h" className="text-sm font-medium text-muted">Today{s.today_date && <span className="font-normal text-faint"> · {dateLong(s.today_date)}</span>}</h2>
+        <h2 id="today-h" className="text-sm font-medium text-muted">{s.today_word}{s.today_date && <span className="font-normal text-faint">{s.today_label.slice(s.today_word.length).replace("(live)", m ? `(live, as of ${asOfText(m.as_of)})` : "(live)")}</span>}</h2>
         <Signed value={s.today_change} className="text-2xl font-semibold">{money(s.today_change, p.base, { signed: true, decimals: 0 })}</Signed>
         <Signed value={s.today_pct} className="text-lg">{pct(s.today_pct, 2)}</Signed>
       </div>

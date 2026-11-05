@@ -2,6 +2,7 @@ import { Gear, MagnifyingGlass, Monitor, Moon, Sun } from "@phosphor-icons/react
 import clsx from "clsx";
 import { useLayoutEffect, useRef, useState } from "react";
 import { type Route, useApp } from "../state";
+import { MarketChip } from "./MarketChip";
 import { PortfolioSwitcher } from "./PortfolioSwitcher";
 
 const NAV: { route: Route; label: string }[] = [
@@ -57,10 +58,11 @@ export function TopBar() {
           ))}
           <span aria-hidden className="nav-indicator" style={{ opacity: ind ? 1 : 0, transform: ind ? `translate(${ind.x}px, ${ind.y}px) scaleX(${ind.w})` : undefined }} />
         </nav>
+        <span className="ml-auto lg:ml-0"><MarketChip /></span>
         <button type="button" onClick={() => setPaletteOpen(true)} aria-label="Search symbols or add a trade"
-          className="press ml-auto flex h-8 shrink-0 items-center gap-2 rounded-sm border border-line bg-surface px-2.5 text-sm text-faint hover:border-line-strong hover:text-muted lg:ml-0 xl:w-48">
+          className="press flex h-8 shrink-0 items-center gap-2 rounded-sm border border-line bg-surface px-2.5 text-sm text-faint hover:border-line-strong hover:text-muted lg:ml-0 2xl:w-48">
           <MagnifyingGlass size={16} />
-          <span className="hidden flex-1 text-left xl:inline">Search or add</span>
+          <span className="hidden flex-1 text-left 2xl:inline">Search or add</span>
           <kbd className="hidden rounded-[4px] border border-line px-1.5 font-sans text-xs text-faint md:inline">{isMac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
         <button type="button" className="btn-ghost h-8 w-8 shrink-0 px-0" aria-label={`Theme: ${theme}. Switch to ${nextTheme}`} title={`Theme: ${theme}`}
