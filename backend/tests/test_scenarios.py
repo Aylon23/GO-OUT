@@ -303,5 +303,25 @@ def test_ai_failure_falls_back_to_rules(api, monkeypatch):
         raise RuntimeError("offline")
 
     monkeypatch.setattr(scenarios, "_ai_parse", boom)
-    p = api.post("/api/scenario/parse", json={"text": "oil drops 20%"}).json()
-    assert p["parser"] == "rules" and p["shocks"][0]["symbol"] == "USO" and "local rules" in p["notes"][0]
+    p = api.post("/api/scenario/parse", json={"text": "the widget cartel collapses"}).json()
+    assert p["parser"] == "rules" and "local rules" in p["notes"][0]
+
+
+def test_rules_answer_first_and_fast(api, monkeypatch):
+    """P0-12: a sentence the local rules understand never waits on the AI, and answers in under 300 ms."""
+    import time
+    api.put("/api/settings", json={"anthropic_key": "sk-ant-api03-abcdefghijkl"})
+    called = []
+
+    def slow(*a, **k):
+        called.append(1)
+        time.sleep(5)
+
+    monkeypatch.setattr(scenarios, "_ai_parse", slow)
+    api.post("/api/scenario/parse", json={"text": "oil drops 20%"})  # warm the price cache
+    for text in ("Nasdaq falls 10%", "oil drops 20%", "The Fed cuts rates"):
+        t0 = time.perf_counter()
+        p = api.post("/api/scenario/parse", json={"text": text}).json()
+        assert p["parser"] == "rules" and p["understood"], text
+        assert time.perf_counter() - t0 < 0.3, text
+    assert not called

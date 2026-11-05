@@ -303,7 +303,12 @@ def parse(session: Session, text: str, use_ai: bool = True) -> dict:
     settings = services.get_settings(session)
     key = (settings.anthropic_key or "").strip()
     parser, notes, raw = "rules", [], None
-    if use_ai and key:
+    # the free local rules first: a sentence they understand answers at once, without waiting on an AI
+    companies = _companies(session, family.holdings)
+    rules = parse_rules(text, companies)
+    if rules.get("shocks") or rules.get("themes"):
+        raw = rules
+    elif use_ai and key:
         try:
             raw = _ai_parse(session, text, key, [h.symbol for h in family.holdings])
             parser = "ai"
@@ -311,7 +316,7 @@ def parse(session: Session, text: str, use_ai: bool = True) -> dict:
             log.warning("AI scenario parse failed: %s", exc)
             notes.append("Claude couldn't read it right now, so the local rules did.")
     if raw is None:
-        raw = parse_rules(text, _companies(session, family.holdings))
+        raw = rules
     notes += raw.get("notes", [])
     stock_syms = [s["symbol"] for s in raw["shocks"]]
     u = universe(session, [h.symbol for h in family.holdings] + stock_syms)

@@ -158,8 +158,8 @@ function ScenarioLab() {
       )}
 
       {runErr && <ErrorLine message={runErr} />}
-      {firstLoad && <div className="mt-10 space-y-3" aria-label="Loading"><Skel className="h-10 w-2/3" /><Skel className="h-4 w-1/2" /><Skel className="h-40 w-full" />
-        <p className="text-xs text-faint">The first run loads ten years of market history. It can take a minute; later runs are instant.</p></div>}
+      {(parsing || firstLoad) && <Steps step={parsing ? 0 : running ? 1 : 2} />}
+      {firstLoad && <div className="mt-6 space-y-3" aria-hidden><Skel className="h-10 w-2/3" /><Skel className="h-4 w-1/2" /><Skel className="h-40 w-full" /></div>}
       {impact && !impact.empty && (
         <>
           <Impact r={impact} regime={impactRegime} setRegime={setImpactRegime} busy={impactBusy}
@@ -377,5 +377,24 @@ function ModelCheckPanel() {
         </div>
       )}
     </div>
+  );
+}
+
+/** What is happening while a scenario is read and run, shown only when it takes longer than a blink. */
+function Steps({ step }: { step: number }) {
+  const [show, setShow] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setShow(true), 300); return () => clearTimeout(t); }, []);
+  if (!show) return null;
+  const names = ["Reading the sentence", "Finding past weeks like it", "Simulating 10,000 outcomes"];
+  return (
+    <ol className="mt-8 space-y-1.5 text-sm" aria-live="polite" aria-label="Progress">
+      {names.map((n, i) => (
+        <li key={n} className={clsx("flex items-center gap-2", i < step ? "text-muted" : i === step ? "font-medium text-text" : "text-faint")}>
+          <span aria-hidden className={clsx("h-1.5 w-1.5 rounded-full", i < step ? "bg-muted" : i === step ? "animate-pulse bg-text" : "border border-faint")} />
+          {n}{i < step && <span className="sr-only"> (done)</span>}
+        </li>
+      ))}
+      <li className="pt-1 text-xs text-faint">The first run loads ten years of market history. Later runs take a moment.</li>
+    </ol>
   );
 }
