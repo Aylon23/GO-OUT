@@ -193,3 +193,34 @@ def parse_rules(text: str, companies: dict[str, str]) -> dict:
     if currency_named:
         notes.append("Currency moves are left out: the app measures stock performance only, in each stock's own currency.")
     return {"themes": themes, "shocks": list(shocks.values()), "notes": notes}
+
+
+WEEKS_PER = {"day": 0.2, "week": 1.0, "month": 4.3, "quarter": 13.0, "year": 52.0}
+_SPAN_NUM = {"one": 1, "a": 1, "an": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "nine": 9, "twelve": 12,
+        "אחד": 1, "אחת": 1, "שני": 2, "שתי": 2, "שניים": 2, "שלושה": 3, "שלוש": 3, "ארבעה": 4, "ארבע": 4,
+        "חמישה": 5, "חמש": 5, "שישה": 6, "שש": 6, "תשעה": 9, "תשע": 9}
+_HE_UNIT = [("שבועיים", 2.0), ("חודשיים", 8.6), ("חצי שנה", 26.0), ("חצי-שנה", 26.0), ("שנתיים", 104.0)]
+_HE_WORD = {"יום": "day", "ימים": "day", "שבוע": "week", "שבועות": "week", "חודש": "month", "חודשים": "month",
+            "רבעון": "quarter", "רבעונים": "quarter", "שנה": "year", "שנים": "year"}
+
+
+def horizon_from_text(text: str) -> float | None:
+    """The time span a sentence names, in weeks: "over a month", "בחודש הקרוב", "3 חודשים", "next quarter".
+    None when the sentence names none (the caller then uses past events or one week)."""
+    t = " " + text.lower() + " "
+    for w, weeks in _HE_UNIT:
+        if w in t:
+            return weeks
+    m = re.search(r"(\d+(?:\.\d+)?|" + "|".join(_SPAN_NUM) + r")?\s*-?\s*(day|week|month|quarter|year)s?\b", t)
+    if m and (m.group(1) or re.search(r"\b(a|an|one|next|this|over the|over a|in a|within a|per)\s+" + m.group(2), t)):
+        n = float(_SPAN_NUM.get(m.group(1), m.group(1) or 1)) if m.group(1) else 1.0
+        return n * WEEKS_PER[m.group(2)]
+    if re.search(r"\b(next|this|over the|in the|within the)\s+(day|week|month|quarter|year)\b", t):
+        u = re.search(r"\b(?:next|this|over the|in the|within the)\s+(day|week|month|quarter|year)\b", t).group(1)
+        return WEEKS_PER[u]
+    # Hebrew: "בחודש", "לחודש", "חודש הבא", "3 חודשים", "שלושה חודשים"; "השנה" alone is "this year" too
+    for m in re.finditer(r"(?:(\d+(?:\.\d+)?|" + "|".join(k for k in _SPAN_NUM if not k.isascii()) + r")\s+)?[בלה]?(ימים|יום|שבועות|שבוע|חודשים|חודש|רבעונים|רבעון|שנים|שנה)(?=[\s.,?!]|$)", t):
+        n = m.group(1)
+        k = float(n) if n and n[0].isdigit() else float(_SPAN_NUM.get(n, 1)) if n else 1.0
+        return k * WEEKS_PER[_HE_WORD[m.group(2)]]
+    return None

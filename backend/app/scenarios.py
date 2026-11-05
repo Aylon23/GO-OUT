@@ -23,7 +23,7 @@ from .market.cache import NoPriceData, currency_for, load_history
 from .market.names import clean_name
 from .models import Portfolio, Scenario, SymbolMeta
 from .scenario_library import EVENT_BY_ID, EVENTS, FACTOR_SYMBOLS, FACTORS, LABEL, SECTOR_PROXY, THEME_BY_ID
-from .scenario_text import parse_rules
+from .scenario_text import horizon_from_text, parse_rules
 
 log = logging.getLogger(__name__)
 
@@ -372,6 +372,9 @@ def parse(session: Session, text: str, use_ai: bool = True) -> dict:
     if themes:
         lens = [event_weeks(EVENT_BY_ID[e]) for e in (used or [e for th in themes for e in th["events"]])]
         horizon = float(np.median(lens)) if lens else 1.0
+    said = horizon_from_text(text)  # a span the sentence names ("over a month", "בחודש הקרוב") wins
+    if said:
+        horizon = float(min(max(said, 0.2), 52.0))
     shocks = shocks[:MAX_SHOCKS]
     events = used + [e for e in events if e not in used]
     events += [e for e in _analogs(u, {s["symbol"]: s["move"] for s in shocks}, set(events)) if e not in events]

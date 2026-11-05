@@ -325,3 +325,14 @@ def test_rules_answer_first_and_fast(api, monkeypatch):
         assert p["parser"] == "rules" and p["understood"], text
         assert time.perf_counter() - t0 < 0.3, text
     assert not called
+
+
+@pytest.mark.parametrize("text,weeks", [("נאסדק יורד 10% בחודש הקרוב", 4.3), ("Nasdaq falls 10% over a month", 4.3),
+                                        ("oil +20% in 3 months", 12.9), ("ריבית יורדת בחצי שנה", 26.0), ("oil spikes for 2 weeks", 2.0)])
+def test_the_span_a_sentence_names_is_used(api, text, weeks):
+    p = api.post("/api/scenario/parse", json={"text": text}).json()
+    assert p["understood"] and abs(p["horizon_weeks"] - weeks) < 0.05, p["horizon_weeks"]
+
+
+def test_no_span_keeps_the_default(api):
+    assert api.post("/api/scenario/parse", json={"text": "Nasdaq falls 10%"}).json()["horizon_weeks"] == 1.0
