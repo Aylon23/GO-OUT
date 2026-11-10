@@ -175,6 +175,8 @@ class Settings(SQLModel, table=True):
     council_min_weight: bool = False  # council: only holdings of at least 2% of some portfolio (plus the watchlist)
     council_weekday: int = 6  # weekly council run: 0 = Monday … 6 = Sunday; -1 = off
     ai_roster: str = ""  # JSON list of {role, models: [primary, fallback, fallback]}; empty = defaults
+    ai_budget_usd: float = 10.0  # monthly ceiling for paid models (the analyst panel); spending stops at it
+    ai_panel: str = ""  # JSON list of {key, model}: a model id set by hand for a panel seat; empty = newest flagship
 
     def benchmark_list(self) -> list[str]:
         return [b.strip().upper() for b in self.benchmarks.split(",") if b.strip()]
@@ -317,6 +319,8 @@ class AiCall(SQLModel, table=True):
     job_id: Optional[int] = None
     step_key: str = ""
     error: str = ""
+    paid: bool = False  # a paid model: counted against the monthly budget, not the free daily quota
+    cost: float = 0.0  # USD, as reported by OpenRouter for this call
 
 
 class AiQuota(SQLModel, table=True):
@@ -548,3 +552,22 @@ class ArchivedTransaction(SQLModel, table=True):
     archived_by_batch: Optional[int] = Field(default=None, index=True)
     reason: str = ""
     restored: bool = False
+
+
+class PanelRun(SQLModel, table=True):
+    """One analyst-panel run: each model's own method and a move for every holding, next to the engine."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    text: str = ""
+    horizon: str = "1m"
+    web: bool = True  # live web search on for every model
+    status: str = "running"  # running | done | failed
+    progress: str = "{}"  # JSON: {pct, step, models: {key: waiting|working|done|failed}}
+    seats: str = "[]"  # JSON: [{key, label, model}]
+    answers: str = "{}"  # JSON: key -> the model's validated answer
+    result: str = "{}"  # JSON: per-portfolio tables and the summary (computed here, never by a model)
+    prices: str = "{}"  # JSON: ticker -> closing price on the day of the run, for scoring later
+    scored: str = ""  # JSON once the horizon has ended: per model, direction hits and average error
+    cost: float = 0.0
+    note: str = ""

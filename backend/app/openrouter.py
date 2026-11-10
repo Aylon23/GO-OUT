@@ -260,6 +260,26 @@ def _count_sent(session: Session, n: int = 1) -> None:
     session.commit()
 
 
+class BudgetReached(AiError):
+    pass
+
+
+def month_spent(session: Session, now: dt.datetime | None = None) -> float:
+    """USD spent on paid models since the 1st of this month (UTC), from the call log."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    rows = session.exec(select(AiCall).where(AiCall.paid == True, AiCall.at >= start)).all()  # noqa: E712
+    return float(sum(r.cost or 0.0 for r in rows))
+
+
+def budget_status(session: Session) -> dict:
+    from .services import get_settings
+
+    limit = float(get_settings(session).ai_budget_usd or 0.0)
+    spent = month_spent(session)
+    return {"limit": limit, "spent": round(spent, 4), "left": round(max(0.0, limit - spent), 4)}
+
+
 def requests_left(session: Session) -> int | None:
     s = quota_status(session)
     return s.get("remaining") if s.get("known") else None
@@ -292,20 +312,23 @@ def _validate(obj, schema: dict) -> list[str]:
 
 # ---------- the call ----------
 
-def _send(session: Session, body: dict) -> tuple[int, dict, dict]:
-    """One request with at most one retry. Every attempt is paced and counted."""
+def _send(session: Session, body: dict, paid: bool = False, timeout: float = TIMEOUT) -> tuple[int, dict, dict]:
+    """One request with at most one retry. Every attempt is paced and counted (free requests against the
+    daily quota; paid ones are checked against the monthly budget by the caller)."""
     key = api_key()
     if not key:
         raise NoKey("Add OPENROUTER_API_KEY to the .env file next to the app, then restart it.")
     last: tuple[int, dict, dict] | None = None
     for attempt in range(2):
-        left = requests_left(session)
-        if left is not None and left <= 0:
-            raise QuotaExhausted("No free AI requests left today.")
+        if not paid:
+            left = requests_left(session)
+            if left is not None and left <= 0:
+                raise QuotaExhausted("No free AI requests left today.")
         _pace()
-        _count_sent(session)
+        if not paid:
+            _count_sent(session)
         try:
-            status, headers, data = _transport.request("POST", f"{BASE}/chat/completions", _headers(key), body, TIMEOUT)
+            status, headers, data = _transport.request("POST", f"{BASE}/chat/completions", _headers(key), body, timeout)
         except Exception as exc:  # network error or timeout
             status, headers, data = 0, {}, {"error": {"message": str(exc)[:300]}}
         last = (status, headers, data)
@@ -329,17 +352,34 @@ def _err_text(status: int, data: dict) -> str:
 
 def chat_json(session: Session, role: str, models: list[str], messages: list[dict], schema: dict,
               schema_name: str = "answer", max_tokens: int = MAX_TOKENS, job_id: int | None = None,
-              step_key: str = "") -> tuple[dict, AiCall]:
-    """Ask the model chain for JSON matching `schema`. Returns (answer, logged call)."""
-    call = AiCall(role=role, models=json.dumps(models), job_id=job_id, step_key=step_key)
+              step_key: str = "", paid: bool = False, web: bool = False, guidance: str | None = None,
+              timeout: float = TIMEOUT) -> tuple[dict, AiCall]:
+    """Ask the model chain for JSON matching `schema`. Returns (answer, logged call).
+
+    paid=True is the analyst panel: any model id is allowed, the call is checked against the monthly
+    budget instead of the free daily quota, and its cost is logged. web=True adds OpenRouter's web search.
+    `guidance` replaces the default "rely only on the data given" line."""
+    call = AiCall(role=role, models=json.dumps(models), job_id=job_id, step_key=step_key, paid=paid)
     t0 = _clock()
     try:
-        models = check_models(session, models)
+        if paid:
+            models = [m.strip() for m in models if m and m.strip()][:3]
+            if not models:
+                raise AiError("No model set for this seat.")
+            b = budget_status(session)
+            if b["left"] <= 0:
+                raise BudgetReached(f"The monthly AI budget (${b['limit']:.2f}) is used up. Raise it in Settings, or wait for the 1st.")
+        else:
+            models = check_models(session, models)
         sys_msg = {"role": "system", "content": (
             "Answer with one JSON object only, no prose and no code fences. It must match this JSON schema "
-            f"({schema_name}):\n" + json.dumps(schema, separators=(",", ":")) +
-            "\nRely only on the data given in the messages, not on memory; write \"missing\" where the data lacks something.")}
+            f"({schema_name}):\n" + json.dumps(schema, separators=(",", ":")) + "\n" +
+            (guidance or "Rely only on the data given in the messages, not on memory; write \"missing\" where the data lacks something."))}
         body = {"models": models, "messages": [sys_msg, *messages], "max_tokens": max_tokens, "temperature": 0.3}
+        if paid:
+            body["usage"] = {"include": True}  # OpenRouter then reports the cost of the call
+        if web:
+            body["plugins"] = [{"id": "web", "max_results": 5}]
         privacy.assert_clean(session, body)
         call.payload_hash = payload_hash(body)
     except (AiError, privacy.PrivacyError) as exc:
@@ -349,7 +389,7 @@ def chat_json(session: Session, role: str, models: list[str], messages: list[dic
     answer = None
     sent_before = _sent_total(session)
     try:
-        status, _h, data = _send(session, body)
+        status, _h, data = _send(session, body, paid, timeout)
         _add_usage(call, data)
         if status != 200 or not data.get("choices"):
             raise AiError(_err_text(status, data))
@@ -365,7 +405,7 @@ def chat_json(session: Session, role: str, models: list[str], messages: list[dic
                                         {"role": "user", "content": "That answer failed validation: " + "; ".join(problems) +
                                          ". Return only the corrected JSON object."}]}
             privacy.assert_clean(session, fix)
-            status, _h, data = _send(session, fix)
+            status, _h, data = _send(session, fix, paid, timeout)
             _add_usage(call, data)
             if status != 200 or not data.get("choices"):
                 raise InvalidAnswer("Invalid JSON, and the repair request failed: " + _err_text(status, data))
@@ -398,6 +438,10 @@ def _add_usage(call: AiCall, data: dict) -> None:
     u = (data or {}).get("usage") or {}
     call.prompt_tokens += int(u.get("prompt_tokens") or 0)
     call.completion_tokens += int(u.get("completion_tokens") or 0)
+    try:
+        call.cost += float(u.get("cost") or 0.0)
+    except (TypeError, ValueError):
+        pass
     if (data or {}).get("model"):
         call.model_used = data["model"]
 
@@ -440,3 +484,69 @@ def free_models() -> dict:
         return {"models": out, "live": True}
     except Exception:
         return {"models": [{"id": m, "name": m, "context": None} for m in KNOWN_FREE], "live": False}
+
+
+# ---------- the analyst panel's seats ----------
+
+PANEL_SEATS = [{"key": "claude", "label": "Claude", "prefix": "anthropic/claude"},
+               {"key": "gpt", "label": "ChatGPT", "prefix": "openai/gpt"},
+               {"key": "grok", "label": "Grok", "prefix": "x-ai/grok"}]
+# variants that are not the vendor's main model: small, special-purpose or preview builds
+_NOT_FLAGSHIP = ("mini", "nano", "haiku", "lite", "flash", "fast", "free", "instant", "codex", "audio", "image", "vision",
+                 "search", "oss", "guard", "preview", "beta", "extended", "online", "thinking", "realtime", "chat-latest")
+PANEL_MAX_PRICE = 30.0  # USD per million output tokens: skips "pro" tiers that cost ten times more
+_catalog_cache: tuple[str, list[dict]] | None = None
+
+
+def catalog() -> list[dict]:
+    """Every model OpenRouter lists (public, no key), with its price, cached for the day."""
+    global _catalog_cache
+    today = _utc_day()
+    if _catalog_cache and _catalog_cache[0] == today:
+        return _catalog_cache[1]
+    status, _h, data = _transport.request("GET", f"{BASE}/models", {}, None, 20.0)
+    if status != 200:
+        raise AiError(f"Couldn't read the model list (HTTP {status}).")
+    out = []
+    for m in data.get("data") or []:
+        pr = m.get("pricing") or {}
+        try:
+            price_in, price_out = float(pr.get("prompt") or 0) * 1e6, float(pr.get("completion") or 0) * 1e6
+        except (TypeError, ValueError):
+            price_in = price_out = 0.0
+        out.append({"id": str(m.get("id", "")), "name": m.get("name") or m.get("id"), "created": int(m.get("created") or 0),
+                    "price_in": price_in, "price_out": price_out})
+    _catalog_cache = (today, out)
+    return out
+
+
+def flagship(prefix: str, models: list[dict]) -> dict | None:
+    """The vendor's newest main model at a normal price: newest by release date among ids with this
+    prefix, leaving out small, special-purpose and very expensive variants."""
+    ok = [m for m in models if m["id"].startswith(prefix) and not any(w in m["id"].lower() for w in _NOT_FLAGSHIP)
+          and 0 < m["price_out"] <= PANEL_MAX_PRICE]
+    return max(ok, key=lambda m: (m["created"], m["id"])) if ok else None
+
+
+def panel_seats(session: Session) -> list[dict]:
+    """The three seats with the model each will use: the one set in Settings, else the newest flagship."""
+    from .services import get_settings
+
+    try:
+        chosen = {x["key"]: x["model"] for x in json.loads(get_settings(session).ai_panel or "[]") if x.get("model")}
+    except (ValueError, TypeError, KeyError):
+        chosen = {}
+    try:
+        models, err = catalog(), ""
+    except Exception as exc:
+        models, err = [], str(exc)[:200]
+    by_id = {m["id"]: m for m in models}
+    out = []
+    for seat in PANEL_SEATS:
+        auto = flagship(seat["prefix"], models)
+        mid = chosen.get(seat["key"]) or (auto["id"] if auto else "")
+        info = by_id.get(mid) or {}
+        out.append({"key": seat["key"], "label": seat["label"], "model": mid, "chosen": seat["key"] in chosen,
+                    "auto": auto["id"] if auto else "", "price_in": info.get("price_in"), "price_out": info.get("price_out"),
+                    "known": mid in by_id, "error": err if not mid else ""})
+    return out

@@ -317,6 +317,21 @@ export const setApiPortfolio = (id: number) => { currentPortfolio = id; };
 export const portfolioParam = () => `portfolio=${currentPortfolio}`;
 
 export interface MarketStatus { state: "pre" | "open" | "after" | "closed"; label: string; et_date: string; last_session: string; last_close_at: string; as_of: string; day_word: string }
+export interface PanelSeat { key: string; label: string; model: string; chosen?: boolean; auto?: string; price_in?: number | null; price_out?: number | null; known?: boolean; error?: string }
+export interface PanelSetup { key_set: boolean; seats: PanelSeat[]; budget: { limit: number; spent: number; left: number }; holdings: number; estimate_usd: { web: number; no_web: number }; horizons: string[] }
+export interface PanelCell { move: number; low: number; high: number; confidence: "low" | "medium" | "high"; reason: string }
+export interface PanelStock { symbol: string; name: string; weight: number; value_amt: number; models: Record<string, PanelCell | null>; avg: number | null; low: number | null; high: number | null; avg_amt: number | null; engine: number | null; split: boolean; engine_gap: boolean }
+export interface PanelTotal { pct: number; amt: number; coverage: number }
+export interface PanelTable { id: number | null; name: string; value_amt: number; rows: PanelStock[]; models: Record<string, PanelTotal>; avg: PanelTotal | null; range: { low: number; high: number } | null; engine: PanelTotal | null }
+export interface PanelAnalyst { method: string; briefing: string; market_view: string; assumptions: string[]; sources: string[] }
+export interface PanelRun {
+  id: number; text: string; horizon: string; web: boolean; status: "running" | "done" | "failed"; note: string; created_at: string; cost: number;
+  progress: { pct?: number; step?: string; models?: Record<string, "waiting" | "working" | "done" | "failed"> }; seats: { key: string; label: string; model: string }[];
+  analysts?: Record<string, PanelAnalyst>;
+  result?: { tables?: PanelTable[]; summary_he?: string[]; engine_why?: string; engine_shocks?: { symbol: string; move: number }[]; errors?: Record<string, string>; currency?: Ccy };
+  score?: { models: Record<string, { n: number; direction_hit_rate: number | null; avg_error: number; in_range_rate: number }>; scored_on: string } | null;
+}
+export interface PanelBoardRow { key: string; label: string; runs: number; stocks: number; avg_error: number; direction_hit_rate: number | null; in_range_rate: number }
 export interface AiRole { role: string; label: string; models: string[] }
 export interface AiQuota { known: boolean; key_set: boolean; limit?: number; used?: number; remaining?: number; as_of?: string | null; error?: string; stale_day?: boolean }
 export interface AiJob { id: number; kind: string; title: string; status: string; note: string; created_at: string; resume_after: string | null; total: number; done: number; failed: number }
@@ -520,6 +535,12 @@ export const api = {
     request<Custom>("POST", "/api/whatif/custom", body),
   settings: () => request<Settings>("GET", "/api/settings"),
   marketStatus: () => request<MarketStatus>("GET", "/api/market/status"),
+  panelSetup: () => request<PanelSetup>("GET", "/api/panel/setup"),
+  panelSettings: (b: { budget_usd?: number; models?: Record<string, string> }) => request<PanelSetup>("PUT", "/api/panel/settings", b),
+  panelStart: (b: { text: string; horizon: string; web: boolean }) => request<PanelRun>("POST", "/api/panel", b),
+  panelRuns: () => request<PanelRun[]>("GET", "/api/panel"),
+  panelRun: (id: number) => request<PanelRun>("GET", `/api/panel/${id}`),
+  panelBoard: () => request<PanelBoardRow[]>("GET", "/api/panel/leaderboard"),
   saveSettings: (s: Partial<Settings>) => request<Settings>("PUT", "/api/settings", s),
   demo: () => request<{ loaded: number }>("POST", "/api/demo"),
   portfolios: () => request<PortfolioInfo[]>("GET", "/api/portfolios"),

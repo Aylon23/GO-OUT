@@ -1712,3 +1712,96 @@ def history_suggested_dismiss(rec_id: int, session: Session = Depends(get_sessio
     from .. import history_import
 
     return _history_call(history_import.decide_suggestion, session, rec_id, False)
+
+
+# ---------------------------------------------------------------- the analyst panel (paid models)
+
+class PanelIn(BaseModel):
+    text: str
+    horizon: str = "1m"
+    web: bool = True
+
+
+class PanelSettingsIn(BaseModel):
+    budget_usd: float | None = None
+    models: dict[str, str] | None = None  # seat key -> model id; "" = pick the newest flagship
+
+
+def _panel_setup(session: Session) -> dict:
+    from .. import openrouter, panel
+
+    seats = openrouter.panel_seats(session)
+    try:
+        msgs, symbols = panel.question_message(session, "", "1m")
+        chars = len(msgs[0]["content"])
+    except Exception:
+        chars, symbols = 0, []
+    return {"key_set": bool(openrouter.api_key()), "seats": seats, "budget": openrouter.budget_status(session),
+            "holdings": len(symbols), "estimate_usd": {"web": panel.estimate_cost(seats, chars, True), "no_web": panel.estimate_cost(seats, chars, False)},
+            "horizons": list(panel.HORIZON_DAYS)}
+
+
+@router.get("/panel/setup")
+def panel_setup(session: Session = Depends(get_session)):
+    return _panel_setup(session)
+
+
+@router.put("/panel/settings")
+def panel_settings(body: PanelSettingsIn, session: Session = Depends(get_session)):
+    import json as _json
+
+    from .. import openrouter
+
+    s = services.get_settings(session)
+    if body.budget_usd is not None:
+        if not (0 <= body.budget_usd <= 500):
+            _bad("Set a monthly budget between $0 and $500.")
+        s.ai_budget_usd = float(body.budget_usd)
+    if body.models is not None:
+        keys = {x["key"] for x in openrouter.PANEL_SEATS}
+        s.ai_panel = _json.dumps([{"key": k, "model": v.strip()} for k, v in body.models.items() if k in keys and v.strip()])
+    session.add(s)
+    session.commit()
+    return _panel_setup(session)
+
+
+@router.post("/panel")
+def panel_start(body: PanelIn, wait: bool = False, session: Session = Depends(get_session)):
+    from .. import openrouter, panel
+
+    if not body.text.strip():
+        _bad("Write the question first.")
+    try:
+        run = panel.start(session, body.text, body.horizon, body.web, background=not wait)
+    except openrouter.AiError as exc:
+        _bad(str(exc))
+    return panel.payload(session, run)
+
+
+@router.get("/panel")
+def panel_list(session: Session = Depends(get_session)):
+    from .. import panel
+
+    return panel.listing(session)
+
+
+@router.get("/panel/leaderboard")
+def panel_board(session: Session = Depends(get_session)):
+    from .. import panel
+
+    try:
+        panel.score_due(session)
+    except Exception:
+        pass
+    return panel.leaderboard(session)
+
+
+@router.get("/panel/{run_id}")
+def panel_get(run_id: int, session: Session = Depends(get_session)):
+    from .. import panel
+    from ..models import PanelRun
+
+    run = session.get(PanelRun, run_id)
+    if run is None:
+        raise HTTPException(404, "No such run.")
+    return panel.payload(session, run)
