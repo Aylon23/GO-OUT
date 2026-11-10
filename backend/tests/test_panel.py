@@ -155,3 +155,19 @@ def test_models_are_scored_against_prices_once_the_horizon_has_passed(session, p
     score = c.get(f"/api/panel/{rid}").json()["score"]
     assert score["actual"]["AAPL"] == pytest.approx(actual)
     assert board == sorted(board, key=lambda b: b["avg_error"])
+
+
+def test_paid_calls_only_start_from_a_click():
+    """Money is spent only when the user sends a question or a chat message: no scheduler, bot or page
+    load may call a paid model."""
+    from pathlib import Path
+
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    src = {p.relative_to(app_dir).as_posix(): p.read_text() for p in app_dir.rglob("*.py")}
+    # only the panel and the assistant make paid calls (openrouter.py is where the switch is defined)
+    assert sorted(n for n, t in src.items() if "paid=True" in t and n != "openrouter.py") == ["assistant.py", "panel.py"]
+    # and each is started from exactly one place: its own POST route
+    for call, route in (("panel.start(", '@router.post("/panel")'), ("assistant.ask(", '@router.post("/assistant/{run_id}")')):
+        assert [n for n, t in src.items() if call in t] == ["api/routes.py"], call
+        routes = src["api/routes.py"]
+        assert routes.count(call) == 1 and route in routes[routes.index(call) - 600:routes.index(call)], call

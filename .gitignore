@@ -8,6 +8,8 @@ data/*.db
 data/*.db-*
 .DS_Store
 .version
+.version.json
+.update-check.json
 start.bat.new
 data/logos/
 inbox/*

@@ -1,6 +1,7 @@
 import { CommandPalette } from "./components/CommandPalette";
 import { QuickView } from "./components/QuickView";
 import { TopBar } from "./components/TopBar";
+import { VersionLine } from "./components/VersionLine";
 import AllPortfolios from "./pages/AllPortfolios";
 import Calls from "./pages/Calls";
 import Compare from "./pages/Compare";
@@ -41,6 +42,7 @@ export default function App() {
       <div className="min-h-[100dvh] bg-bg text-text">
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-sm focus:bg-surface focus:px-3 focus:py-2 focus:shadow-pop">Skip to content</a>
         <TopBar />
+        <VersionLine />
         <main id="main"><RouteFrame /></main>
         <CommandPalette />
         <QuickView />

@@ -63,8 +63,8 @@ export function AiPanel() {
           </select>
         </div>
       )}
-      {shown != null ? <RunView key={shown} id={shown} onDone={reload} web={web} onAskPanel={(q) => { setText(q); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
-        : s?.key_set && list.data && <Chat runId={0} web={web} onAskPanel={setText} />}
+      {shown != null ? <RunView key={shown} id={shown} onDone={reload} onAskPanel={(q) => { setText(q); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+        : s?.key_set && list.data && <Chat runId={0} onAskPanel={setText} />}
       <Board />
     </section>
   );
@@ -112,7 +112,7 @@ function SetupLine({ s, web, onSaved }: { s: PanelSetup; web: boolean; onSaved: 
   );
 }
 
-function RunView({ id, onDone, web, onAskPanel }: { id: number; onDone: () => void; web: boolean; onAskPanel: (q: string) => void }) {
+function RunView({ id, onDone, onAskPanel }: { id: number; onDone: () => void; onAskPanel: (q: string) => void }) {
   const [d, setD] = useState<PanelRun | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -136,7 +136,7 @@ function RunView({ id, onDone, web, onAskPanel }: { id: number; onDone: () => vo
   if (d.status === "failed") {
     return <div className="mt-8 text-sm"><p className="font-medium" dir="auto">{d.text}</p><p className="mt-1 text-loss">{d.note || "It stopped."}</p></div>;
   }
-  return <Result d={d} web={web} onAskPanel={onAskPanel} />;
+  return <Result d={d} onAskPanel={onAskPanel} />;
 }
 
 function Progress({ d }: { d: PanelRun }) {
@@ -167,7 +167,7 @@ function Progress({ d }: { d: PanelRun }) {
   );
 }
 
-function Result({ d, web, onAskPanel }: { d: PanelRun; web: boolean; onAskPanel: (q: string) => void }) {
+function Result({ d, onAskPanel }: { d: PanelRun; onAskPanel: (q: string) => void }) {
   const tables = d.result?.tables ?? [];
   const [view, setView] = useState("family");
   const ccy = d.result?.currency ?? "USD";
@@ -191,7 +191,7 @@ function Result({ d, web, onAskPanel }: { d: PanelRun; web: boolean; onAskPanel:
       )}
       <Totals t={t} seats={seats} m={m} engineWhy={d.result?.engine_why ?? ""} />
       <Stocks t={t} seats={seats} m={m} engineWhy={d.result?.engine_why ?? ""} />
-      <Chat runId={d.id} web={web} onAskPanel={onAskPanel} />
+      <Chat runId={d.id} onAskPanel={onAskPanel} />
       <Analysts d={d} />
     </div>
   );
@@ -334,7 +334,9 @@ const STARTERS = ["מי מהתיקים הכי חשוף ולמה?", "על איל�
 const STARTERS_OPEN = ["מה הסיכון הכי גדול בתיקים כרגע?", "אילו דוחות חשובים לתיקים מתפרסמים השבוע?", "הריבית בארה\"ב יורדת ברבע אחוז בניגוד לציפיות. מה קורה?"];
 
 /** The conversation with the assistant, about this result (or about the portfolios when there is none). */
-function Chat({ runId, web, onAskPanel }: { runId: number; web: boolean; onAskPanel: (q: string) => void }) {
+function Chat({ runId, onAskPanel }: { runId: number; onAskPanel: (q: string) => void }) {
+  // a follow-up on a result needs no web search (it costs extra); a fresh question about the news does
+  const [web, setWeb] = useState(runId === 0);
   const [msgs, setMsgs] = useState<ChatMsg[] | null>(null);
   const [text, setText] = useState("");
   const [pending, setPending] = useState<string | null>(null);
@@ -367,6 +369,7 @@ function Chat({ runId, web, onAskPanel }: { runId: number; web: boolean; onAskPa
               <p className="mt-2 text-xs text-muted">Engine on this question ({m.engine.read_as.map((x) => `${x.symbol} ${p1(x.move_pct)}`).join(", ")}, over {m.engine.over_weeks} weeks):
                 {" "}all portfolios <Signed value={m.engine.all_portfolios.typical_pct}>{p1(m.engine.all_portfolios.typical_pct)}</Signed>, worst of 20 <Signed value={m.engine.all_portfolios.worst_of_20_pct}>{p1(m.engine.all_portfolios.worst_of_20_pct)}</Signed>.</p>
             )}
+            {m.cost != null && m.cost > 0 && <p className="mt-1 text-xs text-faint">This answer cost {money(m.cost, "USD", { decimals: 2 })}.</p>}
             {m.ask_panel && <button type="button" className="link mt-2 text-sm" onClick={() => { const q = msgs?.slice(0, msgs.indexOf(m)).reverse().find((x) => x.role === "user")?.text; if (q) onAskPanel(q); }}>Ask all three analysts this</button>}
           </li>
         ))}
@@ -383,6 +386,10 @@ function Chat({ runId, web, onAskPanel }: { runId: number; web: boolean; onAskPa
         <input id={`chat-q-${runId}`} dir="auto" autoComplete="off" className="field h-10 flex-1" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask about a stock, a portfolio, or another what-if" />
         <button type="submit" className="btn-secondary h-10" disabled={!text.trim() || !!pending}>Ask</button>
       </form>
+      <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-muted">
+        <input type="checkbox" className="h-3.5 w-3.5 accent-[var(--accent)]" checked={web} onChange={(e) => setWeb(e.target.checked)} />
+        Search the web for this answer (costs a little more)
+      </label>
     </section>
   );
 }

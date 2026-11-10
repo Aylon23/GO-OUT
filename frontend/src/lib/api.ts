@@ -316,6 +316,7 @@ let currentPortfolio = 1;
 export const setApiPortfolio = (id: number) => { currentPortfolio = id; };
 export const portfolioParam = () => `portfolio=${currentPortfolio}`;
 
+export interface AppVersion { running: { sha: string; date: string | null; note: string; source: string }; on_disk: { sha: string; date: string | null }; started_at: string; restart_needed: boolean; check: { at: string | null; ok: boolean | null; latest: string; error: string } | null }
 export interface MarketStatus { state: "pre" | "open" | "after" | "closed"; label: string; et_date: string; last_session: string; last_close_at: string; as_of: string; day_word: string }
 export interface PanelSeat { key: string; label: string; model: string; chosen?: boolean; auto?: string; price_in?: number | null; price_out?: number | null; known?: boolean; error?: string }
 export interface PanelSetup { key_set: boolean; seats: PanelSeat[]; budget: { limit: number; spent: number; left: number }; holdings: number; estimate_usd: { web: number; no_web: number }; horizons: string[] }
@@ -536,6 +537,7 @@ export const api = {
   custom: (body: { holdings: { symbol: string; weight: number }[]; start: string; initial: number; monthly: number; rebalance: string }) =>
     request<Custom>("POST", "/api/whatif/custom", body),
   settings: () => request<Settings>("GET", "/api/settings"),
+  version: () => request<AppVersion>("GET", "/api/version"),
   marketStatus: () => request<MarketStatus>("GET", "/api/market/status"),
   panelSetup: () => request<PanelSetup>("GET", "/api/panel/setup"),
   panelSettings: (b: { budget_usd?: number; models?: Record<string, string> }) => request<PanelSetup>("PUT", "/api/panel/settings", b),

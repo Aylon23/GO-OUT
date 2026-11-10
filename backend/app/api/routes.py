@@ -191,6 +191,13 @@ def portfolio(range: str = "1Y", start: str | None = None, end: str | None = Non
     return _wrap(services.portfolio_payload, session, range, start, end, pid)
 
 
+@router.get("/version")
+def app_version():
+    from .. import version
+
+    return version.status()
+
+
 @router.get("/market/status")
 def market_status(session: Session = Depends(get_session)):
     """US market state for the header chip, and when the prices on screen are from: the last check while
