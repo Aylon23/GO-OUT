@@ -571,3 +571,15 @@ class PanelRun(SQLModel, table=True):
     scored: str = ""  # JSON once the horizon has ended: per model, direction hits and average error
     cost: float = 0.0
     note: str = ""
+
+
+class ChatMessage(SQLModel, table=True):
+    """One turn of the conversation with the assistant, under a panel run (or run 0: no run)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int = Field(default=0, index=True)
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    role: str = "user"  # user | assistant
+    text: str = ""  # as shown: real portfolio names, amounts filled in here
+    sent: str = ""  # as sent or received: portfolios as "Portfolio A", no amounts
+    extra: str = "{}"  # JSON: follow-ups, caveat, what the engine read, model, cost

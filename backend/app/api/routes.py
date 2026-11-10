@@ -1805,3 +1805,25 @@ def panel_get(run_id: int, session: Session = Depends(get_session)):
     if run is None:
         raise HTTPException(404, "No such run.")
     return panel.payload(session, run)
+
+
+class AssistantIn(BaseModel):
+    text: str
+    web: bool = True
+
+
+@router.get("/assistant/{run_id}")
+def assistant_messages(run_id: int, session: Session = Depends(get_session)):
+    from .. import assistant
+
+    return assistant.messages(session, run_id)
+
+
+@router.post("/assistant/{run_id}")
+def assistant_ask(run_id: int, body: AssistantIn, session: Session = Depends(get_session)):
+    from .. import assistant, openrouter, privacy
+
+    try:
+        return assistant.ask(session, run_id, body.text, body.web)
+    except (openrouter.AiError, privacy.PrivacyError) as exc:
+        _bad(str(exc))

@@ -1,7 +1,7 @@
 import { CaretDown } from "@phosphor-icons/react";
 import clsx from "clsx";
-import { Fragment, useCallback, useEffect, useState } from "react";
-import { api, ApiError, type PanelRun, type PanelSetup, type PanelStock, type PanelTable } from "../lib/api";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { api, ApiError, type ChatMsg, type PanelRun, type PanelSetup, type PanelStock, type PanelTable } from "../lib/api";
 import { dateLong, money, pct } from "../lib/format";
 import { useData, useMediaQuery } from "../lib/hooks";
 import { Blank, ErrorLine, InfoTip, Segmented, Signed } from "./ui";
@@ -63,7 +63,8 @@ export function AiPanel() {
           </select>
         </div>
       )}
-      {shown != null && <RunView key={shown} id={shown} onDone={reload} />}
+      {shown != null ? <RunView key={shown} id={shown} onDone={reload} web={web} onAskPanel={(q) => { setText(q); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+        : s?.key_set && list.data && <Chat runId={0} web={web} onAskPanel={setText} />}
       <Board />
     </section>
   );
@@ -111,7 +112,7 @@ function SetupLine({ s, web, onSaved }: { s: PanelSetup; web: boolean; onSaved: 
   );
 }
 
-function RunView({ id, onDone }: { id: number; onDone: () => void }) {
+function RunView({ id, onDone, web, onAskPanel }: { id: number; onDone: () => void; web: boolean; onAskPanel: (q: string) => void }) {
   const [d, setD] = useState<PanelRun | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -135,7 +136,7 @@ function RunView({ id, onDone }: { id: number; onDone: () => void }) {
   if (d.status === "failed") {
     return <div className="mt-8 text-sm"><p className="font-medium" dir="auto">{d.text}</p><p className="mt-1 text-loss">{d.note || "It stopped."}</p></div>;
   }
-  return <Result d={d} />;
+  return <Result d={d} web={web} onAskPanel={onAskPanel} />;
 }
 
 function Progress({ d }: { d: PanelRun }) {
@@ -166,7 +167,7 @@ function Progress({ d }: { d: PanelRun }) {
   );
 }
 
-function Result({ d }: { d: PanelRun }) {
+function Result({ d, web, onAskPanel }: { d: PanelRun; web: boolean; onAskPanel: (q: string) => void }) {
   const tables = d.result?.tables ?? [];
   const [view, setView] = useState("family");
   const ccy = d.result?.currency ?? "USD";
@@ -190,6 +191,7 @@ function Result({ d }: { d: PanelRun }) {
       )}
       <Totals t={t} seats={seats} m={m} engineWhy={d.result?.engine_why ?? ""} />
       <Stocks t={t} seats={seats} m={m} engineWhy={d.result?.engine_why ?? ""} />
+      <Chat runId={d.id} web={web} onAskPanel={onAskPanel} />
       <Analysts d={d} />
     </div>
   );
@@ -324,6 +326,63 @@ function Board() {
             <td className="num border-b border-line py-1.5 pl-3 text-right">{pct(x.in_range_rate, 0, false)}</td></tr>))}
         </tbody>
       </table>
+    </section>
+  );
+}
+
+const STARTERS = ["מי מהתיקים הכי חשוף ולמה?", "על אילו מניות המודלים הכי חלוקים, ומה כל אחד טוען?", "ומה אם זה נמשך חצי שנה?"];
+const STARTERS_OPEN = ["מה הסיכון הכי גדול בתיקים כרגע?", "אילו דוחות חשובים לתיקים מתפרסמים השבוע?", "הריבית בארה\"ב יורדת ברבע אחוז בניגוד לציפיות. מה קורה?"];
+
+/** The conversation with the assistant, about this result (or about the portfolios when there is none). */
+function Chat({ runId, web, onAskPanel }: { runId: number; web: boolean; onAskPanel: (q: string) => void }) {
+  const [msgs, setMsgs] = useState<ChatMsg[] | null>(null);
+  const [text, setText] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => { let live = true; api.chat(runId).then((m) => { if (live) setMsgs(m); }).catch(() => { if (live) setMsgs([]); }); return () => { live = false; }; }, [runId]);
+  const send = async (q: string) => {
+    q = q.trim();
+    if (!q || pending) return;
+    setPending(q); setErr(null); setText("");
+    setTimeout(() => end.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 50);
+    try { setMsgs(await api.chatAsk(runId, { text: q, web })); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Couldn't get an answer."); setText(q); }
+    finally { setPending(null); }
+  };
+  const last = msgs?.[msgs.length - 1];
+  const chips = pending ? [] : last?.role === "assistant" && last.followups?.length ? last.followups : !msgs?.length ? (runId ? STARTERS : STARTERS_OPEN) : [];
+  return (
+    <section className="mt-14" aria-labelledby={`chat-h-${runId}`}>
+      <h2 id={`chat-h-${runId}`} className="text-lg font-semibold">{runId ? "Ask a follow-up" : "Talk to the assistant"}</h2>
+      <p className="mt-1 max-w-[70ch] text-sm text-muted">{runId ? "It answers from the numbers above and the engine." : "It knows what each portfolio holds."} Portfolio names are swapped for labels before anything is sent, and amounts are filled in here.</p>
+      <ol className="mt-4 max-w-[72ch] space-y-5">
+        {(msgs ?? []).map((m) => m.role === "user" ? (
+          <li key={m.id} className="border-s-2 border-accent ps-3 text-sm font-medium" dir="auto">{m.text}</li>
+        ) : (
+          <li key={m.id} className="text-sm leading-6">
+            <div dir="auto" className="whitespace-pre-line text-base leading-7">{m.text}</div>
+            {m.caveat && <p dir="auto" className="mt-2 text-sm text-muted">{m.caveat}</p>}
+            {m.engine && (
+              <p className="mt-2 text-xs text-muted">Engine on this question ({m.engine.read_as.map((x) => `${x.symbol} ${p1(x.move_pct)}`).join(", ")}, over {m.engine.over_weeks} weeks):
+                {" "}all portfolios <Signed value={m.engine.all_portfolios.typical_pct}>{p1(m.engine.all_portfolios.typical_pct)}</Signed>, worst of 20 <Signed value={m.engine.all_portfolios.worst_of_20_pct}>{p1(m.engine.all_portfolios.worst_of_20_pct)}</Signed>.</p>
+            )}
+            {m.ask_panel && <button type="button" className="link mt-2 text-sm" onClick={() => { const q = msgs?.slice(0, msgs.indexOf(m)).reverse().find((x) => x.role === "user")?.text; if (q) onAskPanel(q); }}>Ask all three analysts this</button>}
+          </li>
+        ))}
+        {pending && <>
+          <li className="border-s-2 border-accent ps-3 text-sm font-medium" dir="auto">{pending}</li>
+          <li className="flex items-center gap-2 text-sm text-muted" aria-live="polite"><span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />Thinking{web ? " and checking the web" : ""}. This can take up to a minute.</li>
+        </>}
+      </ol>
+      <div ref={end} />
+      {err && <ErrorLine message={err} />}
+      {chips.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{chips.map((x) => <button key={x} type="button" dir="auto" className="chip h-auto min-h-7 py-1 text-left" onClick={() => send(x)}>{x}</button>)}</div>}
+      <form className="mt-3 flex max-w-[72ch] flex-col gap-2 sm:flex-row" onSubmit={(e) => { e.preventDefault(); send(text); }}>
+        <label htmlFor={`chat-q-${runId}`} className="sr-only">Your follow-up question</label>
+        <input id={`chat-q-${runId}`} dir="auto" autoComplete="off" className="field h-10 flex-1" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask about a stock, a portfolio, or another what-if" />
+        <button type="submit" className="btn-secondary h-10" disabled={!text.trim() || !!pending}>Ask</button>
+      </form>
     </section>
   );
 }

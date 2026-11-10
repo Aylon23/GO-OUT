@@ -331,6 +331,8 @@ export interface PanelRun {
   result?: { tables?: PanelTable[]; summary_he?: string[]; engine_why?: string; engine_shocks?: { symbol: string; move: number }[]; errors?: Record<string, string>; currency?: Ccy };
   score?: { models: Record<string, { n: number; direction_hit_rate: number | null; avg_error: number; in_range_rate: number }>; scored_on: string } | null;
 }
+export interface ChatEngine { read_as: { symbol: string; move_pct: number }[]; over_weeks: number; all_portfolios: { typical_pct: number; worst_of_20_pct: number }; portfolios: Record<string, { typical_pct: number; worst_of_20_pct: number }> }
+export interface ChatMsg { id: number; role: "user" | "assistant"; text: string; at: string; caveat?: string; followups?: string[]; ask_panel?: boolean; engine?: ChatEngine | null; model?: string; cost?: number }
 export interface PanelBoardRow { key: string; label: string; runs: number; stocks: number; avg_error: number; direction_hit_rate: number | null; in_range_rate: number }
 export interface AiRole { role: string; label: string; models: string[] }
 export interface AiQuota { known: boolean; key_set: boolean; limit?: number; used?: number; remaining?: number; as_of?: string | null; error?: string; stale_day?: boolean }
@@ -540,6 +542,8 @@ export const api = {
   panelStart: (b: { text: string; horizon: string; web: boolean }) => request<PanelRun>("POST", "/api/panel", b),
   panelRuns: () => request<PanelRun[]>("GET", "/api/panel"),
   panelRun: (id: number) => request<PanelRun>("GET", `/api/panel/${id}`),
+  chat: (runId: number) => request<ChatMsg[]>("GET", `/api/assistant/${runId}`),
+  chatAsk: (runId: number, b: { text: string; web: boolean }) => request<ChatMsg[]>("POST", `/api/assistant/${runId}`, b),
   panelBoard: () => request<PanelBoardRow[]>("GET", "/api/panel/leaderboard"),
   saveSettings: (s: Partial<Settings>) => request<Settings>("PUT", "/api/settings", s),
   demo: () => request<{ loaded: number }>("POST", "/api/demo"),
