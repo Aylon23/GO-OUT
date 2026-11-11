@@ -171,3 +171,43 @@ def test_paid_calls_only_start_from_a_click():
         assert [n for n, t in src.items() if call in t] == ["api/routes.py"], call
         routes = src["api/routes.py"]
         assert routes.count(call) == 1 and route in routes[routes.index(call) - 600:routes.index(call)], call
+
+
+def test_a_batch_route_is_never_picked_as_the_model(session, paid, monkeypatch):
+    """The real catalog lists special routes of a model ("...:batch") that the chat endpoint refuses."""
+    extra = [{"id": "anthropic/claude-fable-9:batch", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
+             {"id": "openai/gpt-9-chat", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
+             {"id": "x-ai/grok-9:free", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}}]
+    inner = paid.request
+    monkeypatch.setattr(paid, "request", lambda m, url, h, b, t: (200, {}, {"data": CATALOG + extra}) if url.endswith("/models") else inner(m, url, h, b, t))
+    monkeypatch.setattr(openrouter, "_catalog_cache", None)
+    assert [s["model"] for s in openrouter.panel_seats(session)] == ["anthropic/claude-opus-9", "openai/gpt-9", "x-ai/grok-9"]
+
+
+def test_request_settings_and_market_levels_are_not_mistaken_for_amounts(session, paid):
+    """A deposit of exactly 9,000 used to block every panel request, because max_tokens is 9000."""
+    import datetime as dt
+
+    from app import context_pack, privacy
+    from app.models import Transaction
+
+    c = _family(session)
+    level = next(float(r["level"]) for r in context_pack.market_snapshot(session) if r.get("level") and float(r["level"]) >= 1000)
+    for amount in (9000.0, round(level, 2)):  # the second equals a public index level
+        session.add(Transaction(portfolio_id=1, date=dt.date.today() - dt.timedelta(days=30), type="DEPOSIT", ticker="", quantity=0, price=amount, currency="USD"))
+    session.commit()
+    privacy.clear_cache()
+    r = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
+    assert r["status"] == "done" and len(paid.bodies) == 3 and paid.bodies[0]["max_tokens"] == 9000
+    # an amount typed into the question is still refused
+    bad = c.post("/api/panel?wait=true", json={"text": "I added 9,000 last month, what now?"})
+    assert bad.status_code == 400 and "amount" in bad.json()["detail"]["message"]
+
+
+def test_a_failed_run_names_every_model_and_its_error(session, paid):
+    c = _family(session)
+    paid.fail.update({"anthropic/claude-opus-9", "openai/gpt-9", "x-ai/grok-9"})
+    r = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
+    assert r["status"] == "failed"
+    for part in ("Claude (anthropic/claude-opus-9)", "ChatGPT (openai/gpt-9)", "Grok (x-ai/grok-9)", "upstream down"):
+        assert part in r["note"], r["note"]

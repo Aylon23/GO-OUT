@@ -380,7 +380,8 @@ def chat_json(session: Session, role: str, models: list[str], messages: list[dic
             body["usage"] = {"include": True}  # OpenRouter then reports the cost of the call
         if web:
             body["plugins"] = [{"id": "web", "max_results": 5}]
-        privacy.assert_clean(session, body)
+        # what the model reads is checked; request settings (max_tokens and the like) are not content
+        privacy.assert_clean(session, body["messages"])
         call.payload_hash = payload_hash(body)
     except (AiError, privacy.PrivacyError) as exc:
         call.status, call.error = "refused", str(exc)
@@ -404,7 +405,7 @@ def chat_json(session: Session, role: str, models: list[str], messages: list[dic
             fix = {**body, "messages": [*body["messages"], {"role": "assistant", "content": text[:6000]},
                                         {"role": "user", "content": "That answer failed validation: " + "; ".join(problems) +
                                          ". Return only the corrected JSON object."}]}
-            privacy.assert_clean(session, fix)
+            privacy.assert_clean(session, fix["messages"])
             status, _h, data = _send(session, fix, paid, timeout)
             _add_usage(call, data)
             if status != 200 or not data.get("choices"):
@@ -493,7 +494,8 @@ PANEL_SEATS = [{"key": "claude", "label": "Claude", "prefix": "anthropic/claude"
                {"key": "grok", "label": "Grok", "prefix": "x-ai/grok"}]
 # variants that are not the vendor's main model: small, special-purpose or preview builds
 _NOT_FLAGSHIP = ("mini", "nano", "haiku", "lite", "flash", "fast", "free", "instant", "codex", "audio", "image", "vision",
-                 "search", "oss", "guard", "preview", "beta", "extended", "online", "thinking", "realtime", "chat-latest")
+                 "search", "oss", "guard", "preview", "beta", "extended", "online", "thinking", "realtime", "chat-latest",
+                 "batch", "deep-research", "transcribe", "tts", "embedding", "moderation", "computer-use", "custom", "-chat")
 PANEL_MAX_PRICE = 30.0  # USD per million output tokens: skips "pro" tiers that cost ten times more
 _catalog_cache: tuple[str, list[dict]] | None = None
 
@@ -523,7 +525,8 @@ def catalog() -> list[dict]:
 def flagship(prefix: str, models: list[dict]) -> dict | None:
     """The vendor's newest main model at a normal price: newest by release date among ids with this
     prefix, leaving out small, special-purpose and very expensive variants."""
-    ok = [m for m in models if m["id"].startswith(prefix) and not any(w in m["id"].lower() for w in _NOT_FLAGSHIP)
+    # an id with a ":suffix" (":batch", ":free", ":nitro") is a special route of a model, never the model itself
+    ok = [m for m in models if m["id"].startswith(prefix) and ":" not in m["id"] and not any(w in m["id"].lower() for w in _NOT_FLAGSHIP)
           and 0 < m["price_out"] <= PANEL_MAX_PRICE]
     return max(ok, key=lambda m: (m["created"], m["id"])) if ok else None
 

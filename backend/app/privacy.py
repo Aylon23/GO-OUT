@@ -87,6 +87,7 @@ def forbidden(session: Session) -> Forbidden:
 def clear_cache() -> None:
     with _lock:
         _cache.clear()
+        _public_cache.clear()
 
 
 def _numbers(obj) -> list[float]:
@@ -111,6 +112,34 @@ def _numbers(obj) -> list[float]:
     return out
 
 
+_public_cache: dict = {}
+
+
+def public_numbers(session: Session) -> set[int]:
+    """Numbers that are public market data (index levels, prices, yields in the market snapshot), in
+    cents. A payload number equal to one of them is market data, not a leaked amount, even when a
+    holding happens to be worth the same."""
+    from . import services
+    from .market.cache import data_version
+
+    key = (id(session.get_bind()), services._rev, data_version())
+    with _lock:
+        hit = _public_cache.get(key)
+    if hit is not None:
+        return hit
+    try:
+        from . import context_pack
+
+        nums = _numbers(context_pack.market_snapshot(session))
+    except Exception:
+        nums = []
+    out = {int(round(abs(x) * 100)) for x in nums}
+    with _lock:
+        _public_cache.clear()
+        _public_cache[key] = out
+    return out
+
+
 def scan(session: Session, payload) -> list[str]:
     """Problems found in a payload (empty = clean)."""
     f = forbidden(session)
@@ -123,9 +152,10 @@ def scan(session: Session, payload) -> list[str]:
     if f.amounts:
         cents = {int(round(a * 100)) for a in f.amounts}
         whole = {int(round(a)) for a in f.amounts if a >= 1000}
+        public = public_numbers(session)
         for x in _numbers(payload if not isinstance(payload, str) else text):
             x = abs(x)
-            if x < MIN_AMOUNT:
+            if x < MIN_AMOUNT or int(round(x * 100)) in public:
                 continue
             # a leaked amount shows up to the cent, or rounded to a whole number
             # a whole number that reads as a year (the 2023 in "October 2023") is not an amount; an amount

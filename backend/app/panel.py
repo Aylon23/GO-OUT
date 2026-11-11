@@ -356,8 +356,9 @@ def _run(run_id: int, parallel: bool = True) -> None:
             run = s.get(PanelRun, run_id)
             run.cost = float(sum(c.cost or 0.0 for c in s.exec(select(AiCall).where(AiCall.step_key == f"panel:{run_id}")).all()))
             if not answers:
-                first = next(iter(errors.values()), "No model answered.")
-                run.status, run.note = "failed", f"No model answered. {first}"[:500]
+                label = {x["key"]: x["label"] for x in seats}
+                why = " ".join(f"{label.get(k, k)} ({next((x['model'] for x in seats if x['key'] == k), '')}): {e}" for k, e in errors.items())
+                run.status, run.note = "failed", f"No model answered. {why}"[:900]
                 run.progress = json.dumps({**json.loads(run.progress), "pct": 100, "step": "Stopped"})
                 s.add(run)
                 s.commit()
