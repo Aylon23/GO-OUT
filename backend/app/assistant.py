@@ -21,7 +21,7 @@ LETTERS = "ABCDEFGHIJKLMNOP"
 HISTORY = 8  # earlier turns sent along
 HE_PREFIX = "[בלשומכה]{0,2}"  # "לקרן", "שבתיק של קרן": Hebrew glues short words onto a name
 
-SCHEMA = {"type": "object", "additionalProperties": False, "required": ["answer", "followups"],
+SCHEMA = {"type": "object", "additionalProperties": True, "required": ["answer"],
           "properties": {"answer": {"type": "string"},
                          "caveat": {"type": "string"},
                          "followups": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
@@ -129,6 +129,9 @@ def run_facts(run: PanelRun, labs: list[dict]) -> dict:
     return {"question": run.text, "horizon": panel.HORIZON_EN.get(run.horizon, run.horizon), "asked_on": run.created_at.date().isoformat(),
             "all_portfolios": totals(fam), "portfolios": ports, "stocks": stocks,
             "engine_note": res.get("engine_why") or "",
+            "stocks_in_focus": [{"symbol": f["symbol"], "models_average_1m_pct": r1(f["avg_1m"]), "models_average_3m_pct": r1(f["avg_3m"]),
+                                 "by_model": {seats.get(k, k): {"next_month_pct": r1(v["m1"]), "next_3_months_pct": r1(v["m3"]), "view": v["view"][:200], "report_summary": v["summary"][:500]}
+                                              for k, v in f["models"].items() if v}} for f in res.get("focus") or []],
             "analysts": {seats.get(k, k): {"briefing": a.get("briefing", "")[:700], "method": a.get("method", "")[:300]} for k, a in answers.items()}}
 
 
@@ -198,8 +201,9 @@ def ask(session: Session, run_id: int, text: str, web: bool = True) -> list[dict
     msgs = [{"role": "user", "content": "FACTS (computed by the app; percentages only):\n" + json.dumps(facts, ensure_ascii=False)}]
     msgs += [{"role": m.role, "content": m.sent} for m in earlier]
     msgs.append({"role": "user", "content": sent})
-    ans, call = openrouter.chat_json(session, "assistant", [seat["model"]], msgs, SCHEMA, "assistant_answer", max_tokens=3000,
-                                     step_key=f"chat:{run_id}", paid=True, web=web, guidance=GUIDANCE, timeout=180.0)
+    # the first seat is the best value of the three; a conversation does not need the others
+    ans, call = openrouter.chat_json(session, "assistant", [seat["model"]], msgs, SCHEMA, "assistant_answer", max_tokens=6000,
+                                     step_key=f"chat:{run_id}", paid=True, web=web, guidance=GUIDANCE, timeout=180.0, effort="medium")
     raw = str(ans.get("answer") or "").strip()
     ccy = get_settings(session).base_currency
     shown = show_names(raw, labs, ccy)

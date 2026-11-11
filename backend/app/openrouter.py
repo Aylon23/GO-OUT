@@ -353,7 +353,7 @@ def _err_text(status: int, data: dict) -> str:
 def chat_json(session: Session, role: str, models: list[str], messages: list[dict], schema: dict,
               schema_name: str = "answer", max_tokens: int = MAX_TOKENS, job_id: int | None = None,
               step_key: str = "", paid: bool = False, web: bool = False, guidance: str | None = None,
-              timeout: float = TIMEOUT) -> tuple[dict, AiCall]:
+              timeout: float = TIMEOUT, effort: str | None = None) -> tuple[dict, AiCall]:
     """Ask the model chain for JSON matching `schema`. Returns (answer, logged call).
 
     paid=True is the analyst panel: any model id is allowed, the call is checked against the monthly
@@ -380,6 +380,8 @@ def chat_json(session: Session, role: str, models: list[str], messages: list[dic
             body["usage"] = {"include": True}  # OpenRouter then reports the cost of the call
         if web:
             body["plugins"] = [{"id": "web", "max_results": 5}]
+        if effort:
+            body["reasoning"] = {"effort": effort}  # how hard the model thinks: the main lever on quality and cost
         # what the model reads is checked; request settings (max_tokens and the like) are not content
         privacy.assert_clean(session, body["messages"])
         call.payload_hash = payload_hash(body)
@@ -489,13 +491,21 @@ def free_models() -> dict:
 
 # ---------- the analyst panel's seats ----------
 
-PANEL_SEATS = [{"key": "claude", "label": "Claude", "prefix": "anthropic/claude"},
-               {"key": "gpt", "label": "ChatGPT", "prefix": "openai/gpt"},
-               {"key": "grok", "label": "Grok", "prefix": "x-ai/grok"}]
+# The three seats, chosen for results per dollar (Artificial Analysis Intelligence Index and cost per task,
+# the scores OpenRouter's own benchmark page uses, read on 11 Nov 2026):
+#   GPT-6.1 Sol (high)      index 50, about $0.59 a benchmark task: the best value of the strong models
+#   Gemini 4 Carbon (medium) index 58, $6.59: the strongest model outside Claude's top tier, same token price as Sol
+#   Claude Opus 5.5 (medium) index 48, $2.45: Anthropic's flagship at the effort where it is still good value
+# Grok 4.7 was dropped: index 35 at $6.18 a task. A seat whose model leaves the catalog falls back to
+# the vendor's newest main model at a normal price.
+PANEL_SEATS = [{"key": "gpt", "label": "ChatGPT", "prefix": "openai/gpt", "prefer": "openai/gpt-6.1-sol", "effort": "high"},
+               {"key": "gemini", "label": "Gemini", "prefix": "google/gemini", "prefer": "google/gemini-4-carbon", "effort": "medium"},
+               {"key": "claude", "label": "Claude", "prefix": "anthropic/claude", "prefer": "anthropic/claude-opus-5.5", "effort": "medium"}]
 # variants that are not the vendor's main model: small, special-purpose or preview builds
-_NOT_FLAGSHIP = ("mini", "nano", "haiku", "lite", "flash", "fast", "free", "instant", "codex", "audio", "image", "vision",
-                 "search", "oss", "guard", "preview", "beta", "extended", "online", "thinking", "realtime", "chat-latest",
-                 "batch", "deep-research", "transcribe", "tts", "embedding", "moderation", "computer-use", "custom", "-chat")
+_NOT_FLAGSHIP = {"mini", "nano", "haiku", "lite", "flash", "fast", "free", "instant", "codex", "audio", "image", "vision",
+                 "search", "oss", "guard", "preview", "beta", "extended", "online", "thinking", "realtime", "latest",
+                 "batch", "research", "transcribe", "tts", "embedding", "moderation", "computer", "custom", "chat",
+                 "pro", "omni", "banana", "exp", "build", "agent"}
 PANEL_MAX_PRICE = 30.0  # USD per million output tokens: skips "pro" tiers that cost ten times more
 _catalog_cache: tuple[str, list[dict]] | None = None
 
@@ -526,7 +536,9 @@ def flagship(prefix: str, models: list[dict]) -> dict | None:
     """The vendor's newest main model at a normal price: newest by release date among ids with this
     prefix, leaving out small, special-purpose and very expensive variants."""
     # an id with a ":suffix" (":batch", ":free", ":nitro") is a special route of a model, never the model itself
-    ok = [m for m in models if m["id"].startswith(prefix) and ":" not in m["id"] and not any(w in m["id"].lower() for w in _NOT_FLAGSHIP)
+    # whole words of the id, so "gemini" is not read as "mini"
+    words = lambda i: set(re.split(r"[^a-z0-9]+", i.lower()))
+    ok = [m for m in models if m["id"].startswith(prefix) and ":" not in m["id"] and not (words(m["id"]) & _NOT_FLAGSHIP)
           and 0 < m["price_out"] <= PANEL_MAX_PRICE]
     return max(ok, key=lambda m: (m["created"], m["id"])) if ok else None
 
@@ -546,10 +558,13 @@ def panel_seats(session: Session) -> list[dict]:
     by_id = {m["id"]: m for m in models}
     out = []
     for seat in PANEL_SEATS:
-        auto = flagship(seat["prefix"], models)
-        mid = chosen.get(seat["key"]) or (auto["id"] if auto else "")
+        # the picked model while OpenRouter still lists it (or when the list can't be read); else the newest flagship
+        fallback = flagship(seat["prefix"], models)
+        auto = seat["prefer"] if (seat["prefer"] in by_id or not models) else (fallback["id"] if fallback else "")
+        mid = chosen.get(seat["key"]) or auto
         info = by_id.get(mid) or {}
         out.append({"key": seat["key"], "label": seat["label"], "model": mid, "chosen": seat["key"] in chosen,
-                    "auto": auto["id"] if auto else "", "price_in": info.get("price_in"), "price_out": info.get("price_out"),
+                    "auto": auto, "price_in": info.get("price_in"), "price_out": info.get("price_out"),
+                    "effort": seat["effort"] if mid == seat["prefer"] else "medium",
                     "known": mid in by_id, "error": err if not mid else ""})
     return out

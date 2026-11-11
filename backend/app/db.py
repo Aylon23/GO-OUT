@@ -16,7 +16,7 @@ def get_engine():
     global _engine
     if _engine is None:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
+        _engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False, "timeout": 30})
         SQLModel.metadata.create_all(_engine)
         migrate(_engine)
     return _engine

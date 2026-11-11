@@ -59,7 +59,7 @@ def test_facts_carry_the_panel_numbers_and_only_percentages(session, chat):
     fam = run["result"]["tables"][0]
     assert facts["all_portfolios"]["models_average_pct"] == round(fam["avg"]["pct"], 1)
     xom = next(s for s in facts["stocks"] if s["symbol"] == "XOM")
-    assert xom["by_model_pct"] == {"Claude": 6.0, "ChatGPT": 5.0, "Grok": 7.0} and xom["engine_pct"] is not None
+    assert xom["by_model_pct"] == {"Claude": 6.0, "ChatGPT": 5.0, "Gemini": 7.0} and xom["engine_pct"] is not None
     assert set(facts["portfolios"]) == {"Portfolio A", "Portfolio B"}
     assert "value_amt" not in json.dumps(facts) and "amt" not in json.dumps(facts)
 

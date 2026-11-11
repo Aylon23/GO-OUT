@@ -1,4 +1,4 @@
-"""The analyst panel: three paid models (Claude, ChatGPT, Grok) each research a question on their own
+"""The analyst panel: three paid models (ChatGPT, Gemini, Claude) each research a question on their own
 and give a move for every holding; the app puts their numbers next to the engine's and adds them up.
 
 - Each model designs its own research method, may search the web, and answers alone (no debate).
@@ -26,7 +26,8 @@ HORIZON_EN = {"1d": "the next trading day", "1w": "the next week", "2w": "the ne
               "3m": "the next three months", "6m": "the next six months", "12m": "the next year"}
 SPLIT_PTS = 5.0  # models this many points apart on one stock (or on opposite sides) are "split"
 ENGINE_GAP_PTS = 5.0  # the models' average this far from the engine is flagged
-MAX_TOKENS = 9000
+MAX_TOKENS = 14000  # the answer plus the model's own reasoning; also the ceiling on what one call can cost
+MAX_FOCUS = 3
 TIMEOUT = 300.0  # a model that searches the web and reasons can take minutes
 
 GUIDANCE = (
@@ -42,27 +43,44 @@ GUIDANCE = (
     "Give a number for every symbol in the list and only for those symbols. Be honest about low confidence. "
     "Write `method`, `briefing`, `market_view`, `assumptions` and every `reason` in Hebrew; keep tickers in English. "
     "`briefing` is the summary the portfolio manager needs first: what happened or would happen, the key facts and "
-    "numbers, in five to eight short sentences.")
+    "numbers, in five to eight short sentences. "
+    "When the message lists `focus` symbols, the question is mainly about those companies. For each one give "
+    "`report_summary` (what was reported or happened against expectations: the key numbers, the guidance, the "
+    "market's first reaction; say plainly if you could not find it), your estimate of the stock's move over the "
+    "next month (`move_1m_pct`) and over the next three months (`move_3m_pct`) from today's price, and `view`, "
+    "one sentence with your call and what would change it. Write these in Hebrew too.")
 
 _lock = threading.Lock()
 
 
-def schema(symbols: list[str]) -> dict:
-    return {"type": "object", "additionalProperties": False,
+def schema(symbols: list[str], focus: list[str] | None = None) -> dict:
+    out = _schema(symbols)
+    if focus:
+        out["required"] = [*out["required"], "focus"]
+        out["properties"]["focus"] = {"type": "array", "minItems": 1, "items": {
+            "type": "object", "additionalProperties": True, "required": ["symbol", "report_summary", "move_1m_pct", "move_3m_pct", "view"],
+            "properties": {"symbol": {"type": "string", "enum": focus}, "report_summary": {"type": "string"},
+                           "move_1m_pct": {"type": "number"}, "move_3m_pct": {"type": "number"}, "view": {"type": "string"}}}}
+    return out
+
+
+def _schema(symbols: list[str]) -> dict:
+    # an extra field a model adds on its own is ignored, not a reason to throw the whole answer away
+    return {"type": "object", "additionalProperties": True,
             "required": ["method", "briefing", "market_view", "assumptions", "stocks"],
             "properties": {
                 "method": {"type": "string"}, "briefing": {"type": "string"}, "market_view": {"type": "string"},
                 "assumptions": {"type": "array", "items": {"type": "string"}, "maxItems": 8},
                 "sources": {"type": "array", "items": {"type": "string"}, "maxItems": 12},
                 "stocks": {"type": "array", "minItems": 1, "items": {
-                    "type": "object", "additionalProperties": False, "required": ["symbol", "move_pct", "low_pct", "high_pct", "confidence", "reason"],
+                    "type": "object", "additionalProperties": True, "required": ["symbol", "move_pct", "low_pct", "high_pct", "confidence", "reason"],
                     "properties": {"symbol": {"type": "string", "enum": symbols}, "move_pct": {"type": "number"},
                                    "low_pct": {"type": "number"}, "high_pct": {"type": "number"},
                                    "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
                                    "reason": {"type": "string"}}}}}}
 
 
-def clean_answer(ans: dict, symbols: list[str]) -> dict:
+def clean_answer(ans: dict, symbols: list[str], focus: list[str] | None = None) -> dict:
     """Keep what is usable: known symbols once each, a sane ordered range, moves within -95%..+300%."""
     clip = lambda v: max(-95.0, min(300.0, float(v)))
     stocks, seen = {}, set()
@@ -79,15 +97,45 @@ def clean_answer(ans: dict, symbols: list[str]) -> dict:
         stocks[sym] = {"move": mid, "low": min(lo, mid), "high": max(hi, mid),
                        "confidence": s.get("confidence") if s.get("confidence") in ("low", "medium", "high") else "low",
                        "reason": str(s.get("reason") or "")[:400]}
+    spot = {}
+    for f in ans.get("focus") or []:
+        sym = str(f.get("symbol", "")).upper()
+        if sym not in (focus or []) or sym in spot:
+            continue
+        try:
+            spot[sym] = {"m1": clip(f["move_1m_pct"]), "m3": clip(f["move_3m_pct"]),
+                         "summary": str(f.get("report_summary") or "")[:1500], "view": str(f.get("view") or "")[:400]}
+        except (KeyError, TypeError, ValueError):
+            continue
     return {"method": str(ans.get("method") or "")[:1200], "briefing": str(ans.get("briefing") or "")[:2500],
             "market_view": str(ans.get("market_view") or "")[:1200],
             "assumptions": [str(x)[:300] for x in (ans.get("assumptions") or [])][:8],
-            "sources": [str(x)[:300] for x in (ans.get("sources") or [])][:12], "stocks": stocks}
+            "sources": [str(x)[:300] for x in (ans.get("sources") or [])][:12], "stocks": stocks, "focus": spot}
 
 
 # ------------------------------------------------------------------ what the models get
 
-def question_message(session: Session, text: str, horizon: str) -> tuple[list[dict], list[str]]:
+def focus_symbols(session: Session, text: str) -> list[str]:
+    """Holdings the question names, by ticker or company name in English or Hebrew ("the CRWV report",
+    "הדוח של אפל"): the answer then opens with those stocks."""
+    import re
+
+    from .scenarios import _companies, books
+
+    _ports, family = books(session, None)
+    held = {h.symbol for h in family.holdings}
+    low = " " + text.lower() + " "
+    hits: list[tuple[int, str]] = []
+    for name, sym in _companies(session, family.holdings).items():
+        if sym not in held or len(name) < 2:
+            continue
+        m = re.search(rf"(?<![a-z0-9א-ת])(?:[בלשומכה]{{0,2}})?{re.escape(name)}(?![a-z0-9א-ת])", low)
+        if m and sym not in [s for _, s in hits]:
+            hits.append((m.start(), sym))
+    return [s for _, s in sorted(hits)][:MAX_FOCUS]
+
+
+def question_message(session: Session, text: str, horizon: str, focus: list[str] | None = None) -> tuple[list[dict], list[str]]:
     """The one message every model gets: the question, the horizon, and the data pack (tickers, combined
     weights, sector, betas, the market snapshot). No names, no amounts, no split by portfolio."""
     from .models import SymbolMeta
@@ -104,7 +152,7 @@ def question_message(session: Session, text: str, horizon: str) -> tuple[list[di
                      "betas": {k: round(float(v), 2) for k, v in (h.get("betas") or {}).items() if isinstance(v, (int, float))}})
     symbols = [r["symbol"] for r in rows]
     body = {"question": text, "horizon": HORIZON_EN.get(horizon, horizon), "today": pack["today"],
-            "holdings": rows, "market": pack.get("market"),
+            "holdings": rows, "market": pack.get("market"), **({"focus": focus} if focus else {}),
             "note": "weight_pct is the share of all the portfolios combined. Betas are weekly sensitivities to the named factors."}
     return [{"role": "user", "content": json.dumps(body, ensure_ascii=False)}], symbols
 
@@ -134,7 +182,7 @@ def engine_moves(session: Session, text: str, horizon: str) -> dict:
 
 # ------------------------------------------------------------------ adding it up (here, not by a model)
 
-def build_result(session: Session, answers: dict[str, dict], seats: list[dict], engine: dict, horizon: str) -> dict:
+def build_result(session: Session, answers: dict[str, dict], seats: list[dict], engine: dict, horizon: str, focus: list[str] | None = None) -> dict:
     from .scenarios import books
 
     ports, family = books(session, None)
@@ -180,7 +228,28 @@ def build_result(session: Session, answers: dict[str, dict], seats: list[dict], 
                 "engine": {"pct": tot_eng, "amt": book.value * tot_eng / 100, "coverage": cov_eng} if cov_eng else None}
 
     tables = [table(family)] + [table(b) for b in ports if b.holdings]
-    return {"tables": tables, "summary_he": summary_he(tables, keys, seats, engine, horizon),
+    spot = []
+    for sym in focus or []:
+        by = {k: answers[k].get("focus", {}).get(sym) for k in keys}
+        got = {k: v for k, v in by.items() if v}
+        if not got:
+            continue
+        h = next((x for x in family.holdings if x.symbol == sym), None)
+        a1, a3 = statistics.fmean(v["m1"] for v in got.values()), statistics.fmean(v["m3"] for v in got.values())
+        held = [{"id": b.pid, "name": b.name, "weight": x.value / b.value if b.value else 0.0, "amt_1m": x.value * a1 / 100, "amt_3m": x.value * a3 / 100}
+                for b in ports for x in b.holdings if x.symbol == sym]
+        spot.append({"symbol": sym, "name": h.name if h else sym, "models": by, "avg_1m": a1, "avg_3m": a3,
+                     "low_1m": min(v["m1"] for v in got.values()), "high_1m": max(v["m1"] for v in got.values()),
+                     "low_3m": min(v["m3"] for v in got.values()), "high_3m": max(v["m3"] for v in got.values()),
+                     "weight": h.value / family.value if h and family.value else 0.0,
+                     "amt_1m": h.value * a1 / 100 if h else None, "amt_3m": h.value * a3 / 100 if h else None,
+                     "held_in": sorted(held, key=lambda r: -r["weight"])})
+    lines = summary_he(tables, keys, seats, engine, horizon)
+    for sp in spot[::-1]:  # the stock the question is about comes first
+        n = sum(1 for v in sp["models"].values() if v)
+        lines.insert(0, _ltr(sp["symbol"]) + f": ממוצע {n} המודלים הוא {_pct(sp['avg_1m'])} בחודש הקרוב ו-{_pct(sp['avg_3m'])} בשלושת החודשים הקרובים"
+                     + (f" (טווח לחודש: {_pct(sp['low_1m'])} עד {_pct(sp['high_1m'])})." if n > 1 else "."))
+    return {"tables": tables, "summary_he": lines, "focus": spot,
             "engine_why": engine.get("why") or "", "engine_shocks": engine.get("shocks") or []}
 
 
@@ -263,13 +332,14 @@ def _set_progress(run_id: int, **kw) -> None:
 
 
 def estimate_cost(seats: list[dict], prompt_chars: int, web: bool) -> float:
-    """A rough cost before running: the prompt in, about 3,500 tokens out, plus web search."""
+    """A rough cost before running: the prompt in, about 9,000 tokens out (the answer and the model's own
+    reasoning; never more than MAX_TOKENS), plus web search. The real cost is shown after each run."""
     total = 0.0
     for s in seats:
         if s.get("price_in") is None:
             continue
-        total += (prompt_chars / 3.5) / 1e6 * s["price_in"] + 3500 / 1e6 * (s.get("price_out") or 0) + (0.02 if web else 0)
-    return round(total, 3)
+        total += (prompt_chars / 3.5) / 1e6 * s["price_in"] + 9000 / 1e6 * (s.get("price_out") or 0) + (0.03 if web else 0)
+    return round(total, 2)
 
 
 def start(session: Session, text: str, horizon: str, web: bool = True, background: bool = True) -> PanelRun:
@@ -286,7 +356,7 @@ def start(session: Session, text: str, horizon: str, web: bool = True, backgroun
     if not any(s["model"] for s in seats):
         raise openrouter.AiError("Couldn't find the models on OpenRouter (" + (seats[0].get("error") or "no model list") + "). Check the connection, or set the model ids in Settings.")
     run = PanelRun(text=text, horizon=horizon if horizon in HORIZON_DAYS else "1m", web=web,
-                   seats=json.dumps([{"key": s["key"], "label": s["label"], "model": s["model"]} for s in seats]),
+                   seats=json.dumps([{"key": s["key"], "label": s["label"], "model": s["model"], "effort": s.get("effort")} for s in seats]),
                    progress=json.dumps({"pct": 3, "step": "Preparing the data", "models": {s["key"]: "waiting" for s in seats}}))
     session.add(run)
     session.commit()
@@ -307,11 +377,12 @@ def _run(run_id: int, parallel: bool = True) -> None:
             run = s.get(PanelRun, run_id)
             seats = json.loads(run.seats)
             text, horizon, web = run.text, run.horizon, run.web
-            messages, symbols = question_message(s, text, horizon)
+            focus = focus_symbols(s, text)
+            messages, symbols = question_message(s, text, horizon, focus)
             if not symbols:
                 raise openrouter.AiError("There are no holdings to analyse yet.")
             prices = _last_prices(s, symbols)
-        sch = schema(symbols)
+        sch = schema(symbols, focus)
         live = [x for x in seats if x["model"]]
         share = 70 / max(1, len(live))
         answers: dict[str, dict] = {}
@@ -327,8 +398,8 @@ def _run(run_id: int, parallel: bool = True) -> None:
                 try:
                     ans, _call = openrouter.chat_json(s2, f"panel_{seat['key']}", [seat["model"]], messages, sch, "analyst_answer",
                                                       max_tokens=MAX_TOKENS, job_id=None, step_key=f"panel:{run_id}", paid=True, web=web,
-                                                      guidance=GUIDANCE, timeout=TIMEOUT)
-                    cleaned = clean_answer(ans, symbols)
+                                                      guidance=GUIDANCE, timeout=TIMEOUT, effort=seat.get("effort"))
+                    cleaned = clean_answer(ans, symbols, focus)
                     if not cleaned["stocks"]:
                         raise openrouter.InvalidAnswer("The answer had no usable stock estimates.")
                     with _lock:
@@ -355,6 +426,17 @@ def _run(run_id: int, parallel: bool = True) -> None:
         with Session(get_engine()) as s:
             run = s.get(PanelRun, run_id)
             run.cost = float(sum(c.cost or 0.0 for c in s.exec(select(AiCall).where(AiCall.step_key == f"panel:{run_id}")).all()))
+            s.add(run)
+            s.commit()
+
+            def step(pct: int, text_: str) -> None:
+                # through this session, and committed: a second connection writing while this one holds
+                # unsaved changes is what SQLite reports as "database is locked"
+                r = s.get(PanelRun, run_id)
+                r.progress = json.dumps({**json.loads(r.progress or "{}"), "pct": pct, "step": text_})
+                s.add(r)
+                s.commit()
+
             if not answers:
                 label = {x["key"]: x["label"] for x in seats}
                 why = " ".join(f"{label.get(k, k)} ({next((x['model'] for x in seats if x['key'] == k), '')}): {e}" for k, e in errors.items())
@@ -363,11 +445,11 @@ def _run(run_id: int, parallel: bool = True) -> None:
                 s.add(run)
                 s.commit()
                 return
-            _set_progress(run_id, pct=85, step="Running the engine on the same question")
+            step(85, "Running the engine on the same question")
             engine = engine_moves(s, text, horizon)
-            _set_progress(run_id, pct=95, step="Adding it up for each portfolio")
+            step(95, "Adding it up for each portfolio")
             run = s.get(PanelRun, run_id)
-            result = build_result(s, answers, seats, engine, horizon)
+            result = build_result(s, answers, seats, engine, horizon, focus)
             result["errors"] = errors
             from .services import _clean, get_settings
 

@@ -7,22 +7,25 @@ from app import openrouter, panel
 from app.models import AiCall, PanelRun
 from tests.test_openrouter import _family, ai  # noqa: F401 (fixture)
 
+# The preferred ids are not in this catalog, so every seat falls back to the vendor's newest main model.
 CATALOG = [
     {"id": "anthropic/claude-opus-9", "created": 300, "pricing": {"prompt": "0.000005", "completion": "0.000025"}},
     {"id": "anthropic/claude-haiku-9", "created": 310, "pricing": {"prompt": "0.000001", "completion": "0.000005"}},  # small
     {"id": "openai/gpt-9", "created": 200, "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
     {"id": "openai/gpt-9-pro", "created": 210, "pricing": {"prompt": "0.00003", "completion": "0.00018"}},  # too expensive
     {"id": "openai/gpt-9-mini", "created": 220, "pricing": {"prompt": "0.0000002", "completion": "0.000001"}},
-    {"id": "x-ai/grok-9", "created": 100, "pricing": {"prompt": "0.000003", "completion": "0.000015"}},
-    {"id": "x-ai/grok-9-fast", "created": 120, "pricing": {"prompt": "0.0000002", "completion": "0.0000005"}},
+    {"id": "google/gemini-9", "created": 100, "pricing": {"prompt": "0.000003", "completion": "0.000015"}},
+    {"id": "google/gemini-9-flash", "created": 120, "pricing": {"prompt": "0.0000002", "completion": "0.0000005"}},
+    {"id": "x-ai/grok-9", "created": 400, "pricing": {"prompt": "0.000003", "completion": "0.000015"}},  # no seat for it
 ]
 MOVES = {"anthropic/claude-opus-9": {"AAPL": -4.0, "MSFT": -2.0, "XOM": 6.0},
          "openai/gpt-9": {"AAPL": -6.0, "MSFT": -3.0, "XOM": 5.0},
-         "x-ai/grok-9": {"AAPL": 3.0, "MSFT": -1.0, "XOM": 7.0}}  # Grok is on the other side on AAPL
+         "google/gemini-9": {"AAPL": 3.0, "MSFT": -1.0, "XOM": 7.0}}  # Gemini is on the other side on AAPL
 
 
-def answer(model):
+def answer(model, focus=()):
     return json.dumps({"method": "שיטה", "briefing": "תקציר", "market_view": "שוק", "assumptions": ["הנחה"], "sources": ["https://example.com"],
+                       "focus": [{"symbol": f, "report_summary": "סיכום הדוח", "move_1m_pct": MOVES[model][f], "move_3m_pct": MOVES[model][f] * 2, "view": "דעה"} for f in focus],
                        "stocks": [{"symbol": s, "move_pct": m, "low_pct": m - 3, "high_pct": m + 3, "confidence": "medium", "reason": "נימוק"}
                                   for s, m in MOVES[model].items()]}, ensure_ascii=False)
 
@@ -41,7 +44,8 @@ def paid(ai, monkeypatch):  # noqa: F811
         m = body["models"][0]
         if m in fail:
             return 500, {}, {"error": {"message": "upstream down"}}
-        return 200, {}, {"model": m, "choices": [{"message": {"content": answer(m)}}],
+        focus = json.loads(body["messages"][1]["content"]).get("focus") or ()
+        return 200, {}, {"model": m, "choices": [{"message": {"content": answer(m, focus)}}],
                          "usage": {"prompt_tokens": 1000, "completion_tokens": 500, "cost": 0.05}}
 
     monkeypatch.setattr(ai, "request", request)
@@ -54,7 +58,7 @@ def test_seats_pick_the_newest_flagship_at_a_normal_price(session, paid):
     seats = {s["key"]: s for s in openrouter.panel_seats(session)}
     assert seats["claude"]["model"] == "anthropic/claude-opus-9"  # not the newer haiku
     assert seats["gpt"]["model"] == "openai/gpt-9"  # not the pro tier, not the mini
-    assert seats["grok"]["model"] == "x-ai/grok-9"
+    assert seats["gemini"]["model"] == "google/gemini-9" and "grok" not in seats
     assert seats["gpt"]["price_out"] == pytest.approx(10.0)
 
 
@@ -95,12 +99,12 @@ def test_only_tickers_and_weights_leave_and_web_search_is_on(session, paid):
 
 def test_one_model_down_still_answers_and_says_who_is_missing(session, paid):
     c = _family(session)
-    paid.fail.add("x-ai/grok-9")
+    paid.fail.add("google/gemini-9")
     r = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
-    assert r["status"] == "done" and r["progress"]["models"]["grok"] == "failed"
+    assert r["status"] == "done" and r["progress"]["models"]["gemini"] == "failed"
     assert set(r["result"]["tables"][0]["models"]) == {"claude", "gpt"}
-    assert "upstream down" in r["result"]["errors"]["grok"]
-    assert any("Grok" in line for line in r["result"]["summary_he"])
+    assert "upstream down" in r["result"]["errors"]["gemini"]
+    assert any("Gemini" in line for line in r["result"]["summary_he"])
 
 
 def test_budget_stops_a_run_before_anything_is_sent(session, paid):
@@ -118,7 +122,7 @@ def test_budget_reached_mid_run_stops_the_remaining_models(session, paid):
     c.put("/api/panel/settings", json={"budget_usd": 0.1})
     r = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
     assert r["status"] == "done" and len(paid.bodies) == 2  # the third model is not asked
-    assert "budget" in r["result"]["errors"]["grok"]
+    assert "budget" in r["result"]["errors"]["claude"]
 
 
 def test_a_question_with_a_name_is_refused_before_sending(session, paid):
@@ -149,7 +153,7 @@ def test_models_are_scored_against_prices_once_the_horizon_has_passed(session, p
     session.add(run)
     session.commit()
     board = c.get("/api/panel/leaderboard").json()
-    assert {b["key"] for b in board} == {"claude", "gpt", "grok"} and all(b["stocks"] == 3 and b["runs"] == 1 for b in board)
+    assert {b["key"] for b in board} == {"claude", "gpt", "gemini"} and all(b["stocks"] == 3 and b["runs"] == 1 for b in board)
     f = load_history(session, "AAPL")
     actual = (float(f["close"].iloc[-26]) / float(f["close"].iloc[-31]) - 1) * 100  # the 5th session after the run
     score = c.get(f"/api/panel/{rid}").json()["score"]
@@ -177,11 +181,11 @@ def test_a_batch_route_is_never_picked_as_the_model(session, paid, monkeypatch):
     """The real catalog lists special routes of a model ("...:batch") that the chat endpoint refuses."""
     extra = [{"id": "anthropic/claude-fable-9:batch", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
              {"id": "openai/gpt-9-chat", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
-             {"id": "x-ai/grok-9:free", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}}]
+             {"id": "google/gemini-9:free", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}}]
     inner = paid.request
     monkeypatch.setattr(paid, "request", lambda m, url, h, b, t: (200, {}, {"data": CATALOG + extra}) if url.endswith("/models") else inner(m, url, h, b, t))
     monkeypatch.setattr(openrouter, "_catalog_cache", None)
-    assert [s["model"] for s in openrouter.panel_seats(session)] == ["anthropic/claude-opus-9", "openai/gpt-9", "x-ai/grok-9"]
+    assert [s["model"] for s in openrouter.panel_seats(session)] == ["openai/gpt-9", "google/gemini-9", "anthropic/claude-opus-9"]
 
 
 def test_request_settings_and_market_levels_are_not_mistaken_for_amounts(session, paid):
@@ -198,7 +202,7 @@ def test_request_settings_and_market_levels_are_not_mistaken_for_amounts(session
     session.commit()
     privacy.clear_cache()
     r = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
-    assert r["status"] == "done" and len(paid.bodies) == 3 and paid.bodies[0]["max_tokens"] == 9000
+    assert r["status"] == "done" and len(paid.bodies) == 3 and paid.bodies[0]["max_tokens"] == panel.MAX_TOKENS
     # an amount typed into the question is still refused
     bad = c.post("/api/panel?wait=true", json={"text": "I added 9,000 last month, what now?"})
     assert bad.status_code == 400 and "amount" in bad.json()["detail"]["message"]
@@ -206,8 +210,51 @@ def test_request_settings_and_market_levels_are_not_mistaken_for_amounts(session
 
 def test_a_failed_run_names_every_model_and_its_error(session, paid):
     c = _family(session)
-    paid.fail.update({"anthropic/claude-opus-9", "openai/gpt-9", "x-ai/grok-9"})
+    paid.fail.update({"anthropic/claude-opus-9", "openai/gpt-9", "google/gemini-9"})
     r = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
     assert r["status"] == "failed"
-    for part in ("Claude (anthropic/claude-opus-9)", "ChatGPT (openai/gpt-9)", "Grok (x-ai/grok-9)", "upstream down"):
+    for part in ("Claude (anthropic/claude-opus-9)", "ChatGPT (openai/gpt-9)", "Gemini (google/gemini-9)", "upstream down"):
         assert part in r["note"], r["note"]
+
+
+def test_the_picked_models_are_used_while_openrouter_lists_them(session, paid, monkeypatch):
+    """The three seats were chosen for results per dollar; each asks with its own reasoning effort."""
+    real = [{"id": i, "created": 1, "pricing": {"prompt": "0.000002", "completion": "0.00001"}}
+            for i in ("openai/gpt-6.1-sol", "google/gemini-4-carbon", "anthropic/claude-opus-5.5", "anthropic/claude-fable-5.2", "x-ai/grok-4.7")]
+    inner = paid.request
+    MOVES.update({"openai/gpt-6.1-sol": MOVES["openai/gpt-9"], "google/gemini-4-carbon": MOVES["google/gemini-9"], "anthropic/claude-opus-5.5": MOVES["anthropic/claude-opus-9"]})
+    monkeypatch.setattr(paid, "request", lambda m, url, h, b, t: (200, {}, {"data": real}) if url.endswith("/models") else inner(m, url, h, b, t))
+    monkeypatch.setattr(openrouter, "_catalog_cache", None)
+    seats = openrouter.panel_seats(session)
+    assert [(s["label"], s["model"], s["effort"]) for s in seats] == [("ChatGPT", "openai/gpt-6.1-sol", "high"), ("Gemini", "google/gemini-4-carbon", "medium"),
+                                                                    ("Claude", "anthropic/claude-opus-5.5", "medium")]
+    c = _family(session)
+    run = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
+    assert run["status"] == "done", run["note"]
+    assert {b["models"][0]: b["reasoning"]["effort"] for b in paid.bodies} == {"openai/gpt-6.1-sol": "high", "google/gemini-4-carbon": "medium", "anthropic/claude-opus-5.5": "medium"}
+    # a model set by hand in Settings wins
+    c.put("/api/panel/settings", json={"models": {"claude": "anthropic/claude-fable-5.2"}})
+    assert next(s for s in openrouter.panel_seats(session) if s["key"] == "claude")["model"] == "anthropic/claude-fable-5.2"
+
+
+def test_a_question_about_one_holding_gets_a_spotlight_with_two_horizons(session, paid):
+    """ "What does the Apple report mean?" opens with Apple: each model's summary and its 1 and 3 month call."""
+    c = _family(session)
+    assert panel.focus_symbols(session, "אתמול היה הדוח של AAPL, מה ההשפעה?") == ["AAPL"]
+    assert panel.focus_symbols(session, "what does the XOM report mean for apple?") == ["XOM", "AAPL"]
+    assert panel.focus_symbols(session, "oil jumps 20%") == []
+    r = c.post("/api/panel?wait=true", json={"text": "Yesterday's AAPL report: summarise it and where does the stock go?"}).json()
+    assert json.loads(paid.bodies[0]["messages"][1]["content"])["focus"] == ["AAPL"]
+    (f,) = r["result"]["focus"]
+    assert f["symbol"] == "AAPL" and f["avg_1m"] == pytest.approx((-4 - 6 + 3) / 3) and f["avg_3m"] == pytest.approx(2 * (-4 - 6 + 3) / 3)
+    assert f["low_1m"] == -6 and f["high_1m"] == 3 and f["models"]["gpt"]["summary"] == "סיכום הדוח"
+    # which portfolios hold it, and what the average means for each, computed here
+    assert {h["name"] for h in f["held_in"]} == {"My portfolio", "Keren"}
+    fam = r["result"]["tables"][0]
+    aapl = next(x for x in fam["rows"] if x["symbol"] == "AAPL")
+    assert f["amt_1m"] == pytest.approx(aapl["value_amt"] * f["avg_1m"] / 100)
+    assert sum(h["amt_1m"] for h in f["held_in"]) == pytest.approx(f["amt_1m"])
+    assert r["result"]["summary_he"][0].startswith("\u2066AAPL\u2069: ממוצע 3 המודלים")
+    # a question that names no holding has no spotlight, and the models are not asked for one
+    r2 = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
+    assert r2["result"]["focus"] == [] and "focus" not in json.loads(paid.bodies[-1]["messages"][1]["content"])

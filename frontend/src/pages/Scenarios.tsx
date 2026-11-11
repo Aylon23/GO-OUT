@@ -34,7 +34,7 @@ export default function Scenarios() {
           : mode === "money" ? "Rank where new money would hold up best across your saved scenarios."
           : mode === "researched" ? "Scenarios researched outside the app and imported, checked against real price history."
           : mode === "debate" ? "Several AI models debate a scenario; the app checks it against real prices and computes the impact."
-          : mode === "ask" ? "Ask anything. Claude, ChatGPT and Grok each research it on their own and estimate the move of every holding; the app adds it up for each portfolio next to its own engine."
+          : mode === "ask" ? "Ask anything: a scenario, a news event, a company's earnings report. Three AI analysts each research it on their own and estimate the move of every holding; the app adds it up for each portfolio next to its own engine."
           : mode === "scenario" ? "Describe something that could happen. See what it would do to each portfolio, why, and what past events like it did."
           : "Replay your own money through a different choice. Same dates, same amounts, same engine as your real numbers."}
       </p>

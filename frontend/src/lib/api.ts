@@ -324,12 +324,15 @@ export interface PanelCell { move: number; low: number; high: number; confidence
 export interface PanelStock { symbol: string; name: string; weight: number; value_amt: number; models: Record<string, PanelCell | null>; avg: number | null; low: number | null; high: number | null; avg_amt: number | null; engine: number | null; split: boolean; engine_gap: boolean }
 export interface PanelTotal { pct: number; amt: number; coverage: number }
 export interface PanelTable { id: number | null; name: string; value_amt: number; rows: PanelStock[]; models: Record<string, PanelTotal>; avg: PanelTotal | null; range: { low: number; high: number } | null; engine: PanelTotal | null }
+export interface PanelFocusCell { m1: number; m3: number; summary: string; view: string }
+export interface PanelFocus { symbol: string; name: string; models: Record<string, PanelFocusCell | null>; avg_1m: number; avg_3m: number; low_1m: number; high_1m: number; low_3m: number; high_3m: number;
+  weight: number; amt_1m: number | null; amt_3m: number | null; held_in: { id: number; name: string; weight: number; amt_1m: number; amt_3m: number }[] }
 export interface PanelAnalyst { method: string; briefing: string; market_view: string; assumptions: string[]; sources: string[] }
 export interface PanelRun {
   id: number; text: string; horizon: string; web: boolean; status: "running" | "done" | "failed"; note: string; created_at: string; cost: number;
   progress: { pct?: number; step?: string; models?: Record<string, "waiting" | "working" | "done" | "failed"> }; seats: { key: string; label: string; model: string }[];
   analysts?: Record<string, PanelAnalyst>;
-  result?: { tables?: PanelTable[]; summary_he?: string[]; engine_why?: string; engine_shocks?: { symbol: string; move: number }[]; errors?: Record<string, string>; currency?: Ccy };
+  result?: { tables?: PanelTable[]; focus?: PanelFocus[]; summary_he?: string[]; engine_why?: string; engine_shocks?: { symbol: string; move: number }[]; errors?: Record<string, string>; currency?: Ccy };
   score?: { models: Record<string, { n: number; direction_hit_rate: number | null; avg_error: number; in_range_rate: number }>; scored_on: string } | null;
 }
 export interface ChatEngine { read_as: { symbol: string; move_pct: number }[]; over_weeks: number; all_portfolios: { typical_pct: number; worst_of_20_pct: number }; portfolios: Record<string, { typical_pct: number; worst_of_20_pct: number }> }

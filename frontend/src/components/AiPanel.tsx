@@ -1,14 +1,14 @@
 import { CaretDown } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, type ChatMsg, type PanelRun, type PanelSetup, type PanelStock, type PanelTable } from "../lib/api";
+import { api, ApiError, type ChatMsg, type PanelFocus, type PanelRun, type PanelSetup, type PanelStock, type PanelTable } from "../lib/api";
 import { dateLong, money, pct } from "../lib/format";
 import { useData, useMediaQuery } from "../lib/hooks";
 import { Blank, ErrorLine, InfoTip, Segmented, Signed } from "./ui";
 
 const HORIZON: Record<string, string> = { "1d": "1 day", "1w": "1 week", "2w": "2 weeks", "1m": "1 month", "3m": "3 months", "6m": "6 months", "12m": "1 year" };
 const SHOWN_HORIZONS = ["1d", "1w", "1m", "3m", "6m"];
-const EXAMPLES = ["פורצת מלחמה עם איראן", "הריבית בארה\"ב יורדת ברבע אחוז, בניגוד לציפיות", "אתמול היה הדוח של אפל. סכם אותו ואיך הוא משפיע על התיקים", "Oil jumps 20%"];
+const EXAMPLES = ["אתמול היה הדוח של CRWV. סכם אותו ולאן המניה הולכת", "פורצת מלחמה עם איראן", "הריבית בארה\"ב יורדת ברבע אחוז, בניגוד לציפיות", "Oil jumps 20%"];
 const STATE: Record<string, string> = { waiting: "Waiting", working: "Researching", done: "Done", failed: "No answer" };
 const p1 = (v: number | null | undefined) => (v == null ? "" : pct(v / 100, 1));
 
@@ -185,6 +185,8 @@ function Result({ d, onAskPanel }: { d: PanelRun; onAskPanel: (q: string) => voi
         <p className="mt-3 text-sm text-muted">{Object.entries(d.result!.errors!).map(([k, e]) => `${d.seats.find((s) => s.key === k)?.label ?? k} did not answer (${e})`).join(". ")}.</p>
       )}
 
+      {(d.result?.focus ?? []).map((f) => <Spotlight key={f.symbol} f={f} seats={seats} m={m} />)}
+
       {tables.length > 1 && (
         <div className="mt-8 overflow-x-auto"><Segmented label="Portfolio" size="sm" value={view} onChange={setView}
           options={tables.map((x) => ({ value: x.id == null ? "family" : String(x.id), label: x.name }))} /></div>
@@ -194,6 +196,64 @@ function Result({ d, onAskPanel }: { d: PanelRun; onAskPanel: (q: string) => voi
       <Chat runId={d.id} onAskPanel={onAskPanel} />
       <Analysts d={d} />
     </div>
+  );
+}
+
+/** The stock the question is about: each model's summary of the news and its call for one and three months. */
+function Spotlight({ f, seats, m }: { f: PanelFocus; seats: PanelRun["seats"]; m: (v: number | null | undefined) => string }) {
+  const got = seats.filter((s) => f.models[s.key]);
+  const [who, setWho] = useState(got[0]?.key ?? "");
+  const a = f.models[who];
+  const cell = (label: string, v: number, amt: number | null, lo: number, hi: number) => (
+    <div className="min-w-[150px] flex-1 border-t border-text py-3">
+      <div className="text-xs text-muted">{label}</div>
+      <Signed value={v} className="num block text-2xl font-semibold">{p1(v)}</Signed>
+      <div className="num text-sm"><Signed value={amt}>{m(amt)}</Signed>{got.length > 1 && <span className="text-muted">, models from {p1(lo)} to {p1(hi)}</span>}</div>
+    </div>
+  );
+  return (
+    <section className="mt-10" aria-labelledby={`spot-${f.symbol}`}>
+      <h2 id={`spot-${f.symbol}`} className="text-lg font-semibold"><span className="font-mono">{f.symbol}</span> <span className="font-normal text-muted">{f.name !== f.symbol && f.name}</span></h2>
+      <p className="mt-1 text-sm text-muted">Where the models see the stock from here. It is {pct(f.weight, 1, false)} of all the portfolios together.</p>
+      <div className="mt-4 flex flex-wrap gap-x-6">
+        {cell("Next month, models' average", f.avg_1m, f.amt_1m, f.low_1m, f.high_1m)}
+        {cell("Next 3 months, models' average", f.avg_3m, f.amt_3m, f.low_3m, f.high_3m)}
+      </div>
+      <table className="mt-2 w-full max-w-3xl text-sm">
+        <thead><tr className="text-xs text-muted"><th className="border-b border-line py-2 text-left font-medium">Model</th><th className="border-b border-line py-2 pl-3 text-right font-medium">1 month</th>
+          <th className="border-b border-line py-2 pl-3 text-right font-medium">3 months</th><th className="border-b border-line py-2 pl-4 text-right font-medium">Its call</th></tr></thead>
+        <tbody>{seats.map((s) => {
+          const c = f.models[s.key];
+          return (
+            <tr key={s.key}><td className="border-b border-line py-2 align-top font-medium">{s.label}</td>
+              <td className="num border-b border-line py-2 pl-3 text-right align-top">{c ? <Signed value={c.m1}>{p1(c.m1)}</Signed> : <Blank why="This model gave no call on this stock." />}</td>
+              <td className="num border-b border-line py-2 pl-3 text-right align-top">{c ? <Signed value={c.m3}>{p1(c.m3)}</Signed> : <Blank why="This model gave no call on this stock." />}</td>
+              <td className="border-b border-line py-2 pl-4 text-muted" dir="auto">{c?.view}</td></tr>
+          );
+        })}</tbody>
+      </table>
+      {a && (
+        <div className="mt-5 max-w-[72ch]">
+          <div className="flex flex-wrap items-center gap-3"><h3 className="text-sm font-semibold">What happened, in short</h3>
+            {got.length > 1 && <Segmented label="Whose summary" size="sm" value={who} onChange={setWho} options={got.map((s) => ({ value: s.key, label: s.label }))} />}</div>
+          <p className="mt-2 whitespace-pre-line text-base leading-7" dir="auto">{a.summary}</p>
+        </div>
+      )}
+      {f.held_in.length > 0 && (
+        <div className="mt-5 max-w-3xl text-sm">
+          <h3 className="font-semibold">What the average call means for each portfolio that holds it</h3>
+          <ul className="mt-2">
+            {f.held_in.map((h) => (
+              <li key={h.id} className="grid grid-cols-[1fr_auto] gap-x-4 border-t border-line py-1.5 sm:grid-cols-[1fr_150px_130px_130px]">
+                <span className="font-medium">{h.name}</span><span className="num text-right text-muted">{pct(h.weight, 1, false)} of the portfolio</span>
+                <span className="num text-right text-muted sm:text-text">1 month <Signed value={h.amt_1m}>{m(h.amt_1m)}</Signed></span>
+                <span className="num text-right text-muted sm:text-text">3 months <Signed value={h.amt_3m}>{m(h.amt_3m)}</Signed></span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 
