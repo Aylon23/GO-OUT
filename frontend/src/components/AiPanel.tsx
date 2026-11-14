@@ -50,7 +50,7 @@ export function AiPanel() {
         <label htmlFor="panel-q" className="sr-only">Your question</label>
         <input id="panel-q" dir="auto" autoComplete="off" className="field h-12 flex-1 text-base" value={text} onChange={(e) => setText(e.target.value)}
           placeholder="Ask anything: a scenario, a news event, an earnings report" />
-        <button type="submit" className="btn-primary h-12" disabled={busy || !text.trim() || !s?.key_set}>{busy ? "Starting" : "Ask the analysts"}</button>
+        <button type="submit" className="btn-primary h-12" disabled={busy || !text.trim() || s?.key_set === false}>{busy ? "Starting" : "Ask the analysts"}</button>
       </form>
       {!text && <div className="mt-2 flex flex-wrap gap-2">{EXAMPLES.map((x) => <button key={x} type="button" dir="auto" className="chip h-auto min-h-7 py-1 text-left" onClick={() => setText(x)}>{x}</button>)}</div>}
       <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
@@ -149,30 +149,56 @@ function RunView({ id, onDone, onAskPanel }: { id: number; onDone: () => void; o
   return <Result d={d} onAskPanel={onAskPanel} />;
 }
 
+const STEPS = ["Preparing the data", "The models are researching", "Running the engine on the same question", "Adding it up for each portfolio"];
+const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+
+/** While the models work, the bar keeps moving: the server's figure jumps only when a model finishes, so in
+ *  between the bar creeps toward the next mark (never past it) and a clock shows the time so far. */
 function Progress({ d }: { d: PanelRun }) {
-  const v = Math.max(3, Math.min(100, d.progress.pct ?? 3));
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  const started = new Date(d.created_at).getTime();
+  const sec = Math.max(0, (now - started) / 1000);
+  const server = Math.max(3, Math.min(100, d.progress.pct ?? 3));
+  const models = d.progress.models ?? {};
+  const working = Object.values(models).filter((x) => x === "working").length;
+  const total = Math.max(1, Object.keys(models).length);
+  const share = 70 / total;
+  // a typical model takes one to three minutes: approach the next mark along that curve
+  const creep = working > 0 ? (share - 1.5) * (1 - Math.exp(-sec / 75)) : 0;
+  const v = Math.round(Math.min(99, server + creep));
+  const stepIdx = Math.max(0, STEPS.indexOf(d.progress.step ?? ""));
   return (
     <div className="mt-8" aria-live="polite">
       <p className="text-sm font-medium" dir="auto">{d.text}</p>
-      <div className="mt-3 flex items-baseline justify-between text-sm">
-        <span className="text-muted">{d.progress.step ?? "Starting"}</span>
-        <span className="num font-semibold">{v}%</span>
+      <div className="mt-3 flex items-baseline justify-between gap-3 text-sm">
+        <span className="text-muted">{d.progress.step ?? "Starting"}{working > 0 && d.web ? ": searching the web and analysing" : ""}</span>
+        <span className="num shrink-0"><span className="text-muted">{clock(sec)}</span> <span className="ml-2 font-semibold">{v}%</span></span>
       </div>
       <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-sunken" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={v} aria-label="Progress">
         <div className="h-full rounded-full bg-accent transition-[width] duration-slow ease-out" style={{ width: `${v}%` }} />
       </div>
+      <ol className="mt-4 grid gap-1 text-xs sm:grid-cols-4">
+        {STEPS.map((x, i) => (
+          <li key={x} className={clsx("flex items-center gap-1.5", i < stepIdx ? "text-muted" : i === stepIdx ? "font-medium text-text" : "text-faint")}>
+            <span aria-hidden className={clsx("h-1.5 w-1.5 shrink-0 rounded-full", i < stepIdx ? "bg-muted" : i === stepIdx ? "animate-pulse bg-accent" : "border border-faint")} />
+            {x}{i < stepIdx && <span className="sr-only"> (done)</span>}
+          </li>
+        ))}
+      </ol>
       <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">
         {d.seats.map((s) => {
-          const st = d.progress.models?.[s.key] ?? "waiting";
+          const st = models[s.key] ?? "waiting";
           return (
             <li key={s.key} className="flex items-center gap-2">
               <span aria-hidden className={clsx("h-1.5 w-1.5 rounded-full", st === "done" ? "bg-text" : st === "working" ? "animate-pulse bg-accent" : st === "failed" ? "bg-loss" : "border border-faint")} />
-              <span className="font-medium">{s.label}</span><span className="text-muted">{STATE[st]}</span>
+              <span className="font-medium">{s.label}</span>
+              <span className="text-muted">{STATE[st]}{st === "working" && <span className="num"> {clock(sec)}</span>}</span>
             </li>
           );
         })}
       </ul>
-      <p className="mt-3 text-xs text-faint">Each model researches alone{d.web ? " and searches the web" : ""}. This usually takes one to three minutes; you can leave the page.</p>
+      <p className="mt-3 text-xs text-faint">Each model researches alone{d.web ? " and searches the web" : ""}. This usually takes one to four minutes; you can leave the page and come back.</p>
     </div>
   );
 }
