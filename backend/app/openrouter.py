@@ -32,6 +32,7 @@ from .models import AiCall, AiQuota
 BASE = os.environ.get("OPENROUTER_BASE", "https://openrouter.ai/api/v1").rstrip("/")  # override only for local testing
 PACE_PER_MIN = 19  # stay under OpenRouter's 20 requests/minute for free models
 TIMEOUT = 90.0
+WEB_RESULTS = 3  # pages read per web search: the search results are most of what a paid call costs
 MAX_TOKENS = 4000
 KEY_TTL = dt.timedelta(seconds=60)  # how long a /key read is trusted before reading again
 
@@ -312,7 +313,7 @@ def _validate(obj, schema: dict) -> list[str]:
 
 # ---------- the call ----------
 
-def _send(session: Session, body: dict, paid: bool = False, timeout: float = TIMEOUT) -> tuple[int, dict, dict]:
+def _send(session: Session, body: dict, paid: bool = False, timeout: float = TIMEOUT, sent: list | None = None) -> tuple[int, dict, dict]:
     """One request with at most one retry. Every attempt is paced and counted (free requests against the
     daily quota; paid ones are checked against the monthly budget by the caller)."""
     key = api_key()
@@ -325,6 +326,8 @@ def _send(session: Session, body: dict, paid: bool = False, timeout: float = TIM
             if left is not None and left <= 0:
                 raise QuotaExhausted("No free AI requests left today.")
         _pace()
+        if sent is not None:
+            sent[0] += 1  # this call's own count (the global one mixes calls that run at the same time)
         if not paid:
             _count_sent(session)
         try:
@@ -342,6 +345,8 @@ def _send(session: Session, body: dict, paid: bool = False, timeout: float = TIM
                 _sleep(min(30.0, float(wait)))
             except (TypeError, ValueError):
                 pass
+        elif attempt == 0 and (status >= 500 or status == 0):  # a provider hiccup: give it a moment
+            _sleep(3.0)
     return last  # type: ignore[return-value]
 
 
@@ -379,7 +384,7 @@ def chat_json(session: Session, role: str, models: list[str], messages: list[dic
         if paid:
             body["usage"] = {"include": True}  # OpenRouter then reports the cost of the call
         if web:
-            body["plugins"] = [{"id": "web", "max_results": 5}]
+            body["plugins"] = [{"id": "web", "max_results": WEB_RESULTS}]
         if effort:
             body["reasoning"] = {"effort": effort}  # how hard the model thinks: the main lever on quality and cost
         # what the model reads is checked; request settings (max_tokens and the like) are not content
@@ -390,9 +395,9 @@ def chat_json(session: Session, role: str, models: list[str], messages: list[dic
         _log(session, call)
         raise
     answer = None
-    sent_before = _sent_total(session)
+    sent = [0]
     try:
-        status, _h, data = _send(session, body, paid, timeout)
+        status, _h, data = _send(session, body, paid, timeout, sent)
         _add_usage(call, data)
         if status != 200 or not data.get("choices"):
             raise AiError(_err_text(status, data))
@@ -404,11 +409,14 @@ def chat_json(session: Session, role: str, models: list[str], messages: list[dic
         except ValueError as exc:
             problems = [f"not valid JSON ({exc})"]
         if problems:  # one repair attempt
-            fix = {**body, "messages": [*body["messages"], {"role": "assistant", "content": text[:6000]},
-                                        {"role": "user", "content": "That answer failed validation: " + "; ".join(problems) +
-                                         ". Return only the corrected JSON object."}]}
+            # the repair asks for a fix of the same answer: no new web search, and the answer in full
+            fix = {**{k: v for k, v in body.items() if k != "plugins"},
+                   "messages": [*body["messages"], {"role": "assistant", "content": text},
+                                {"role": "user", "content": "That answer failed validation: " + "; ".join(problems) +
+                                 ". Return only the corrected JSON object."}]}
+            call.error = ("repaired: " + "; ".join(problems))[:500]
             privacy.assert_clean(session, fix["messages"])
-            status, _h, data = _send(session, fix, paid, timeout)
+            status, _h, data = _send(session, fix, paid, timeout, sent)
             _add_usage(call, data)
             if status != 200 or not data.get("choices"):
                 raise InvalidAnswer("Invalid JSON, and the repair request failed: " + _err_text(status, data))
@@ -426,7 +434,7 @@ def chat_json(session: Session, role: str, models: list[str], messages: list[dic
         call.status, call.error = "failed", str(exc)[:500]
         raise
     finally:
-        call.requests = _sent_total(session) - sent_before
+        call.requests = sent[0]
         call.latency_ms = int((_clock() - t0) * 1000)
         if call.status != "refused":
             _log(session, call)
@@ -498,9 +506,18 @@ def free_models() -> dict:
 #   Claude Opus 5.5 (medium) index 48, $2.45: Anthropic's flagship at the effort where it is still good value
 # Grok 4.7 was dropped: index 35 at $6.18 a task. A seat whose model leaves the catalog falls back to
 # the vendor's newest main model at a normal price.
+# The three seats, chosen for results per dollar (Artificial Analysis Intelligence Index and cost per
+# benchmark task, the scores OpenRouter's benchmark page uses, read on 11 and 14 Nov 2026), from three
+# different labs so their views are independent:
+#   GPT-6.1 Sol (high)        index 50, about $0.59 a task: the best value of the strong models
+#   Claude Opus 5.5 (medium)  index 48, $2.45: Anthropic's flagship at the effort where it is still good value
+#   Kimi K3.1 Pro (high)      index 46, $3.68 at max effort: the strongest model from a third lab under Gemini's price
+# Gemini 4 Carbon (index 58, $6.59) was dropped after it failed in a real run (HTTP 504 three times);
+# Grok 4.7 (index 35, $6.18) before that. A seat whose model leaves the catalog falls back to the
+# vendor's newest main model at a normal price.
 PANEL_SEATS = [{"key": "gpt", "label": "ChatGPT", "prefix": "openai/gpt", "prefer": "openai/gpt-6.1-sol", "effort": "high"},
-               {"key": "gemini", "label": "Gemini", "prefix": "google/gemini", "prefer": "google/gemini-4-carbon", "effort": "medium"},
-               {"key": "claude", "label": "Claude", "prefix": "anthropic/claude", "prefer": "anthropic/claude-opus-5.5", "effort": "medium"}]
+               {"key": "claude", "label": "Claude", "prefix": "anthropic/claude", "prefer": "anthropic/claude-opus-5.5", "effort": "medium"},
+               {"key": "kimi", "label": "Kimi", "prefix": "moonshotai/kimi", "prefer": "moonshotai/kimi-k3.1-pro", "effort": "high"}]
 # variants that are not the vendor's main model: small, special-purpose or preview builds
 _NOT_FLAGSHIP = {"mini", "nano", "haiku", "lite", "flash", "fast", "free", "instant", "codex", "audio", "image", "vision",
                  "search", "oss", "guard", "preview", "beta", "extended", "online", "thinking", "realtime", "latest",

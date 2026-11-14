@@ -14,13 +14,14 @@ CATALOG = [
     {"id": "openai/gpt-9", "created": 200, "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
     {"id": "openai/gpt-9-pro", "created": 210, "pricing": {"prompt": "0.00003", "completion": "0.00018"}},  # too expensive
     {"id": "openai/gpt-9-mini", "created": 220, "pricing": {"prompt": "0.0000002", "completion": "0.000001"}},
-    {"id": "google/gemini-9", "created": 100, "pricing": {"prompt": "0.000003", "completion": "0.000015"}},
-    {"id": "google/gemini-9-flash", "created": 120, "pricing": {"prompt": "0.0000002", "completion": "0.0000005"}},
+    {"id": "moonshotai/kimi-9", "created": 100, "pricing": {"prompt": "0.000003", "completion": "0.000015"}},
+    {"id": "moonshotai/kimi-9-flash", "created": 120, "pricing": {"prompt": "0.0000002", "completion": "0.0000005"}},
+    {"id": "google/gemini-9", "created": 500, "pricing": {"prompt": "0.000003", "completion": "0.000015"}},  # no seat for it
     {"id": "x-ai/grok-9", "created": 400, "pricing": {"prompt": "0.000003", "completion": "0.000015"}},  # no seat for it
 ]
 MOVES = {"anthropic/claude-opus-9": {"AAPL": -4.0, "MSFT": -2.0, "XOM": 6.0},
          "openai/gpt-9": {"AAPL": -6.0, "MSFT": -3.0, "XOM": 5.0},
-         "google/gemini-9": {"AAPL": 3.0, "MSFT": -1.0, "XOM": 7.0}}  # Gemini is on the other side on AAPL
+         "moonshotai/kimi-9": {"AAPL": 3.0, "MSFT": -1.0, "XOM": 7.0}}  # Kimi is on the other side on AAPL
 
 
 def answer(model, focus=()):
@@ -58,7 +59,7 @@ def test_seats_pick_the_newest_flagship_at_a_normal_price(session, paid):
     seats = {s["key"]: s for s in openrouter.panel_seats(session)}
     assert seats["claude"]["model"] == "anthropic/claude-opus-9"  # not the newer haiku
     assert seats["gpt"]["model"] == "openai/gpt-9"  # not the pro tier, not the mini
-    assert seats["gemini"]["model"] == "google/gemini-9" and "grok" not in seats
+    assert seats["kimi"]["model"] == "moonshotai/kimi-9" and "grok" not in seats and "gemini" not in seats
     assert seats["gpt"]["price_out"] == pytest.approx(10.0)
 
 
@@ -85,12 +86,12 @@ def test_a_run_gives_every_portfolio_a_table_and_totals_computed_here(session, p
 
 def test_only_tickers_and_weights_leave_and_web_search_is_on(session, paid):
     c = _family(session)
-    c.post("/api/panel?wait=true", json={"text": "the Fed cuts rates", "horizon": "1w"})
+    c.post("/api/panel?wait=true", json={"text": "the Fed cuts rates", "horizon": "1w", "web": True})
     assert len(paid.bodies) == 3
     for body in paid.bodies:
         text = json.dumps(body, ensure_ascii=False)
         assert "Keren" not in text and "קרן" not in text and "12345.67" not in text and "12,345" not in text
-        assert body["plugins"] == [{"id": "web", "max_results": 5}] and body["usage"] == {"include": True}
+        assert body["plugins"] == [{"id": "web", "max_results": 3}] and body["usage"] == {"include": True}
         sent = json.loads(body["messages"][1]["content"])
         assert {h["symbol"] for h in sent["holdings"]} == {"AAPL", "MSFT", "XOM"}
         assert all(set(h) == {"symbol", "company", "sector", "weight_pct", "betas"} for h in sent["holdings"])
@@ -99,12 +100,12 @@ def test_only_tickers_and_weights_leave_and_web_search_is_on(session, paid):
 
 def test_one_model_down_still_answers_and_says_who_is_missing(session, paid):
     c = _family(session)
-    paid.fail.add("google/gemini-9")
+    paid.fail.add("moonshotai/kimi-9")
     r = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
-    assert r["status"] == "done" and r["progress"]["models"]["gemini"] == "failed"
+    assert r["status"] == "done" and r["progress"]["models"]["kimi"] == "failed"
     assert set(r["result"]["tables"][0]["models"]) == {"claude", "gpt"}
-    assert "upstream down" in r["result"]["errors"]["gemini"]
-    assert any("Gemini" in line for line in r["result"]["summary_he"])
+    assert "upstream down" in r["result"]["errors"]["kimi"]
+    assert any("Kimi" in line for line in r["result"]["summary_he"])
 
 
 def test_budget_stops_a_run_before_anything_is_sent(session, paid):
@@ -122,7 +123,7 @@ def test_budget_reached_mid_run_stops_the_remaining_models(session, paid):
     c.put("/api/panel/settings", json={"budget_usd": 0.1})
     r = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
     assert r["status"] == "done" and len(paid.bodies) == 2  # the third model is not asked
-    assert "budget" in r["result"]["errors"]["claude"]
+    assert "budget" in r["result"]["errors"]["kimi"]
 
 
 def test_a_question_with_a_name_is_refused_before_sending(session, paid):
@@ -153,7 +154,7 @@ def test_models_are_scored_against_prices_once_the_horizon_has_passed(session, p
     session.add(run)
     session.commit()
     board = c.get("/api/panel/leaderboard").json()
-    assert {b["key"] for b in board} == {"claude", "gpt", "gemini"} and all(b["stocks"] == 3 and b["runs"] == 1 for b in board)
+    assert {b["key"] for b in board} == {"claude", "gpt", "kimi"} and all(b["stocks"] == 3 and b["runs"] == 1 for b in board)
     f = load_history(session, "AAPL")
     actual = (float(f["close"].iloc[-26]) / float(f["close"].iloc[-31]) - 1) * 100  # the 5th session after the run
     score = c.get(f"/api/panel/{rid}").json()["score"]
@@ -181,11 +182,11 @@ def test_a_batch_route_is_never_picked_as_the_model(session, paid, monkeypatch):
     """The real catalog lists special routes of a model ("...:batch") that the chat endpoint refuses."""
     extra = [{"id": "anthropic/claude-fable-9:batch", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
              {"id": "openai/gpt-9-chat", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
-             {"id": "google/gemini-9:free", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}}]
+             {"id": "moonshotai/kimi-9:free", "created": 999, "pricing": {"prompt": "0.000002", "completion": "0.00001"}}]
     inner = paid.request
     monkeypatch.setattr(paid, "request", lambda m, url, h, b, t: (200, {}, {"data": CATALOG + extra}) if url.endswith("/models") else inner(m, url, h, b, t))
     monkeypatch.setattr(openrouter, "_catalog_cache", None)
-    assert [s["model"] for s in openrouter.panel_seats(session)] == ["openai/gpt-9", "google/gemini-9", "anthropic/claude-opus-9"]
+    assert [s["model"] for s in openrouter.panel_seats(session)] == ["openai/gpt-9", "anthropic/claude-opus-9", "moonshotai/kimi-9"]
 
 
 def test_request_settings_and_market_levels_are_not_mistaken_for_amounts(session, paid):
@@ -210,28 +211,28 @@ def test_request_settings_and_market_levels_are_not_mistaken_for_amounts(session
 
 def test_a_failed_run_names_every_model_and_its_error(session, paid):
     c = _family(session)
-    paid.fail.update({"anthropic/claude-opus-9", "openai/gpt-9", "google/gemini-9"})
+    paid.fail.update({"anthropic/claude-opus-9", "openai/gpt-9", "moonshotai/kimi-9"})
     r = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
     assert r["status"] == "failed"
-    for part in ("Claude (anthropic/claude-opus-9)", "ChatGPT (openai/gpt-9)", "Gemini (google/gemini-9)", "upstream down"):
+    for part in ("Claude (anthropic/claude-opus-9)", "ChatGPT (openai/gpt-9)", "Kimi (moonshotai/kimi-9)", "upstream down"):
         assert part in r["note"], r["note"]
 
 
 def test_the_picked_models_are_used_while_openrouter_lists_them(session, paid, monkeypatch):
     """The three seats were chosen for results per dollar; each asks with its own reasoning effort."""
     real = [{"id": i, "created": 1, "pricing": {"prompt": "0.000002", "completion": "0.00001"}}
-            for i in ("openai/gpt-6.1-sol", "google/gemini-4-carbon", "anthropic/claude-opus-5.5", "anthropic/claude-fable-5.2", "x-ai/grok-4.7")]
+            for i in ("openai/gpt-6.1-sol", "moonshotai/kimi-k3.1-pro", "anthropic/claude-opus-5.5", "anthropic/claude-fable-5.2", "google/gemini-4-carbon")]
     inner = paid.request
-    MOVES.update({"openai/gpt-6.1-sol": MOVES["openai/gpt-9"], "google/gemini-4-carbon": MOVES["google/gemini-9"], "anthropic/claude-opus-5.5": MOVES["anthropic/claude-opus-9"]})
+    MOVES.update({"openai/gpt-6.1-sol": MOVES["openai/gpt-9"], "moonshotai/kimi-k3.1-pro": MOVES["moonshotai/kimi-9"], "anthropic/claude-opus-5.5": MOVES["anthropic/claude-opus-9"]})
     monkeypatch.setattr(paid, "request", lambda m, url, h, b, t: (200, {}, {"data": real}) if url.endswith("/models") else inner(m, url, h, b, t))
     monkeypatch.setattr(openrouter, "_catalog_cache", None)
     seats = openrouter.panel_seats(session)
-    assert [(s["label"], s["model"], s["effort"]) for s in seats] == [("ChatGPT", "openai/gpt-6.1-sol", "high"), ("Gemini", "google/gemini-4-carbon", "medium"),
-                                                                    ("Claude", "anthropic/claude-opus-5.5", "medium")]
+    assert [(s["label"], s["model"], s["effort"]) for s in seats] == [("ChatGPT", "openai/gpt-6.1-sol", "high"), ("Claude", "anthropic/claude-opus-5.5", "medium"),
+                                                                    ("Kimi", "moonshotai/kimi-k3.1-pro", "high")]
     c = _family(session)
     run = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
     assert run["status"] == "done", run["note"]
-    assert {b["models"][0]: b["reasoning"]["effort"] for b in paid.bodies} == {"openai/gpt-6.1-sol": "high", "google/gemini-4-carbon": "medium", "anthropic/claude-opus-5.5": "medium"}
+    assert {b["models"][0]: b["reasoning"]["effort"] for b in paid.bodies} == {"openai/gpt-6.1-sol": "high", "moonshotai/kimi-k3.1-pro": "high", "anthropic/claude-opus-5.5": "medium"}
     # a model set by hand in Settings wins
     c.put("/api/panel/settings", json={"models": {"claude": "anthropic/claude-fable-5.2"}})
     assert next(s for s in openrouter.panel_seats(session) if s["key"] == "claude")["model"] == "anthropic/claude-fable-5.2"
@@ -258,3 +259,42 @@ def test_a_question_about_one_holding_gets_a_spotlight_with_two_horizons(session
     # a question that names no holding has no spotlight, and the models are not asked for one
     r2 = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
     assert r2["result"]["focus"] == [] and "focus" not in json.loads(paid.bodies[-1]["messages"][1]["content"])
+
+
+def test_web_search_turns_itself_on_for_news_and_holdings_only(session, paid):
+    c = _family(session)
+    for text, web in (("the Fed cuts rates by a quarter point", False), ("oil jumps 20%", False),
+                      ("אתמול היה הדוח של AAPL", True), ("what did the Fed say today?", True), ("where does XOM go?", True)):
+        assert c.get("/api/panel/web", params={"text": text}).json()["web"] is web, text
+    r = c.post("/api/panel?wait=true", json={"text": "the Fed cuts rates by a quarter point"}).json()  # web not sent: decided here
+    assert r["web"] is False and all("plugins" not in b for b in paid.bodies)
+    r = c.post("/api/panel?wait=true", json={"text": "the Fed cuts rates", "web": True}).json()  # the switch wins
+    assert r["web"] is True and all("plugins" in b for b in paid.bodies[3:])
+
+
+def test_links_inside_the_prose_move_to_the_sources():
+    found = []
+    text = panel.unlink("Revenue 3.66bn ([investing.com](https://www.investing.com/a)) and backlog [CNBC](https://cnbc.com/b) grew.", found)
+    assert text == "Revenue 3.66bn and backlog CNBC grew." and found == ["https://www.investing.com/a", "https://cnbc.com/b"]
+    ans = {"method": "m", "briefing": "b ([x.com](https://x.com/1))", "market_view": "", "assumptions": [], "sources": ["Reuters"],
+           "stocks": [{"symbol": "AAPL", "move_pct": 1, "low_pct": 0, "high_pct": 2, "confidence": "low", "reason": "r [y](https://y.com/2)"}]}
+    out = panel.clean_answer(ans, ["AAPL"])
+    assert out["briefing"] == "b" and out["stocks"]["AAPL"]["reason"] == "r y" and out["sources"] == ["Reuters", "https://x.com/1", "https://y.com/2"]
+
+
+def test_a_repair_does_not_search_the_web_again(session, paid, monkeypatch):
+    inner = paid.request
+    first = {"n": 0}
+
+    def request(m, url, h, body, t):
+        if body and url.endswith("/chat/completions") and first["n"] == 0:
+            first["n"] += 1
+            paid.bodies.append(body)
+            return 200, {}, {"model": body["models"][0], "choices": [{"message": {"content": "not json"}}], "usage": {"cost": 0.01}}
+        return inner(m, url, h, body, t)
+
+    monkeypatch.setattr(paid, "request", request)
+    c = _family(session)
+    c.post("/api/panel?wait=true", json={"text": "AAPL report"})
+    repair = next(b for b in paid.bodies[1:] if b["messages"][-1]["content"].startswith("That answer failed"))
+    assert "plugins" not in repair and "plugins" in paid.bodies[0]

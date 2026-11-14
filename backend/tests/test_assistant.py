@@ -59,7 +59,7 @@ def test_facts_carry_the_panel_numbers_and_only_percentages(session, chat):
     fam = run["result"]["tables"][0]
     assert facts["all_portfolios"]["models_average_pct"] == round(fam["avg"]["pct"], 1)
     xom = next(s for s in facts["stocks"] if s["symbol"] == "XOM")
-    assert xom["by_model_pct"] == {"Claude": 6.0, "ChatGPT": 5.0, "Gemini": 7.0} and xom["engine_pct"] is not None
+    assert xom["by_model_pct"] == {"Claude": 6.0, "ChatGPT": 5.0, "Kimi": 7.0} and xom["engine_pct"] is not None
     assert set(facts["portfolios"]) == {"Portfolio A", "Portfolio B"}
     assert "value_amt" not in json.dumps(facts) and "amt" not in json.dumps(facts)
 
@@ -96,3 +96,16 @@ def test_it_works_without_a_run_and_refuses_an_amount(session, chat):
     assert facts["portfolios"]["Portfolio A"]["top_holdings"][0]["symbol"] in ("AAPL", "MSFT")
     r = c.post("/api/assistant/0", json={"text": "I deposited 12345.67 last year, was it smart?"})
     assert r.status_code == 400 and "amount" in r.json()["detail"]["message"] and len(chat.chat_bodies) == 1
+
+
+def test_the_spotlight_tells_the_assistant_each_portfolio_s_exposure(session, chat):
+    c = _family(session)
+    rid = c.post("/api/panel?wait=true", json={"text": "the AAPL report: where does it go?"}).json()["id"]
+    c.post(f"/api/assistant/{rid}", json={"text": "who is most exposed to AAPL?"})
+    facts = json.loads(chat.chat_bodies[0]["messages"][1]["content"].split("\n", 1)[1])
+    (f,) = facts["stocks_in_focus"]
+    held = {h["portfolio"]: h for h in f["held_in"]}
+    assert set(held) == {"Portfolio A", "Portfolio B"}
+    for h in held.values():
+        assert h["effect_on_portfolio_1m_pct"] == pytest.approx(h["weight_pct"] / 100 * f["models_average_1m_pct"], abs=0.05)
+    assert "Never say an amount is unavailable" in chat.chat_bodies[0]["messages"][0]["content"]

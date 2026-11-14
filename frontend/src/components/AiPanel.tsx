@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type ChatMsg, type PanelFocus, type PanelRun, type PanelSetup, type PanelStock, type PanelTable } from "../lib/api";
 import { dateLong, money, pct } from "../lib/format";
-import { useData, useMediaQuery } from "../lib/hooks";
+import { useData, useDebounced, useMediaQuery } from "../lib/hooks";
 import { Blank, ErrorLine, InfoTip, Segmented, Signed } from "./ui";
 
 const HORIZON: Record<string, string> = { "1d": "1 day", "1w": "1 week", "2w": "2 weeks", "1m": "1 month", "3m": "3 months", "6m": "6 months", "12m": "1 year" };
@@ -19,7 +19,17 @@ export function AiPanel() {
   const list = useData(api.panelRuns, "panel-runs");
   const [text, setText] = useState("");
   const [horizon, setHorizon] = useState("1m");
-  const [web, setWeb] = useState(true);
+  const [web, setWeb] = useState(false);
+  const [webByHand, setWebByHand] = useState(false);
+  const typed = useDebounced(text, 400);
+  // web search costs most of a question: on by itself for news, a report or one of the holdings
+  useEffect(() => {
+    if (webByHand) return;
+    let live = true;
+    if (!typed.trim()) { setWeb(false); return; }
+    api.panelWeb(typed).then((r) => { if (live) setWeb(r.web); }).catch(() => {});
+    return () => { live = false; };
+  }, [typed, webByHand]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -49,8 +59,8 @@ export function AiPanel() {
           {SHOWN_HORIZONS.map((h) => <button key={h} type="button" role="radio" aria-checked={horizon === h} className={clsx("chip", horizon === h && "chip-on")} onClick={() => setHorizon(h)}>{HORIZON[h]}</button>)}
         </div>
         <label className="flex cursor-pointer items-center gap-2 text-muted">
-          <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={web} onChange={(e) => setWeb(e.target.checked)} />
-          Search the web for current facts
+          <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={web} onChange={(e) => { setWeb(e.target.checked); setWebByHand(true); }} />
+          Search the web for current facts{!webByHand && text.trim() && <span className="text-faint">{web ? " (on: the question is about news or a holding)" : " (off: not needed for a what-if)"}</span>}
         </label>
       </div>
       {s && <SetupLine s={s} web={web} onSaved={setup.reload} />}

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import statistics
 import threading
 
@@ -80,6 +81,31 @@ def _schema(symbols: list[str]) -> dict:
                                    "reason": {"type": "string"}}}}}}
 
 
+_LINK = re.compile(r"\s*\(\s*\[([^\]]+)\]\((https?://[^)\s]+)\)\s*\)|\[([^\]]+)\]\((https?://[^)\s]+)\)")
+
+
+def unlink(text: str, found: list[str]) -> str:
+    """Markdown links inside prose ("... ([cnbc.com](https://...))") become plain text; the URLs are kept
+    for the sources list, which is where they are shown."""
+    def sub(m: re.Match) -> str:
+        url = m.group(2) or m.group(4)
+        if url and url not in found:
+            found.append(url)
+        return "" if m.group(1) else m.group(3)
+    return re.sub(r"[ \t]{2,}", " ", _LINK.sub(sub, text or "")).strip()
+
+
+NEWS_WORDS = ("אתמול", "היום", "השבוע", "דוח", "דו\"ח", "דוחות", "חדשות", "הודיע", "פורסם", "ירד אתמול", "עלה אתמול",
+              "yesterday", "today", "this week", "report", "earnings", "results", "guidance", "news", "announced", "said")
+
+
+def needs_web(session: Session, text: str) -> bool:
+    """Current facts matter for a news event or a company's report, and for a question about one holding;
+    a what-if ("rates fall a quarter point") is answered from the data pack and the models' knowledge."""
+    low = (text or "").lower()
+    return any(w in low for w in NEWS_WORDS) or bool(focus_symbols(session, text))
+
+
 def clean_answer(ans: dict, symbols: list[str], focus: list[str] | None = None) -> dict:
     """Keep what is usable: known symbols once each, a sane ordered range, moves within -95%..+300%."""
     clip = lambda v: max(-95.0, min(300.0, float(v)))
@@ -98,19 +124,24 @@ def clean_answer(ans: dict, symbols: list[str], focus: list[str] | None = None) 
                        "confidence": s.get("confidence") if s.get("confidence") in ("low", "medium", "high") else "low",
                        "reason": str(s.get("reason") or "")[:400]}
     spot = {}
+    links: list[str] = []
     for f in ans.get("focus") or []:
         sym = str(f.get("symbol", "")).upper()
         if sym not in (focus or []) or sym in spot:
             continue
         try:
             spot[sym] = {"m1": clip(f["move_1m_pct"]), "m3": clip(f["move_3m_pct"]),
-                         "summary": str(f.get("report_summary") or "")[:1500], "view": str(f.get("view") or "")[:400]}
+                         "summary": unlink(str(f.get("report_summary") or ""), links)[:1500], "view": unlink(str(f.get("view") or ""), links)[:400]}
         except (KeyError, TypeError, ValueError):
             continue
-    return {"method": str(ans.get("method") or "")[:1200], "briefing": str(ans.get("briefing") or "")[:2500],
-            "market_view": str(ans.get("market_view") or "")[:1200],
-            "assumptions": [str(x)[:300] for x in (ans.get("assumptions") or [])][:8],
-            "sources": [str(x)[:300] for x in (ans.get("sources") or [])][:12], "stocks": stocks, "focus": spot}
+    out = {"method": unlink(str(ans.get("method") or ""), links)[:1200], "briefing": unlink(str(ans.get("briefing") or ""), links)[:2500],
+           "market_view": unlink(str(ans.get("market_view") or ""), links)[:1200],
+           "assumptions": [unlink(str(x), links)[:300] for x in (ans.get("assumptions") or [])][:8], "stocks": stocks, "focus": spot}
+    for v in stocks.values():
+        v["reason"] = unlink(v["reason"], links)
+    named = [unlink(str(x), links)[:300] for x in (ans.get("sources") or [])]
+    out["sources"] = list(dict.fromkeys([*named, *links]))[:14]
+    return out
 
 
 # ------------------------------------------------------------------ what the models get
@@ -331,14 +362,19 @@ def _set_progress(run_id: int, **kw) -> None:
         s.commit()
 
 
+WEB_IN_TOKENS = 30000  # what the web results added to each model's prompt in real runs (Nov 2026), with 3 pages
+
+
 def estimate_cost(seats: list[dict], prompt_chars: int, web: bool) -> float:
-    """A rough cost before running: the prompt in, about 9,000 tokens out (the answer and the model's own
-    reasoning; never more than MAX_TOKENS), plus web search. The real cost is shown after each run."""
+    """A cost estimate before running, from real runs: the prompt (plus the pages a web search reads) in,
+    about 12,000 tokens out (the answer and the model's own reasoning), plus the search fee.
+    The real cost is shown after each run."""
     total = 0.0
     for s in seats:
         if s.get("price_in") is None:
             continue
-        total += (prompt_chars / 3.5) / 1e6 * s["price_in"] + 9000 / 1e6 * (s.get("price_out") or 0) + (0.03 if web else 0)
+        tokens_in = prompt_chars / 3.5 + (WEB_IN_TOKENS if web else 0)
+        total += tokens_in / 1e6 * s["price_in"] + 12000 / 1e6 * (s.get("price_out") or 0) + (0.02 if web else 0)
     return round(total, 2)
 
 

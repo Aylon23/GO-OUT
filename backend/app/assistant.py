@@ -34,8 +34,11 @@ GUIDANCE = (
     "number comes from (the models' average, a named model, or the engine). Never invent a number about a "
     "portfolio or a holding: if FACTS does not have it, say so. With web search, cite current facts by source. "
     "Portfolios are named 'Portfolio A', 'Portfolio B' and so on: refer to them exactly like that. "
-    "When you state the percentage move of a whole portfolio taken from FACTS, write it as [[A:-1.8]] (label, then "
-    "the percent): the app shows the amount next to it. "
+    "Money: you never see amounts, the app adds them. Whenever you state how much a whole portfolio would gain or lose, "
+    "write it as [[A:-1.83]] (the portfolio's label, then the percent of that portfolio's value with the decimals FACTS gives, from FACTS or worked out "
+    "from FACTS, e.g. a stock's contribution in points): the app shows it as the percent with the amount in the "
+    "portfolio's currency. Never say an amount is unavailable, never use a currency symbol yourself, and never invent "
+    "an example amount. "
     "If the question is about a surprise against expectations, separate what is already priced in from the surprise. "
     "Put what you are unsure about in `caveat`. `followups` are up to three useful next questions, in Hebrew. "
     "Set `ask_panel` to true when the question deserves a full run of all three analysts with a move for every "
@@ -130,6 +133,10 @@ def run_facts(run: PanelRun, labs: list[dict]) -> dict:
             "all_portfolios": totals(fam), "portfolios": ports, "stocks": stocks,
             "engine_note": res.get("engine_why") or "",
             "stocks_in_focus": [{"symbol": f["symbol"], "models_average_1m_pct": r1(f["avg_1m"]), "models_average_3m_pct": r1(f["avg_3m"]),
+                                 "held_in": [{"portfolio": f"Portfolio {letter[h['id']]}", "weight_pct": r1(h["weight"] * 100),
+                                              # two decimals: the app turns this percent into an amount, so rounding shows
+                                              "effect_on_portfolio_1m_pct": round(h["weight"] * f["avg_1m"], 2), "effect_on_portfolio_3m_pct": round(h["weight"] * f["avg_3m"], 2)}
+                                             for h in f.get("held_in") or [] if h["id"] in letter],
                                  "by_model": {seats.get(k, k): {"next_month_pct": r1(v["m1"]), "next_3_months_pct": r1(v["m3"]), "view": v["view"][:200], "report_summary": v["summary"][:500]}
                                               for k, v in f["models"].items() if v}} for f in res.get("focus") or []],
             "analysts": {seats.get(k, k): {"briefing": a.get("briefing", "")[:700], "method": a.get("method", "")[:300]} for k, a in answers.items()}}

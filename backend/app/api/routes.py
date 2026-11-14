@@ -1726,7 +1726,7 @@ def history_suggested_dismiss(rec_id: int, session: Session = Depends(get_sessio
 class PanelIn(BaseModel):
     text: str
     horizon: str = "1m"
-    web: bool = True
+    web: bool | None = None  # None: on when the question is about news, a report or a holding
 
 
 class PanelSettingsIn(BaseModel):
@@ -1779,10 +1779,19 @@ def panel_start(body: PanelIn, wait: bool = False, session: Session = Depends(ge
     if not body.text.strip():
         _bad("Write the question first.")
     try:
-        run = panel.start(session, body.text, body.horizon, body.web, background=not wait)
+        web = panel.needs_web(session, body.text) if body.web is None else body.web
+        run = panel.start(session, body.text, body.horizon, web, background=not wait)
     except openrouter.AiError as exc:
         _bad(str(exc))
     return panel.payload(session, run)
+
+
+@router.get("/panel/web")
+def panel_web(text: str = "", session: Session = Depends(get_session)):
+    """Whether a question would search the web by default, for the switch under the question box."""
+    from .. import panel
+
+    return {"web": panel.needs_web(session, text), "focus": panel.focus_symbols(session, text) if text else []}
 
 
 @router.get("/panel")

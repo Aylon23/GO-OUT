@@ -16,6 +16,10 @@ from sqlmodel import Session, select
 
 from .models import Portfolio, Transaction
 
+# Everyday words someone may give a portfolio as a nickname ("שלי" for their own). They say nothing about
+# who it belongs to, and models write them all the time ("התרחיש שלי"), so they are not treated as names.
+COMMON_WORDS = {"שלי", "שלנו", "שלך", "שלו", "שלה", "אני", "אנחנו", "התיק", "תיק", "ראשי", "משפחה", "המשפחה", "כולם",
+                "my", "mine", "me", "our", "ours", "main", "family", "all", "portfolio", "my portfolio", "default", "test"}
 MIN_AMOUNT = 100.0  # smaller numbers (weights, betas, percentages, prices of cheap stocks) are not amounts
 _NUM = re.compile(r"-?\d[\d,]*\.?\d*(?:[eE][-+]?\d+)?")
 _lock = threading.Lock()
@@ -46,7 +50,7 @@ def forbidden(session: Session) -> Forbidden:
     for p in session.exec(select(Portfolio)).all():
         for t in [p.name, *(p.aliases or "").split(",")]:
             t = (t or "").strip()
-            if len(t) >= 2:
+            if len(t) >= 2 and t.lower() not in COMMON_WORDS:
                 terms.add(t)
     amounts: set[float] = set()
     try:

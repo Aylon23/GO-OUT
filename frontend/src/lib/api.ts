@@ -545,6 +545,7 @@ export const api = {
   panelSetup: () => request<PanelSetup>("GET", "/api/panel/setup"),
   panelSettings: (b: { budget_usd?: number; models?: Record<string, string> }) => request<PanelSetup>("PUT", "/api/panel/settings", b),
   panelStart: (b: { text: string; horizon: string; web: boolean }) => request<PanelRun>("POST", "/api/panel", b),
+  panelWeb: (text: string) => request<{ web: boolean; focus: string[] }>("GET", `/api/panel/web?text=${encodeURIComponent(text)}`),
   panelRuns: () => request<PanelRun[]>("GET", "/api/panel"),
   panelRun: (id: number) => request<PanelRun>("GET", `/api/panel/${id}`),
   chat: (runId: number) => request<ChatMsg[]>("GET", `/api/assistant/${runId}`),
