@@ -23,26 +23,70 @@ import { CustomSim, SwapSim } from "./WhatIf";
 const EXAMPLES = ["מלחמה עם איראן", "מחיר הנפט יורד 20%", "תשואות האג״ח בארה״ב עולות", "אפל ידווחו דוחות חלשים", "Nasdaq falls 10%", "The Fed cuts rates"];
 const HORIZONS = [{ value: "1", label: "1 week" }, { value: "2", label: "2 weeks" }, { value: "4.3", label: "1 month" }, { value: "13", label: "3 months" }];
 
+type Tab = "ask" | "scenario" | "earnings" | "more";
+type Tool = "book" | "money" | "swap" | "custom" | "researched" | "debate";
+
+const TABS: { value: Tab; label: string; intro: string }[] = [
+  { value: "ask", label: "Ask the analysts", intro: "Ask anything: a scenario, a news event, a company's earnings report. Three AI analysts each research it on their own and estimate the move of every holding; the app adds it up for each portfolio next to its own engine. Paid, a few tens of cents a question." },
+  { value: "scenario", label: "Quick scenario", intro: "Instant and free: describe a move (oil up 20%, the Fed cuts rates) and the app's own engine shows what it does to each portfolio, why, and what past events like it did. No AI." },
+  { value: "earnings", label: "Earnings", intro: "Yesterday's company reports: the research comes from the morning brief, the numbers from your own price data." },
+  { value: "more", label: "More tools", intro: "Less frequent tools: your book of scenarios, where to put new money, and replays of your own money through a different choice." },
+];
+
+const TOOLS: { value: Tool; label: string; what: string }[] = [
+  { value: "book", label: "My book", what: "Combine your saved scenarios into one view of the world, with your own probabilities." },
+  { value: "money", label: "New money", what: "Rank where new money would hold up best across your saved scenarios." },
+  { value: "swap", label: "Swap a holding", what: "Replay your own money as if one holding had been another. Same dates, same amounts." },
+  { value: "custom", label: "Build a portfolio", what: "Replay your own money through a portfolio you design, with monthly additions and rebalancing." },
+  { value: "researched", label: "Researched scenarios", what: "Scenarios researched outside the app and imported, checked against real price history." },
+  { value: "debate", label: "AI debate (free models)", what: "The older free version: four free models write and challenge a scenario, a judge merges them. Slower, and weaker than Ask the analysts." },
+];
+
+const KEY = "benchmark:whatif";
+const read = (): { tab: Tab; tool: Tool | null } => {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || "{}");
+    return { tab: TABS.some((t) => t.value === v.tab) ? v.tab : "ask", tool: TOOLS.some((t) => t.value === v.tool) ? v.tool : null };
+  } catch { return { tab: "ask", tool: null }; }
+};
+
 export default function Scenarios() {
-  const [mode, setMode] = useState<"ask" | "scenario" | "debate" | "researched" | "book" | "money" | "earnings" | "swap" | "custom">("ask");
+  const [{ tab, tool }, setState] = useState(read);
+  const set = (next: { tab: Tab; tool: Tool | null }) => {
+    setState(next);
+    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* storage off: only this visit remembers */ }
+  };
+  const current = TABS.find((t) => t.value === tab)!;
+  const picked = TOOLS.find((t) => t.value === tool);
   return (
     <div className="mx-auto max-w-content px-4 pb-24 pt-8 md:px-8 md:pt-12">
       <h1 className="text-xl font-semibold">What-if</h1>
-      <p className="mt-1 max-w-[66ch] text-sm text-muted">
-        {mode === "earnings" ? "Yesterday's reports: the research comes from the morning brief, the numbers from your own price data."
-          : mode === "book" ? "Combine your scenarios into one view of the world, with your own probabilities."
-          : mode === "money" ? "Rank where new money would hold up best across your saved scenarios."
-          : mode === "researched" ? "Scenarios researched outside the app and imported, checked against real price history."
-          : mode === "debate" ? "Several AI models debate a scenario; the app checks it against real prices and computes the impact."
-          : mode === "ask" ? "Ask anything: a scenario, a news event, a company's earnings report. Three AI analysts each research it on their own and estimate the move of every holding; the app adds it up for each portfolio next to its own engine."
-          : mode === "scenario" ? "Describe something that could happen. See what it would do to each portfolio, why, and what past events like it did."
-          : "Replay your own money through a different choice. Same dates, same amounts, same engine as your real numbers."}
-      </p>
-      <div className="mt-6">
-        <Segmented label="What-if tool" value={mode} onChange={setMode}
-          options={[{ value: "ask", label: "Ask the analysts" }, { value: "scenario", label: "Scenarios" }, { value: "debate", label: "AI debate" }, { value: "researched", label: "Researched" }, { value: "book", label: "My book" }, { value: "money", label: "New money" }, { value: "earnings", label: "Yesterday's earnings" }, { value: "swap", label: "Swap a holding" }, { value: "custom", label: "Build a portfolio" }]} />
+      <div className="mt-5">
+        <Segmented label="What-if tool" value={tab} onChange={(v) => set({ tab: v, tool: v === "more" ? tool : null })}
+          options={TABS.map((t) => ({ value: t.value, label: t.label }))} />
       </div>
-      {mode === "ask" ? <AiPanel /> : mode === "scenario" ? <ScenarioLab /> : mode === "debate" ? <AiDebate /> : mode === "researched" ? <Researched /> : mode === "money" ? <NewMoney /> : mode === "book" ? <Book /> : mode === "earnings" ? <Earnings /> : mode === "swap" ? <SwapSim /> : <CustomSim />}
+      <p className="mt-3 max-w-[70ch] text-sm text-muted">{tab === "more" && picked ? picked.what : current.intro}</p>
+      {tab === "ask" ? <AiPanel /> : tab === "scenario" ? <ScenarioLab /> : tab === "earnings" ? <Earnings />
+        : picked ? (
+          <>
+            <button type="button" className="link mt-4 text-sm" onClick={() => set({ tab: "more", tool: null })}>All tools</button>
+            <h2 className="mt-2 text-lg font-semibold">{picked.label}</h2>
+            {tool === "book" ? <Book /> : tool === "money" ? <NewMoney /> : tool === "swap" ? <SwapSim /> : tool === "custom" ? <CustomSim />
+              : tool === "researched" ? <Researched /> : <AiDebate />}
+          </>
+        ) : (
+          <ul className="mt-6 max-w-3xl">
+            {TOOLS.map((t) => (
+              <li key={t.value} className="border-t border-line last:border-b">
+                <button type="button" onClick={() => set({ tab: "more", tool: t.value })}
+                  className="press flex w-full flex-col gap-0.5 py-3.5 text-left transition-colors duration-fast hover:bg-hover sm:flex-row sm:items-baseline sm:gap-6 sm:px-2">
+                  <span className="shrink-0 font-medium sm:w-56">{t.label}</span>
+                  <span className="text-sm text-muted">{t.what}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
     </div>
   );
 }
