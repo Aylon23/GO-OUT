@@ -477,9 +477,15 @@ def holding_return(ctx: Context, t: str, b: int, e: int) -> float | None:
         end = min(end + 1, e)  # sold during the range: include the day of the sale
     if end <= start:
         return None
-    tr = align(ctx.market[t].frame["adj_close"], s.dates)
-    a0, a1 = float(tr.iloc[start]), float(tr.iloc[end])
-    return a1 / a0 - 1 if a0 > 0 else None
+    # the same basis as the portfolio's own value: closing prices plus the cash dividends paid on the way,
+    # so a holding's return and its contribution in money never point different ways
+    f = ctx.market[t].frame
+    close = align(f["close"], s.dates)
+    c0, c1 = float(close.iloc[start]), float(close.iloc[end])
+    d0, d1 = s.dates[start], s.dates[end]
+    div = f["dividend"] if "dividend" in f else None
+    paid = float(div[(div.index > d0) & (div.index <= d1)].sum()) if div is not None else 0.0
+    return (c1 + paid) / c0 - 1 if c0 > 0 else None
 
 
 def sector_weights(session: Session, t: str, weight: float, meta) -> dict[str, float]:

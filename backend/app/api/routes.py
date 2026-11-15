@@ -274,12 +274,13 @@ class SettingsIn(BaseModel):
     allow_short_hedges: bool | None = None
     inbox_dir: str | None = None
     memo_language: str | None = None
+    market_summary: bool | None = None
 
 
 def _settings_dict(s):
     key = (s.anthropic_key or "").strip()
     return {"base_currency": s.base_currency, "benchmarks": s.benchmark_list(), "risk_free": s.risk_free,
-            "theme": s.theme, "auto_dividends": s.auto_dividends, "allow_short_hedges": bool(s.allow_short_hedges), "inbox_dir": s.inbox_dir or "", "memo_language": s.memo_language or "he",
+            "theme": s.theme, "auto_dividends": s.auto_dividends, "allow_short_hedges": bool(s.allow_short_hedges), "inbox_dir": s.inbox_dir or "", "memo_language": s.memo_language or "he", "market_summary": bool(s.market_summary),
             "anthropic_key_set": bool(key), "anthropic_key_hint": f"…{key[-4:]}" if len(key) > 8 else ""}
 
 
@@ -315,6 +316,8 @@ def put_settings(body: SettingsIn, session: Session = Depends(get_session)):
         if body.memo_language not in ("he", "en"):
             _bad("Language must be he or en.")
         s.memo_language = body.memo_language
+    if body.market_summary is not None:
+        s.market_summary = body.market_summary
     if body.inbox_dir is not None:
         from pathlib import Path
 
@@ -1843,3 +1846,30 @@ def assistant_ask(run_id: int, body: AssistantIn, session: Session = Depends(get
         return assistant.ask(session, run_id, body.text, body.web)
     except (openrouter.AiError, privacy.PrivacyError) as exc:
         _bad(str(exc))
+
+
+# ---------------------------------------------------------------- the weekly market summary
+
+def _last_saturday(today=None):
+    import datetime as dt
+
+    today = today or dt.date.today()
+    return today - dt.timedelta(days=(today.weekday() - 5) % 7)  # Saturday: the week that just ended
+
+
+@router.get("/market-week")
+def market_week_get(session: Session = Depends(get_session)):
+    """The latest weekly market summary that was made (nothing is generated here)."""
+    from .. import market_week
+    from ..models import MarketWeek
+
+    row = session.exec(select(MarketWeek).order_by(MarketWeek.week_end.desc())).first()
+    return {"summary": market_week.payload(row), "last_week_end": _last_saturday().isoformat()}
+
+
+@router.post("/market-week")
+def market_week_make(force: bool = False, session: Session = Depends(get_session)):
+    """Writes last week's summary now (one paid AI call, unless it was already written)."""
+    from .. import market_week
+
+    return {"summary": market_week.payload(market_week.make(session, _last_saturday(), force=force))}

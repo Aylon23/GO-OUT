@@ -116,7 +116,7 @@ def person_data(session: Session, pid: int, start: dt.date, end: dt.date, top_sc
     lead = top[0] if top else (bottom[0] if bottom else None)
     driver = None
     if lead is not None:
-        driver = {"symbol": lead["symbol"], "contribution": lead["contribution"], "sp500": bench.get("SPY")}
+        driver = {"symbol": lead["symbol"], "contribution": lead["contribution"], "change_amt": lead["change_amt"], "sp500": bench.get("SPY")}
     if not s.get("compare_ok", True):  # too early: no comparison with the indices anywhere in the report
         bench = {}
         if driver:
@@ -126,7 +126,9 @@ def person_data(session: Session, pid: int, start: dt.date, end: dt.date, top_sc
            "sp500": bench.get("SPY"), "nasdaq": bench.get("QQQ"), "top": top, "bottom": bottom,
            "dividends_amt": divs + auto, "trades": trades, "recommendations": [{"ticker": r["ticker"], "action": r["action"], "return": r["return"],
                                                                                   "edge": r["edge"], "worked": r["worked"]} for r in recs],
-           "driver": driver, "range": pp["range"]}
+           "driver": driver, "range": pp["range"],
+           # a holding in another currency than the one shown: say the gain leaves the exchange rate out
+           "fx_note": any((r.get("currency") or base) != base for r in hp["rows"] if not r["closed"])}
     if top_scenario:
         out["if"] = top_scenario.get(str(pid))
     return out
@@ -156,10 +158,12 @@ def top_scenario_effects(session: Session) -> dict | None:
 
 # ------------------------------------------------------------------ text
 
-HE = {"early": "מוקדם להשוות למדד", "weekly": "דוח שבועי", "monthly": "דוח חודשי", "value": "שווי התיק", "change": "שינוי בתקופה", "vs": "מול",
+HE = {"early": "ההשוואה למדד תתחיל אחרי 20 ימי מסחר", "passed": "עברו", "fx": "רווח מהמניות בלבד, בלי השפעת שער הדולר. מוצג לפי השער של היום.",
+      "col_stock": "המניה", "col_port": "בתיק", "no_down": "אף מניה לא ירדה בתקופה", "no_up": "אף מניה לא עלתה בתקופה", "weekly": "דוח שבועי", "monthly": "דוח חודשי", "value": "שווי התיק", "change": "שינוי בתקופה", "vs": "מול",
       "best": "הכי טובות", "worst": "הכי חלשות", "divs": "דיבידנדים שהתקבלו", "trades": "פעולות בתקופה", "recs": "המלצות פתוחות",
       "if": "אם", "none": "אין", "family": "סיכום משפחתי", "advice": "זה לא ייעוץ השקעות", "people": "כל התיקים"}
-EN = {"early": "Too early to compare with the S&P 500", "weekly": "Weekly report", "monthly": "Monthly report", "value": "Portfolio value", "change": "Change in the period", "vs": "vs",
+EN = {"early": "The comparison with the index starts after 20 trading days", "passed": "so far", "fx": "Gains from the stocks only, without the exchange rate. Shown at today's rate.",
+      "col_stock": "Stock", "col_port": "In the portfolio", "no_down": "No stock fell in the period", "no_up": "No stock rose in the period", "weekly": "Weekly report", "monthly": "Monthly report", "value": "Portfolio value", "change": "Change in the period", "vs": "vs",
       "best": "Best", "worst": "Weakest", "divs": "Dividends received", "trades": "Trades in the period", "recs": "Open recommendations",
       "if": "If", "none": "None", "family": "Family summary", "advice": "Not investment advice", "people": "All portfolios"}
 
@@ -177,15 +181,37 @@ def driver_line(d: dict, he: bool) -> str:
     dr = d.get("driver")
     if not dr:
         return ""
+    up = dr["contribution"] >= 0
+    amt = f" ({_amt(dr['change_amt'], d['base'])})" if dr.get("change_amt") is not None else ""
     if he:
-        return (f"מה הזיז את התקופה: {dr['symbol']} ({_pct(dr['contribution'])} לתיק)" +
+        return (f"המניה שהשפיעה הכי הרבה: {dr['symbol']}, {'הוסיפה' if up else 'הורידה'} {_pct(abs(dr['contribution']), False)} לתיק{amt}" +
                 (f", כשה-S&P 500 {'עלה' if (dr['sp500'] or 0) >= 0 else 'ירד'} {_pct(abs(dr['sp500'] or 0), False)}." if dr.get("sp500") is not None else "."))
-    return (f"What drove the period: {dr['symbol']} ({_pct(dr['contribution'])} to the portfolio)" +
+    return (f"The stock that moved it most: {dr['symbol']}, {'adding' if up else 'taking away'} {_pct(abs(dr['contribution']), False)}{amt}" +
             (f", while the S&P 500 {'rose' if (dr['sp500'] or 0) >= 0 else 'fell'} {_pct(abs(dr['sp500'] or 0), False)}." if dr.get("sp500") is not None else "."))
 
 
+HE_MONTHS = ["בינואר", "בפברואר", "במרץ", "באפריל", "במאי", "ביוני", "ביולי", "באוגוסט", "בספטמבר", "באוקטובר", "בנובמבר", "בדצמבר"]
+EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def dates_label(start: str, end: str, he: bool) -> str:
+    """"8–14 בנובמבר 2026": in words, so it reads the same way in Hebrew and never shows the end first."""
+    a, b = dt.date.fromisoformat(start), dt.date.fromisoformat(end)
+    M = HE_MONTHS if he else EN_MONTHS
+    if a.year == b.year and a.month == b.month:
+        return f"{a.day}–{b.day} {M[b.month - 1]} {b.year}"
+    if a.year == b.year:
+        return f"{a.day} {M[a.month - 1]} – {b.day} {M[b.month - 1]} {b.year}"
+    return f"{a.day} {M[a.month - 1]} {a.year} – {b.day} {M[b.month - 1]} {b.year}"
+
+
 def period_label(kind: str, start: str, end: str, he: bool) -> str:
-    return f"{(HE if he else EN)[kind]} · {start} – {end}"
+    return f"{(HE if he else EN)[kind]}, {dates_label(start, end, he)}"
+
+
+def early_line(d: dict, he: bool) -> str:
+    T = HE if he else EN
+    return f"{T['early']} ({T['passed']} {d.get('tracking_days')})" if he else f"{T['early']} ({d.get('tracking_days')} {T['passed']})"
 
 
 # ------------------------------------------------------------------ drawing
@@ -213,30 +239,41 @@ def card(d: dict, kind: str, lang: str) -> bytes:
     c.text(T["value"], 26, render.MUTED, gap=0)
     c.text(_amt(d["value_amt"], CCY).lstrip("+"), 64, bold=True, gap=0)
     c.text(f"{_amt(d['change_amt'], CCY)}  ({_pct(d['return'])})", 40, render.sign_color(d["change_amt"]), bold=True, gap=10)
+    if d.get("fx_note"):
+        c.text(T["fx"], 22, render.FAINT, gap=6)
     if d.get("compare_ok", True):
         c.pair(f"{T['vs']} S&P 500", _pct(d["sp500"]), 28, render.MUTED, render.sign_color(d["sp500"]))
-    else:
-        c.text(f"{T['early']} ({d.get('tracking_days')}/20)", 24, render.MUTED, gap=8)
-    c.pair(f"{T['vs']} Nasdaq 100", _pct(d["nasdaq"]), 28, render.MUTED, render.sign_color(d["nasdaq"]))
+        c.pair(f"{T['vs']} Nasdaq 100", _pct(d["nasdaq"]), 28, render.MUTED, render.sign_color(d["nasdaq"]))
+    else:  # no empty comparison rows: one line on when it starts
+        c.text(early_line(d, he), 24, render.MUTED, gap=8)
     c.y += 6
     c.rule()
-    for title, rows in ((T["best"], d["top"]), (T["worst"], d["bottom"])):
-        if not rows:
-            continue
+    # two number columns, with headers: what the stock did, and what it made or lost for this portfolio
+    W, M = 1080, 64
+    col_pct, col_amt = (M + 150, M + 360) if he else (W - M - 210, W - M)  # right edges
+    fs = render.font(22)
+    for title, rows, empty in ((T["best"], d["top"], T["no_up"]), (T["worst"], d["bottom"], T["no_down"])):
         c.text(title, 26, render.MUTED, gap=2)
+        if not rows:
+            c.text(empty, 26, render.TEXT, gap=10)
+            continue
+        hy = c.y
+        render.draw(c.d, (col_pct - render.measure(fs, T["col_stock"]), hy), T["col_stock"], fs, render.FAINT)
+        render.draw(c.d, (col_amt - render.measure(fs, T["col_port"]), hy), T["col_port"], fs, render.FAINT)
+        c.y += 32
         for r in rows[:3]:
             y = c.y
-            x_logo = 1080 - 64 - 40 if he else 64
+            x_logo = W - M - 40 if he else M
             c.logo(_logo(r["symbol"]), r["symbol"][:1], x_logo, y, 40)
             f = render.font(30)
             name = r["symbol"]
-            val = f"{_pct(r['return'])}  {_amt(r['change_amt'], CCY)}"
+            pct_s, amt_s = _pct(r["return"]), _amt(r["change_amt"], CCY)
             if he:
-                render.draw(c.d, (1080 - 64 - 52 - render.measure(f, name), y + 2), name, f, render.TEXT)
-                render.draw(c.d, (64, y + 2), val, f, render.sign_color(r["change_amt"]))
+                render.draw(c.d, (W - M - 52 - render.measure(f, name), y + 2), name, f, render.TEXT)
             else:
-                render.draw(c.d, (64 + 52, y + 2), name, f, render.TEXT)
-                render.draw(c.d, (1080 - 64 - render.measure(f, val), y + 2), val, f, render.sign_color(r["change_amt"]))
+                render.draw(c.d, (M + 52, y + 2), name, f, render.TEXT)
+            render.draw(c.d, (col_pct - render.measure(f, pct_s), y + 2), pct_s, f, render.sign_color(r["return"]))
+            render.draw(c.d, (col_amt - render.measure(f, amt_s), y + 2), amt_s, f, render.sign_color(r["change_amt"]))
             c.y += 52
         c.y += 8
     c.rule()
@@ -266,17 +303,19 @@ def pdf(d: dict, kind: str, lang: str) -> bytes:
     doc.text(period_label(kind, d["start"], d["end"], he), 24, render.MUTED, gap=20)
     doc.text(f"{T['value']}: {_amt(d['value_amt'], CCY).lstrip('+')}", 30, bold=True)
     doc.text(f"{T['change']}: {_amt(d['change_amt'], CCY)} ({_pct(d['return'])})", 28, render.sign_color(d["change_amt"]))
-    doc.text(f"{T['vs']} S&P 500: {_pct(d['sp500'])} · {T['vs']} Nasdaq 100: {_pct(d['nasdaq'])}" if d.get("compare_ok", True)
-             else f"{T['early']} ({d.get('tracking_days')}/20)", 26, render.MUTED, gap=18)
+    if d.get("fx_note"):
+        doc.text(T["fx"], 20, render.FAINT)
+    doc.text(f"{T['vs']} S&P 500: {_pct(d['sp500'])}, {T['vs']} Nasdaq 100: {_pct(d['nasdaq'])}" if d.get("compare_ok", True)
+             else early_line(d, he), 26, render.MUTED, gap=18)
     line = driver_line(d, he)
     if line:
         doc.text(line, 26, gap=18)
-    for title, rows in ((T["best"], d["top"]), (T["worst"], d["bottom"])):
+    for title, rows, empty in ((T["best"], d["top"], T["no_up"]), (T["worst"], d["bottom"], T["no_down"])):
         doc.text(title, 28, render.ACCENT, bold=True)
         for r in rows or []:
-            doc.text(f"{r['symbol']} {r['name']}: {_pct(r['return'])}, {_amt(r['change_amt'], CCY)}", 24)
+            doc.text(f"{r['symbol']} {r['name']}: {T['col_stock']} {_pct(r['return'])}, {T['col_port']} {_amt(r['change_amt'], CCY)}", 24)
         if not rows:
-            doc.text(T["none"], 24, render.MUTED)
+            doc.text(empty, 24, render.MUTED)
         doc.c.y += 10
     doc.text(f"{T['divs']}: {_amt(d['dividends_amt'], CCY) if d['dividends_amt'] else T['none']}", 24)
     doc.text(T["trades"], 28, render.ACCENT, bold=True)
@@ -315,6 +354,8 @@ def family_card(people: list[dict], insights: list[dict], kind: str, start: str,
     for p in sorted(people, key=lambda x: -(x["return"] or 0)):
         c.pair(p["name"], f"{_pct(p['return'])}   S&P {_pct(p['sp500'])}" if p.get("compare_ok", True) else _pct(p["return"]),
                30, render.TEXT, render.sign_color(p["return"]))
+    if people and not all(p.get("compare_ok", True) for p in people):
+        c.text(early_line(people[0], he), 22, render.MUTED, gap=4)
     c.y += 8
     c.rule()
     for i in insights[:4]:
@@ -332,13 +373,83 @@ def family_pdf(people: list[dict], insights: list[dict], kind: str, start: str, 
     doc.text(T["family"], 44, bold=True, gap=4)
     doc.text(period_label(kind, start, end, he), 24, render.MUTED, gap=20)
     for p in sorted(people, key=lambda x: -(x["value_amt"] or 0)):
-        doc.text(f"{p['name']}: {_amt(p['value_amt'], CCY).lstrip('+')} · {_amt(p['change_amt'], CCY)} ({_pct(p['return'])})"
-                 + (f" · S&P {_pct(p['sp500'])} · Nasdaq {_pct(p['nasdaq'])}" if p.get("compare_ok", True) else f" · {T['early']}"), 25)
+        doc.text(f"{p['name']}: {_amt(p['value_amt'], CCY).lstrip('+')}, {_amt(p['change_amt'], CCY)} ({_pct(p['return'])})"
+                 + (f", S&P {_pct(p['sp500'])}, Nasdaq {_pct(p['nasdaq'])}" if p.get("compare_ok", True) else ""), 25)
+    if people and not all(p.get("compare_ok", True) for p in people):
+        doc.text(early_line(people[0], he), 22, render.MUTED)
     doc.c.y += 14
     for i in insights:
         doc.text(i["text"], 24, render.MUTED)
     doc.c.y += 20
     doc.text(T["advice"], 20, render.FAINT)
+    return doc.bytes()
+
+
+def market_card(m: dict, start: str, end: str) -> bytes:
+    """The week in the markets, in Hebrew, for everyone: the moves (computed by the app) and what drove them."""
+    c = render.Canvas(1080, 1350, rtl=True, margin=64)
+    c.d.rectangle([0, 0, 1080, 14], fill=render.ACCENT)
+    c.y = 54
+    c.text("מה היה השבוע בשוק", 50, bold=True, gap=0)
+    c.text(dates_label(start, end, True), 26, render.MUTED, gap=16)
+    t = m.get("text") or {}
+    if t.get("headline"):
+        c.text(t["headline"], 32, render.TEXT, bold=True, gap=12)
+    for f in m.get("facts") or []:
+        if f.get("change_pct") is not None:
+            v = f["change_pct"]
+            val = f"{'+' if v > 0.05 else '−' if v < -0.05 else ''}{abs(v):.1f}%"
+            color = render.sign_color(v) if f["kind"] != "rate" else render.TEXT  # the shekel rising is not "good" in green
+        else:
+            v = f["change_pts"]
+            val = f"{'+' if v > 0.005 else '−' if v < -0.005 else ''}{abs(v):.2f} נק' (ל-{f['level']:.2f}%)"
+            color = render.TEXT
+        c.pair(f["name"], val, 28, render.TEXT, color)
+    c.y += 4
+    c.rule()
+    if m.get("status") == "done":
+        if t.get("what_happened"):
+            c.text(t["what_happened"], 26, render.TEXT, gap=12)
+        nxt = ("בשבוע הבא: " + t["next_week"]) if t.get("next_week") else ""
+        room_next = (len(render.wrap(nxt, render.font(24), 1080 - 128)) * 33 + 10) if nxt else 0
+        for d in (t.get("drivers") or [])[:3]:
+            need = 40 + len(render.wrap(d["text"], render.font(24), 1080 - 128)) * 33 + 10
+            if c.y + need > 1350 - 120 - room_next:  # never into the footer, and keep room for next week
+                break
+            c.text(d["title"], 26, render.TEXT, bold=True, gap=2)
+            c.text(d["text"], 24, render.MUTED, gap=10)
+        if nxt and c.y + room_next <= 1350 - 120:
+            c.text(nxt, 24, render.TEXT, gap=6)
+    else:
+        c.text("ההסבר המילולי לא נכתב השבוע. המספרים למעלה מחושבים מנתוני המחירים.", 24, render.MUTED, gap=6)
+    c.y = 1350 - 104
+    c.text("שינוי שבועי: מהסגירה לפני השבוע עד הסגירה האחרונה בו. דולר-שקל עולה = הדולר התחזק.", 20, render.FAINT, gap=2)
+    c.text("Benchmark · זה לא ייעוץ השקעות", 22, render.FAINT)
+    return c.png()
+
+
+def market_pdf(m: dict, start: str, end: str) -> bytes:
+    doc = render.Document(rtl=True)
+    doc.text("מה היה השבוע בשוק", 44, bold=True, gap=4)
+    doc.text(dates_label(start, end, True), 24, render.MUTED, gap=18)
+    t = m.get("text") or {}
+    if t.get("headline"):
+        doc.text(t["headline"], 30, bold=True, gap=10)
+    for f in m.get("facts") or []:
+        val = (f"{f['change_pct']:+.1f}%" if f.get("change_pct") is not None else f"{f['change_pts']:+.2f} נק' (ל-{f['level']:.2f}%)")
+        doc.text(f"{f['name']}: {val}  ({f['what']})", 24)
+    doc.c.y += 10
+    if m.get("status") == "done":
+        if t.get("what_happened"):
+            doc.text(t["what_happened"], 26, gap=12)
+        for d in t.get("drivers") or []:
+            doc.text(d["title"], 26, render.ACCENT, bold=True, gap=2)
+            doc.text(d["text"], 24, gap=10)
+        if t.get("next_week"):
+            doc.text("בשבוע הבא: " + t["next_week"], 24, gap=12)
+        if t.get("sources"):
+            doc.text("מקורות: " + ", ".join(t["sources"][:6]), 18, render.FAINT, gap=10)
+    doc.text("זה לא ייעוץ השקעות", 20, render.FAINT)
     return doc.bytes()
 
 
@@ -364,6 +475,17 @@ def generate(session: Session, kind: str, start: dt.date, end: dt.date, lang: st
         (folder / f"{stem}.png").write_bytes(card(d, kind, lang))
         (folder / f"{stem}.pdf").write_bytes(pdf(d, kind, lang))
         made.append(_save(session, kind, p.id, p.name, start, end, lang, stem, d))
+    if people and kind == "weekly" and services.get_settings(session).market_summary:
+        try:  # one paid call a week, shared by everyone; the numbers alone when it can't be written
+            from . import market_week
+
+            m = market_week.payload(market_week.make(session, end))
+            stem = f"{kind}-{end.isoformat()}-market-he"
+            (folder / f"{stem}.png").write_bytes(market_card(m, start.isoformat(), end.isoformat()))
+            (folder / f"{stem}.pdf").write_bytes(market_pdf(m, start.isoformat(), end.isoformat()))
+            made.insert(0, _save(session, kind, 0, "Market", start, end, "he", stem, m))
+        except Exception as exc:
+            log.warning("Weekly market summary card not made: %s", exc)
     if people:
         insights = overview_payload(session, "1Y").get("insights", [])
         stem = f"{kind}-{end.isoformat()}-family-{lang}"
@@ -394,9 +516,10 @@ def send(session: Session, r: PersonReport, client=None) -> None:
         raise RuntimeError("Telegram isn't connected. Set it up in Settings first.")
     client = client or TelegramClient(st.telegram_token)
     he = r.lang == "he"
-    who = r.name if r.portfolio_id is not None else ("כל המשפחה" if he else "the family")
-    hint = (f"{HE[r.kind]} · {who} · {r.period_start} – {r.period_end}\nאפשר להעביר (Forward) למי שצריך." if he
-            else f"{EN[r.kind]} · {who} · {r.period_start} – {r.period_end}\nForward it to whoever it's for.")
+    who = ("סיכום השוק" if he else "the market") if r.portfolio_id == 0 else r.name if r.portfolio_id is not None else ("כל המשפחה" if he else "the family")
+    when = dates_label(r.period_start.isoformat(), r.period_end.isoformat(), he)
+    hint = (f"{HE[r.kind]}, {who}, {when}\nאפשר להעביר (Forward) למי שצריך." if he
+            else f"{EN[r.kind]}, {who}, {when}\nForward it to whoever it's for.")
     folder = reports_dir()
     client.send_file(st.telegram_chat_id, (folder / r.png).read_bytes(), r.png, hint, photo=True)
     client.send_file(st.telegram_chat_id, (folder / r.pdf).read_bytes(), r.pdf, "")

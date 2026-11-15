@@ -130,6 +130,7 @@ export interface TelegramStatus { configured: boolean; paired: boolean; pair_cod
 
 export interface Settings {
   memo_language?: "he" | "en";
+  market_summary?: boolean;
   base_currency: Ccy; benchmarks: string[]; risk_free: number; theme: "light" | "dark" | "system"; auto_dividends: boolean;
   anthropic_key_set?: boolean; anthropic_key_hint?: string; anthropic_key?: string; allow_short_hedges?: boolean;
 }
@@ -500,6 +501,8 @@ const qs = (o: Record<string, string | number | boolean | undefined | null>) =>
 
 export interface RangeParams { range: string; start?: string; end?: string }
 
+export interface MarketWeekFact { symbol: string; name: string; what: string; kind: string; level: number; change_pct?: number | null; change_pts?: number | null }
+export interface MarketWeek { week_end: string; status: string; note: string; facts: MarketWeekFact[]; text: { headline?: string; what_happened?: string; drivers?: { title: string; text: string }[]; next_week?: string; sources?: string[] }; dropped: string[]; cost: number; model: string; created_at: string }
 export const api = {
   search: (q: string, signal?: AbortSignal) => request<SearchResponse>("GET", `/api/search?${qs({ q })}`, undefined, signal),
   recent: () => request<SymbolItem[]>("GET", "/api/symbols/recent"),
@@ -623,6 +626,8 @@ export const api = {
   riskSummary: () => request<{ empty: boolean; books: RiskBook[] }>("GET", "/api/risk/summary"),
   memo: (b: ActionsBody & { lang?: "he" | "en" }) => request<Memo>("POST", "/api/memo", b),
   scenarioJournal: () => request<JournalPanel>("GET", "/api/scenario-journal"),
+  marketWeek: () => request<{ summary: MarketWeek | null; last_week_end: string }>("GET", "/api/market-week"),
+  marketWeekMake: (force = false) => request<{ summary: MarketWeek }>("POST", `/api/market-week?force=${force}`),
   reportsList: () => request<{ id: number; kind: string; portfolio_id: number | null; name: string; period_start: string; period_end: string; lang: string; created_at: string; sent_at: string | null }[]>("GET", "/api/reports/list"),
   reportsGenerate: (kind: "weekly" | "monthly", send: boolean) => request<{ made: number; period_start: string; period_end: string; send_errors: string[] }>("POST", "/api/reports/generate", { kind, send }),
   reportSend: (id: number) => request<{ ok: boolean }>("POST", `/api/reports/${id}/send`),

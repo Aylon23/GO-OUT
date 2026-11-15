@@ -166,6 +166,7 @@ class Settings(SQLModel, table=True):
     report_last_weekly: str = ""  # period end of the last weekly reports generated
     report_last_monthly: str = ""
     report_auto_send: bool = True  # send new reports to my Telegram chat
+    market_summary: bool = True  # a short weekly market summary in plain Hebrew with the weekly reports (one paid AI call a week)
     band_scale: float = 1.0  # widens scenario ranges when past outcomes fell outside them too often
     band_note: str = ""  # folder watched for researched files; empty = ./inbox next to the app  # protection ideas may include shorts and inverse funds
     anthropic_key: str = ""  # optional: lets Claude read scenarios; the free local rules work without it
@@ -583,3 +584,18 @@ class ChatMessage(SQLModel, table=True):
     text: str = ""  # as shown: real portfolio names, amounts filled in here
     sent: str = ""  # as sent or received: portfolios as "Portfolio A", no amounts
     extra: str = "{}"  # JSON: follow-ups, caveat, what the engine read, model, cost
+
+
+class MarketWeek(SQLModel, table=True):
+    """The weekly market summary for one week (ending Saturday): the app's numbers and one model's words."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    week_end: dt.date = Field(index=True)
+    created_at: dt.datetime = Field(default_factory=lambda: dt.datetime.now(dt.timezone.utc))
+    status: str = "done"  # done | failed
+    facts: str = "[]"  # JSON: the week's moves, computed here
+    text: str = "{}"  # JSON: headline, what_happened, drivers, next_week, sources
+    dropped: str = "[]"  # JSON: sentences removed because they quoted a number the app could not confirm
+    model: str = ""
+    cost: float = 0.0
+    note: str = ""

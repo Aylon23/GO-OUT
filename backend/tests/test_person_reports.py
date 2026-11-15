@@ -86,7 +86,7 @@ def test_rtl_layout_right_aligns_hebrew():
 def test_generate_files_and_family_summary(fam):
     made = person_reports.generate(fam.session, "weekly", dt.date(2026, 9, 6), dt.date(2026, 9, 12), "he")
     names = sorted(r.name for r in made)
-    assert names == sorted(["My portfolio", "קרן", "Family"])
+    assert names == sorted(["My portfolio", "קרן", "Family", "Market"])  # the market card comes with the weekly ones
     folder = person_reports.reports_dir()
     for r in made:
         im = Image.open(folder / r.png)
@@ -142,3 +142,26 @@ def test_hebrew_reads_right_to_left_in_both_layout_modes(monkeypatch):
     for raqm in ([True, False] if render.RAQM else [False]):
         mid, alef_mid = alef_x(raqm)
         assert alef_mid > mid  # alef (first letter) sits on the right half: right to left
+
+
+def test_a_stock_s_return_and_its_money_point_the_same_way(session):
+    """On the weekly card each stock shows its own return and what it made for the portfolio. Both come
+    from closing prices plus dividends paid, so a stock that rose never shows a loss."""
+    from tests.test_openrouter import _family
+
+    _family(session)
+    end = dt.date.today() - dt.timedelta(days=1)
+    for pid in (1, 2):
+        for start in (end - dt.timedelta(days=6), end - dt.timedelta(days=30), end - dt.timedelta(days=200)):
+            d = person_reports.person_data(session, pid, start, end)
+            for r in d["top"] + d["bottom"]:
+                if abs(r["return"]) > 0.005 and abs(r["change_amt"]) > 1:
+                    assert (r["return"] > 0) == (r["change_amt"] > 0), (pid, start, r)
+
+
+def test_card_wording(session):
+    he = person_reports.period_label("weekly", "2026-11-08", "2026-11-14", True)
+    assert he == "דוח שבועי, 8–14 בנובמבר 2026"
+    d = {"tracking_days": 10, "base": "ILS", "driver": {"symbol": "AVGO", "contribution": 0.008, "change_amt": 1676.0, "sp500": None}}
+    assert person_reports.early_line(d, True) == "ההשוואה למדד תתחיל אחרי 20 ימי מסחר (עברו 10)"
+    assert person_reports.driver_line(d, True) == "המניה שהשפיעה הכי הרבה: AVGO, הוסיפה 0.8% לתיק (+₪1,676)."

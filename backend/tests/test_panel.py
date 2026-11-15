@@ -170,7 +170,11 @@ def test_paid_calls_only_start_from_a_click():
     app_dir = Path(__file__).resolve().parents[1] / "app"
     src = {p.relative_to(app_dir).as_posix(): p.read_text() for p in app_dir.rglob("*.py")}
     # only the panel and the assistant make paid calls (openrouter.py is where the switch is defined)
-    assert sorted(n for n, t in src.items() if "paid=True" in t and n != "openrouter.py") == ["assistant.py", "panel.py"]
+    assert sorted(n for n, t in src.items() if "paid=True" in t and n != "openrouter.py") == ["assistant.py", "market_week.py", "panel.py"]
+    # the weekly market summary is the one paid call that is not a click: once a week, with the weekly
+    # reports, only while its switch is on (Settings), or from its own button
+    assert [n for n, t in src.items() if "market_week.make(" in t] in (["api/routes.py", "person_reports.py"], ["person_reports.py", "api/routes.py"])
+    assert "services.get_settings(session).market_summary" in src["person_reports.py"]
     # and each is started from exactly one place: its own POST route
     for call, route in (("panel.start(", '@router.post("/panel")'), ("assistant.ask(", '@router.post("/assistant/{run_id}")')):
         assert [n for n, t in src.items() if call in t] == ["api/routes.py"], call
