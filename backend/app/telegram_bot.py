@@ -70,6 +70,25 @@ class TelegramClient:
         return out["result"]
 
 
+def chunks(text: str, limit: int = 4000) -> list[str]:
+    """The text in pieces Telegram accepts, cut at line breaks."""
+    out, cur = [], ""
+    for line in (text or " ").split("\n"):
+        while len(line) > limit:
+            if cur:
+                out.append(cur)
+                cur = ""
+            out.append(line[:limit])
+            line = line[limit:]
+        if cur and len(cur) + len(line) + 1 > limit:
+            out.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    out.append(cur or " ")
+    return out
+
+
 def _money(v, ccy) -> str:
     if v is None:
         return "?"
@@ -113,7 +132,10 @@ class Bot:
 
     def send(self, chat_id, text: str, buttons: list[list[tuple[str, str]]] | None = None) -> dict:
         markup = {"inline_keyboard": [[{"text": t, "callback_data": d} for t, d in row] for row in buttons]} if buttons else None
-        return self.client.call("sendMessage", chat_id=chat_id, text=text, reply_markup=markup)
+        parts = chunks(text)
+        for part in parts[:-1]:  # Telegram refuses a message over 4096 characters
+            self.client.call("sendMessage", chat_id=chat_id, text=part)
+        return self.client.call("sendMessage", chat_id=chat_id, text=parts[-1], reply_markup=markup)
 
     def _remember(self, draft: dict) -> str:
         now = time.time()
@@ -321,6 +343,13 @@ class Bot:
                 self.handle(u)
             except Exception:
                 log.exception("telegram update failed")
+                chat = str(((u.get("message") or (u.get("callback_query") or {}).get("message")) or {}).get("chat", {}).get("id", ""))
+                try:
+                    with self.session_factory() as s:
+                        if chat and chat == self.settings(s).telegram_chat_id:
+                            self.client.call("sendMessage", chat_id=chat, text="משהו השתבש ולא הצלחתי לבצע. נסה שוב.")
+                except Exception:
+                    pass
         return len(updates)
 
 
@@ -341,13 +370,22 @@ def start(token: str) -> None:
 
     def run():
         backoff = 2
-        try:
-            client = TelegramClient(token)
-            _runner["username"] = client.call("getMe").get("username", "")
-            _runner["error"] = ""
-        except Exception as exc:
-            _runner["error"] = f"Telegram didn't accept the token or can't be reached: {exc}"
+        client = None
+        while client is None and not ev.is_set():  # no internet at start-up must not kill the bot for good
+            try:
+                client = TelegramClient(token)
+                _runner["username"] = client.call("getMe").get("username", "")
+                _runner["error"] = ""
+            except Exception as exc:
+                client = None
+                _runner["error"] = f"Telegram didn't accept the token or can't be reached: {exc}"
+                if "Unauthorized" in str(exc) or "Not Found" in str(exc):
+                    return  # a wrong token will not fix itself
+                ev.wait(backoff)
+                backoff = min(backoff * 2, 60)
+        if client is None:
             return
+        backoff = 2
         bot = Bot(client)
         while not ev.is_set():
             try:

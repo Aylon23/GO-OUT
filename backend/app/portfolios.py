@@ -146,7 +146,7 @@ def overview_payload(session: Session, code: str = "1Y") -> dict:
         if ctx.series is None:
             rows.append(row)
             continue
-        if ctx_any is None or s.dates[0] < ctx_any.series.dates[0]:
+        if ctx_any is None or ctx.series.dates[0] < ctx_any.series.dates[0]:
             ctx_any = ctx  # benchmarks come from the longest calendar, so they cover every portfolio's window
         s = ctx.series
         e = len(s.dates) - 1

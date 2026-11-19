@@ -124,3 +124,17 @@ def test_reports_and_weekly_schedule(bot):
     assert b.maybe_weekly(sunday) and "סיכום השבוע" in tg.texts()[-1]
     assert not b.maybe_weekly(sunday)  # once per Sunday
     assert not b.maybe_weekly(dt.datetime(2026, 11, 9, 10, 0))  # not on Monday
+
+
+def test_long_text_is_split_and_a_failed_update_answers(bot):
+    from app.telegram_bot import chunks
+
+    parts = chunks("\n".join("x" * 100 for _ in range(100)))
+    assert len(parts) > 1 and all(len(p) <= 4000 for p in parts) and "\n".join(parts).count("x") == 10000
+    assert chunks("") == [" "]
+    b, tg = bot
+    b.handle(msg(42, "/start ABC123"))
+    b.handle(msg(42, "/report"))
+    b.settings = lambda s: (_ for _ in ()).throw(RuntimeError("boom"))
+    b.client.updates = [msg(42, "/report")]
+    b.poll_once(timeout=0)  # must not raise
