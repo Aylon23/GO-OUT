@@ -94,9 +94,9 @@ export function SeriesChart({ dates, series, format, short, end, height = 320, b
               return (
                 <div className="glass num min-w-[180px] rounded-md px-3 py-2.5 text-sm shadow-pop">
                   <div className="mb-1.5 text-xs text-muted">{dateLong(String(label))}</div>
-                  {series.map((s) => {
-                    const p = payload.find((x) => x.dataKey === s.key);
-                    const v = p?.value as number | null | undefined;
+                  {series.map((s) => ({ s, v: payload.find((x) => x.dataKey === s.key)?.value as number | null | undefined }))
+                    .sort((a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity)) // highest first, as the lines stand at that point
+                    .map(({ s, v }) => {
                     return (
                       <div key={s.key} className="flex items-center justify-between gap-4 py-0.5">
                         <span className="flex items-center gap-2 text-muted">
