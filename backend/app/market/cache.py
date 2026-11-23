@@ -251,8 +251,24 @@ def load_history(session: Session, ticker: str, fetch: bool = True) -> pd.DataFr
         {"close": [r.close for r in rows], "adj_close": [r.adj_close for r in rows], "dividend": [r.dividend for r in rows]},
         index=[r.date for r in rows],
     )
+    df["adj_close"] = adjusted_from_dividends(df["close"], df["dividend"])
     _mem[ticker] = (cov.last_date, df)
     return df
+
+
+def adjusted_from_dividends(close: pd.Series, dividend: pd.Series) -> pd.Series:
+    """The dividend-adjusted price, rebuilt from the closes and dividends every time it is read (as Yahoo does:
+    each day before an ex-dividend date is scaled by 1 - dividend / previous close; the latest day equals the close).
+
+    The stored adj_close is not used: merging fresh bars rescaled it piece by piece and could leave jumps that
+    are not in the market, which made the S&P 500 line wrong."""
+    if close.empty:
+        return close.copy()
+    prev = close.shift(1)
+    f = (1 - dividend.fillna(0.0) / prev).where((dividend > 0) & (prev > 0), 1.0).clip(lower=0.5, upper=1.0)
+    # every day before an ex-date gets that ex-date's factor: product of the factors strictly after it
+    after = f[::-1].cumprod()[::-1].shift(-1).fillna(1.0)
+    return close * after
 
 
 def load_splits(session: Session, ticker: str) -> list[tuple[dt.date, float]]:

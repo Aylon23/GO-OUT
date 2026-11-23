@@ -31,3 +31,17 @@ def test_spy_line_matches_prices_every_day(session, fake):
         last = SPY.get(d, last)
         if v is not None and last:
             assert abs(v - last / 755.72 * 100) < 0.01, d
+
+
+def test_adjusted_price_is_rebuilt_from_closes_and_dividends():
+    import pandas as pd
+    from app.market.cache import adjusted_from_dividends
+
+    idx = [dt.date(2026, 12, d) for d in (17, 18, 19, 22)]
+    close = pd.Series([100.0, 101.0, 99.0, 100.0], index=idx)
+    div = pd.Series([0.0, 0.0, 2.02, 0.0], index=idx)  # ex-dividend on the 19th, 2% of the previous close
+    adj = adjusted_from_dividends(close, div)
+    assert adj.iloc[-1] == 100.0 and adj.iloc[2] == 99.0
+    assert abs(adj.iloc[1] - 101.0 * 0.98) < 1e-9 and abs(adj.iloc[0] - 100.0 * 0.98) < 1e-9
+    # no dividends: the adjusted price is the close, whatever was stored
+    assert (adjusted_from_dividends(close, div * 0) == close).all()
