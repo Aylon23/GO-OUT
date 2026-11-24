@@ -231,12 +231,12 @@ def test_the_picked_models_are_used_while_openrouter_lists_them(session, paid, m
     monkeypatch.setattr(paid, "request", lambda m, url, h, b, t: (200, {}, {"data": real}) if url.endswith("/models") else inner(m, url, h, b, t))
     monkeypatch.setattr(openrouter, "_catalog_cache", None)
     seats = openrouter.panel_seats(session)
-    assert [(s["label"], s["model"], s["effort"]) for s in seats] == [("ChatGPT", "openai/gpt-6.1-sol", "high"), ("Claude", "anthropic/claude-opus-5.5", "medium"),
+    assert [(s["label"], s["model"], s["effort"]) for s in seats] == [("ChatGPT", "openai/gpt-6.1-sol", "medium"), ("Claude", "anthropic/claude-opus-5.5", "medium"),
                                                                     ("Kimi", "moonshotai/kimi-k3.1-pro", "high")]
     c = _family(session)
     run = c.post("/api/panel?wait=true", json={"text": "oil jumps 20%"}).json()
     assert run["status"] == "done", run["note"]
-    assert {b["models"][0]: b["reasoning"]["effort"] for b in paid.bodies} == {"openai/gpt-6.1-sol": "high", "moonshotai/kimi-k3.1-pro": "high", "anthropic/claude-opus-5.5": "medium"}
+    assert {b["models"][0]: b["reasoning"]["effort"] for b in paid.bodies} == {"openai/gpt-6.1-sol": "medium", "moonshotai/kimi-k3.1-pro": "high", "anthropic/claude-opus-5.5": "medium"}
     # a model set by hand in Settings wins
     c.put("/api/panel/settings", json={"models": {"claude": "anthropic/claude-fable-5.2"}})
     assert next(s for s in openrouter.panel_seats(session) if s["key"] == "claude")["model"] == "anthropic/claude-fable-5.2"

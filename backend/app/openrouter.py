@@ -509,13 +509,13 @@ def free_models() -> dict:
 # The three seats, chosen for results per dollar (Artificial Analysis Intelligence Index and cost per
 # benchmark task, the scores OpenRouter's benchmark page uses, read on 11 and 14 Nov 2026), from three
 # different labs so their views are independent:
-#   GPT-6.1 Sol (high)        index 50, about $0.59 a task: the best value of the strong models
+#   GPT-6.1 Sol (medium)      the best value of the strong models; medium answers in one to two minutes (high took over five)
 #   Claude Opus 5.5 (medium)  index 48, $2.45: Anthropic's flagship at the effort where it is still good value
 #   Kimi K3.1 Pro (high)      index 46, $3.68 at max effort: the strongest model from a third lab under Gemini's price
 # Gemini 4 Carbon (index 58, $6.59) was dropped after it failed in a real run (HTTP 504 three times);
 # Grok 4.7 (index 35, $6.18) before that. A seat whose model leaves the catalog falls back to the
 # vendor's newest main model at a normal price.
-PANEL_SEATS = [{"key": "gpt", "label": "ChatGPT", "prefix": "openai/gpt", "prefer": "openai/gpt-6.1-sol", "effort": "high"},
+PANEL_SEATS = [{"key": "gpt", "label": "ChatGPT", "prefix": "openai/gpt", "prefer": "openai/gpt-6.1-sol", "effort": "medium"},
                {"key": "claude", "label": "Claude", "prefix": "anthropic/claude", "prefer": "anthropic/claude-opus-5.5", "effort": "medium"},
                {"key": "kimi", "label": "Kimi", "prefix": "moonshotai/kimi", "prefer": "moonshotai/kimi-k3.1-pro", "effort": "high"}]
 # variants that are not the vendor's main model: small, special-purpose or preview builds

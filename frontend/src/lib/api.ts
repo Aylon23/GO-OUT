@@ -331,7 +331,7 @@ export interface PanelFocus { symbol: string; name: string; models: Record<strin
 export interface PanelAnalyst { method: string; briefing: string; market_view: string; assumptions: string[]; sources: string[] }
 export interface PanelRun {
   id: number; text: string; horizon: string; web: boolean; status: "running" | "done" | "failed"; note: string; created_at: string; cost: number;
-  progress: { pct?: number; step?: string; models?: Record<string, "waiting" | "working" | "done" | "failed"> }; seats: { key: string; label: string; model: string }[];
+  progress: { pct?: number; step?: string; models?: Record<string, "waiting" | "working" | "done" | "failed">; articles?: { url: string; ok: boolean; title?: string; error?: string }[] }; seats: { key: string; label: string; model: string }[];
   analysts?: Record<string, PanelAnalyst>;
   result?: { tables?: PanelTable[]; focus?: PanelFocus[]; summary_he?: string[]; engine_why?: string; engine_shocks?: { symbol: string; move: number }[]; errors?: Record<string, string>; currency?: Ccy };
   score?: { models: Record<string, { n: number; direction_hit_rate: number | null; avg_error: number; in_range_rate: number }>; scored_on: string } | null;

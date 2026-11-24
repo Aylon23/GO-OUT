@@ -166,7 +166,8 @@ def focus_symbols(session: Session, text: str) -> list[str]:
     return [s for _, s in sorted(hits)][:MAX_FOCUS]
 
 
-def question_message(session: Session, text: str, horizon: str, focus: list[str] | None = None) -> tuple[list[dict], list[str]]:
+def question_message(session: Session, text: str, horizon: str, focus: list[str] | None = None,
+                     articles: list[dict] | None = None) -> tuple[list[dict], list[str]]:
     """The one message every model gets: the question, the horizon, and the data pack (tickers, combined
     weights, sector, betas, the market snapshot). No names, no amounts, no split by portfolio."""
     from .models import SymbolMeta
@@ -182,9 +183,14 @@ def question_message(session: Session, text: str, horizon: str, focus: list[str]
                      "weight_pct": round(float(h.get("weight") or 0) * 100, 1),
                      "betas": {k: round(float(v), 2) for k, v in (h.get("betas") or {}).items() if isinstance(v, (int, float))}})
     symbols = [r["symbol"] for r in rows]
-    body = {"question": text, "horizon": HORIZON_EN.get(horizon, horizon), "today": pack["today"],
+    from .articles import without_links
+
+    read = [{"title": a.get("title", ""), "source": a["url"], "text": a["text"]} for a in articles or [] if a.get("ok")]
+    body = {"question": without_links(text) if read else text, **({"articles": read} if read else {}), "horizon": HORIZON_EN.get(horizon, horizon), "today": pack["today"],
             "holdings": rows, "market": pack.get("market"), **({"focus": focus} if focus else {}),
-            "note": "weight_pct is the share of all the portfolios combined. Betas are weekly sensitivities to the named factors."}
+            "note": ("The user pasted links; `articles` holds the text the app read from them ([article 1] is the first). "
+                     "Base your answer on them first, and say if something in them looks out of date. " if read else "")
+                    + "weight_pct is the share of all the portfolios combined. Betas are weekly sensitivities to the named factors."}
     return [{"role": "user", "content": json.dumps(body, ensure_ascii=False)}], symbols
 
 
@@ -379,8 +385,10 @@ def estimate_cost(seats: list[dict], prompt_chars: int, web: bool) -> float:
 
 
 def start(session: Session, text: str, horizon: str, web: bool = True, background: bool = True) -> PanelRun:
-    text = text.strip()[:600]
-    problems = privacy.scan(session, text)
+    from .articles import without_links
+
+    text = text.strip()[:1500]  # room for a few links
+    problems = privacy.scan(session, without_links(text))  # a number inside a link is not an amount
     if problems:
         raise openrouter.AiError("The question would send " + "; ".join(problems) + ". Write it without names or amounts: the app applies the answer to each portfolio itself.")
     if not openrouter.api_key():
@@ -413,8 +421,15 @@ def _run(run_id: int, parallel: bool = True) -> None:
             run = s.get(PanelRun, run_id)
             seats = json.loads(run.seats)
             text, horizon, web = run.text, run.horizon, run.web
-            focus = focus_symbols(s, text)
-            messages, symbols = question_message(s, text, horizon, focus)
+            from . import articles as articles_mod
+
+            focus = focus_symbols(s, articles_mod.without_links(text))
+            arts = []
+            if articles_mod.links(text):
+                _set_progress(run_id, pct=6, step="Reading the links")
+                arts = articles_mod.read_all(s, text)
+                _set_progress(run_id, articles=[{k: a.get(k, "") for k in ("url", "ok", "title", "error")} for a in arts])
+            messages, symbols = question_message(s, text, horizon, focus, arts)
             if not symbols:
                 raise openrouter.AiError("There are no holdings to analyse yet.")
             prices = _last_prices(s, symbols)

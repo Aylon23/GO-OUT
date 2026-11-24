@@ -49,7 +49,7 @@ export function AiPanel() {
       <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(e) => { e.preventDefault(); start(); }}>
         <label htmlFor="panel-q" className="sr-only">Your question</label>
         <input id="panel-q" dir="auto" autoComplete="off" className="field h-12 flex-1 text-base" value={text} onChange={(e) => setText(e.target.value)}
-          placeholder="Ask anything: a scenario, a news event, an earnings report" />
+          placeholder="Ask anything: a scenario, a news event, an earnings report, or paste links to articles" />
         <button type="submit" className="btn-primary h-12" disabled={busy || !text.trim() || s?.key_set === false}>{busy ? "Starting" : "Ask the analysts"}</button>
       </form>
       {!text && <div className="mt-2 flex flex-wrap gap-2">{EXAMPLES.map((x) => <button key={x} type="button" dir="auto" className="chip h-auto min-h-7 py-1 text-left" onClick={() => setText(x)}>{x}</button>)}</div>}
@@ -198,6 +198,7 @@ function Progress({ d }: { d: PanelRun }) {
           );
         })}
       </ul>
+      <ArticlesRead d={d} />
       <p className="mt-3 text-xs text-faint">Each model researches alone{d.web ? " and searches the web" : ""}. This usually takes one to four minutes; you can leave the page and come back.</p>
     </div>
   );
@@ -214,6 +215,7 @@ function Result({ d, onAskPanel }: { d: PanelRun; onAskPanel: (q: string) => voi
   return (
     <div className="mt-10">
       <p className="text-xs text-muted"><span dir="auto">{d.text}</span>, over {HORIZON[d.horizon] ?? d.horizon}, {dateLong(d.created_at.slice(0, 10))}. Cost {money(d.cost, "USD", { decimals: 2 })}.</p>
+      <ArticlesRead d={d} />
       <div className="mt-3 max-w-[70ch] space-y-1.5 text-base leading-7" dir="rtl" lang="he">
         {(d.result?.summary_he ?? []).map((line, i) => <p key={i} className={clsx(i === 0 && "text-lg font-medium", i === (d.result?.summary_he?.length ?? 0) - 1 && "text-sm text-muted")}>{line}</p>)}
       </div>
@@ -487,5 +489,25 @@ function Chat({ runId, onAskPanel }: { runId: number; onAskPanel: (q: string) =>
         Search the web for this answer (costs a little more)
       </label>
     </section>
+  );
+}
+
+
+/** The links pasted into the question: which ones the app read and handed to the models. */
+function ArticlesRead({ d }: { d: PanelRun }) {
+  const list = d.progress.articles ?? [];
+  if (!list.length) return null;
+  return (
+    <ul className="mt-3 max-w-[72ch] space-y-0.5 text-xs">
+      {list.map((a, i) => (
+        <li key={a.url} className="flex gap-2">
+          <span className={a.ok ? "text-gain" : "text-loss"}>{a.ok ? "Read" : "Not read"}</span>
+          <span className="min-w-0 truncate text-muted">
+            Article {i + 1}: <a className="link" href={a.url} target="_blank" rel="noreferrer" dir="auto">{a.title || a.url}</a>
+            {!a.ok && a.error ? `, ${a.error}` : ""}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
