@@ -161,7 +161,11 @@ def test_iran_war_end_to_end(api):
     assert fam["change"] == pytest.approx(sum(b["change"] for b in out["portfolios"]), rel=1e-6)
     assert fam["low"] <= fam["impact"] <= fam["high"]
     assert {b["id"] for b in out["portfolios"]} == {1, api.pid2}
-    assert any(m["symbol"] == "USO" and m["shocked"] for m in out["market"])
+    # the shocked assets come from the theme (oil, the S&P, Israel, defence, gold); which ones depends on how they
+    # moved in the past events, and the demo prices are rebuilt every day, so the exact set is not fixed
+    shocked = {m["symbol"] for m in out["market"] if m["shocked"]}
+    assert shocked and shocked <= {"USO", "SPY", "EIS", "ITA", "GLD"}
+    assert shocked == {s["symbol"] for s in p["shocks"]}
     ev = next(e for e in out["events"] if e["id"] == "iran_jun25")
     assert ev["family"]["change"] == pytest.approx(sum(b["change"] for b in ev["portfolios"]), rel=1e-6)
 

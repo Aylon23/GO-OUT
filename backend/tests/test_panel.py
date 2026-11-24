@@ -175,11 +175,18 @@ def test_paid_calls_only_start_from_a_click():
     # reports, only while its switch is on (Settings), or from its own button
     assert [n for n, t in src.items() if "market_week.make(" in t] in (["api/routes.py", "person_reports.py"], ["person_reports.py", "api/routes.py"])
     assert "services.get_settings(session).market_summary" in src["person_reports.py"]
-    # and each is started from exactly one place: its own POST route
+    # and each is started from its own POST route, or from a message you send the Telegram bot (the advisor) and
+    # its "run the three analysts" button: never from the bot's loop, a schedule or a page load
     for call, route in (("panel.start(", '@router.post("/panel")'), ("assistant.ask(", '@router.post("/assistant/{run_id}")')):
-        assert [n for n, t in src.items() if call in t] == ["api/routes.py"], call
+        assert sorted(n for n, t in src.items() if call in t) == ["api/routes.py", "telegram_bot.py"], call
         routes = src["api/routes.py"]
         assert routes.count(call) == 1 and route in routes[routes.index(call) - 600:routes.index(call)], call
+    bot = src["telegram_bot.py"]
+    assert bot.count("panel.start(") == 1 and bot.count("assistant.ask(") == 1
+    assert bot.index("def run_panel") < bot.index("panel.start(") < bot.index("def ask_portfolio")
+    assert bot.index("def advise") < bot.index("assistant.ask(") < bot.index("def run_panel")
+    loop = bot[bot.index("def maybe_weekly"):]
+    assert "advise(" not in loop and "run_panel(" not in loop
 
 
 def test_a_batch_route_is_never_picked_as_the_model(session, paid, monkeypatch):
