@@ -138,3 +138,34 @@ def test_long_text_is_split_and_a_failed_update_answers(bot):
     b.settings = lambda s: (_ for _ in ()).throw(RuntimeError("boom"))
     b.client.updates = [msg(42, "/report")]
     b.poll_once(timeout=0)  # must not raise
+
+
+def test_a_question_goes_to_the_advisor_and_a_big_one_offers_the_analysts(bot, monkeypatch):
+    from app import assistant, openrouter, panel
+    from app.telegram_bot import is_trade
+
+    assert is_trade("קרן קנתה 5 AVGO") and is_trade("sold 3 NVDA")
+    assert not is_trade("פורסם שארה\"ב נערכת להחזיר מכסים, מה דעתך?") and not is_trade("מה דעתך על השוק")
+    b, tg = bot
+    b.handle(msg(42, "/start ABC123"))
+    asked = {}
+
+    def fake_ask(s, run_id, text, web=True, effort="medium", max_tokens=6000, articles=None):
+        asked.update(text=text, effort=effort, web=web)
+        return [{"role": "assistant", "text": "המכסים לוחצים על הטכנולוגיה.", "caveat": "", "ask_panel": True,
+                 "panel_reason": "זה אירוע גדול שיכול להזיז את התיקים חזק.", "cost": 0.012}]
+
+    monkeypatch.setattr(openrouter, "api_key", lambda: "k")
+    monkeypatch.setattr(assistant, "ask", fake_ask)
+    b.handle(msg(42, "פורסם שארה\"ב נערכת להחזיר מכסים, מה דעתך?"))
+    out = tg.texts()[-1]
+    assert asked["effort"] == "low" and "המכסים" in out and "זו דעתי, אבל זה אירוע גדול" in out and "1.2 סנט" in out
+    btn = next(x for x in tg.last_buttons() if x["callback_data"].startswith("wi:"))
+    started = {}
+
+    class Run:
+        id, status = 7, "running"
+
+    monkeypatch.setattr(panel, "start", lambda s, text, horizon, web=True, background=True: started.update(text=text) or Run())
+    b.handle(press(42, btn["callback_data"]))
+    assert "מכסים" in started["text"] and "שלושת האנליסטים" in tg.texts()[-1]

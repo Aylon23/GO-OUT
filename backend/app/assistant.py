@@ -25,7 +25,7 @@ SCHEMA = {"type": "object", "additionalProperties": True, "required": ["answer"]
           "properties": {"answer": {"type": "string"},
                          "caveat": {"type": "string"},
                          "followups": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
-                         "ask_panel": {"type": "boolean"}}}
+                         "ask_panel": {"type": "boolean"}, "panel_reason": {"type": "string"}}}
 
 GUIDANCE = (
     "You are the portfolio manager's own senior investment analyst: loyal, precise and candid. Answer in Hebrew "
@@ -41,8 +41,11 @@ GUIDANCE = (
     "an example amount. "
     "If the question is about a surprise against expectations, separate what is already priced in from the surprise. "
     "Put what you are unsure about in `caveat`. `followups` are up to three useful next questions, in Hebrew. "
-    "Set `ask_panel` to true when the question deserves a full run of all three analysts with a move for every "
-    "holding (a new scenario or event), rather than a quick answer. You inform decisions; you do not make them.")
+    "Set `ask_panel` to true only for a major event that could move the market or these portfolios sharply (new "
+    "tariffs, a war, a central-bank surprise, a big holding's earnings shock), not for routine news or a simple question; "
+    "then give your own view anyway and put in `panel_reason` one Hebrew sentence on why a full run of the three analysts, "
+    "with a move for every holding, is worth its cost here. When ARTICLES are given, read them first. "
+    "You inform decisions; you do not make them.")
 
 
 # ------------------------------------------------------------------ names <-> labels
@@ -186,7 +189,8 @@ def messages(session: Session, run_id: int) -> list[dict]:
     return [{"id": m.id, "role": m.role, "text": m.text, "at": m.created_at.isoformat(), **json.loads(m.extra or "{}")} for m in rows]
 
 
-def ask(session: Session, run_id: int, text: str, web: bool = True) -> list[dict]:
+def ask(session: Session, run_id: int, text: str, web: bool = True, effort: str = "medium", max_tokens: int = 6000,
+        articles: list[dict] | None = None) -> list[dict]:
     from .services import get_settings
 
     text = text.strip()[:1200]
@@ -206,17 +210,20 @@ def ask(session: Session, run_id: int, text: str, web: bool = True) -> list[dict
         facts["engine_on_this_message"] = eng
     earlier = session.exec(select(ChatMessage).where(ChatMessage.run_id == run_id).order_by(ChatMessage.id.desc())).all()[:HISTORY][::-1]
     msgs = [{"role": "user", "content": "FACTS (computed by the app; percentages only):\n" + json.dumps(facts, ensure_ascii=False)}]
+    read = [{"title": a.get("title", ""), "source": a["url"], "text": a["text"]} for a in articles or [] if a.get("ok")]
+    if read:
+        msgs.append({"role": "user", "content": "ARTICLES (pages the user linked, read by the app):\n" + json.dumps(read, ensure_ascii=False)})
     msgs += [{"role": m.role, "content": m.sent} for m in earlier]
     msgs.append({"role": "user", "content": sent})
     # the first seat is the best value of the three; a conversation does not need the others
-    ans, call = openrouter.chat_json(session, "assistant", [seat["model"]], msgs, SCHEMA, "assistant_answer", max_tokens=6000,
-                                     step_key=f"chat:{run_id}", paid=True, web=web, guidance=GUIDANCE, timeout=180.0, effort="medium")
+    ans, call = openrouter.chat_json(session, "assistant", [seat["model"]], msgs, SCHEMA, "assistant_answer", max_tokens=max_tokens,
+                                     step_key=f"chat:{run_id}", paid=True, web=web, guidance=GUIDANCE, timeout=180.0, effort=effort)
     raw = str(ans.get("answer") or "").strip()
     ccy = get_settings(session).base_currency
     shown = show_names(raw, labs, ccy)
     extra = {"caveat": show_names(str(ans.get("caveat") or ""), labs, ccy)[:600],
              "followups": [show_names(str(x), labs, ccy)[:200] for x in (ans.get("followups") or [])][:3],
-             "ask_panel": bool(ans.get("ask_panel")), "engine": eng, "model": call.model_used or seat["model"], "cost": round(call.cost or 0.0, 4), "web": web}
+             "ask_panel": bool(ans.get("ask_panel")), "panel_reason": show_names(str(ans.get("panel_reason") or ""), labs, ccy)[:300], "engine": eng, "model": call.model_used or seat["model"], "cost": round(call.cost or 0.0, 4), "web": web}
     if eng:
         letter = {lab["letter"]: lab["name"] for lab in labs}
         extra["engine"] = {**eng, "portfolios": {letter.get(k.split()[-1], k): v for k, v in eng["portfolios"].items()}}

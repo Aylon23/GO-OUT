@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 import secrets
 import threading
 import time
@@ -26,7 +27,10 @@ from .models import Portfolio, Settings
 log = logging.getLogger("telegram")
 
 HELP = (
-    "אפשר לכתוב לי פעולה במילים, למשל:\n"
+    "אפשר להתייעץ איתי בחופשיות, למשל:\n"
+    "• פורסם שארה\"ב נערכת להחזיר מכסים, מה דעתך?\n"
+    "• מה המשמעות של זה לתיקים? (אפשר להדביק קישור לכתבה)\n\n"
+    "ואפשר לכתוב לי פעולה במילים, למשל:\n"
     "• קרן קנתה 5 AVGO\n"
     "• קרן, שיר ואבא קנו 3 NVDA ב-180\n"
     "• כולם מכרו TSLA\n"
@@ -37,6 +41,15 @@ HELP = (
     "/calls – איך ההמלצות שלך מול ה-S&P\n"
     "/portfolios – כל התיקים"
 )
+TRADE_WORDS = re.compile(r"(קנ(ה|תה|ו|יתי)|מכר(ה|ו|תי)?|הפקד(ה|תי|נו)?|הפקיד(ה|ו)?|משכ(ה|ו|תי)|משך|דיבידנד|"
+                         r"\b(bought|sold|buy|sell|deposit(ed)?|withdr\w*|dividend)\b)", re.I)
+
+
+def is_trade(text: str) -> bool:
+    """A trade to record ("קרן קנתה 5 AVGO"), not a question for the advisor."""
+    return bool(TRADE_WORDS.search(text)) and "?" not in text and "http" not in text
+
+
 TYPE_HE = {"BUY": "קנייה", "SELL": "מכירה", "DIVIDEND": "דיבידנד", "DEPOSIT": "הפקדה", "WITHDRAWAL": "משיכה"}
 MISSING_HE = {"ticker": "איזו מניה? כתוב סימול כמו AVGO.", "quantity": "כמה? למשל \"5 מניות\" או \"ב-1000 דולר\".",
               "amount": "כמה כסף? למשל \"5000 דולר\".", "position": "אף תיק מהרשימה לא מחזיק את המניה הזו."}
@@ -232,6 +245,9 @@ class Bot:
                 lines.append(f"• {r['name']}: {_money(r['value'], o['base'])} · מול עלות \u2066{(r['cost_gain_pct'] or 0) * 100:+.1f}%\u2069")
             self.send(chat, "\n".join(lines) or "אין עדיין תיקים עם אחזקות.")
             return
+        if cmd == "/ask" or not is_trade(text):
+            self.advise(s, chat, rest if cmd == "/ask" else text)
+            return
         # free text: a trade
         try:
             d = parse(s, text)
@@ -239,6 +255,78 @@ class Bot:
             self.send(chat, f"לא הצלחתי להבין: {exc}")
             return
         self.offer(s, chat, d)
+
+    def advise(self, s: Session, chat: str, text: str) -> None:
+        """The advisor: one model, a short brief of what the family holds, the web only for news or links."""
+        from . import articles, assistant, openrouter, panel
+
+        text = text.strip()
+        if not text:
+            self.send(chat, "על מה תרצה להתייעץ?")
+            return
+        if not openrouter.api_key():
+            self.send(chat, "כדי שאוכל לייעץ צריך מפתח OpenRouter באפליקציה (Settings → AI).")
+            return
+        try:
+            self.client.call("sendChatAction", chat_id=chat, action="typing")
+        except Exception:
+            pass
+        try:
+            arts = articles.read_all(s, text) if articles.links(text) else []
+            q = articles.without_links(text) if arts else text
+            web = not any(a.get("ok") for a in arts) and (bool(arts) or panel.needs_web(s, q))
+            last = assistant.ask(s, 0, q, web=web, effort="low", max_tokens=2500, articles=arts)[-1]
+        except Exception as exc:
+            self.send(chat, f"לא הצלחתי לענות עכשיו: {exc}")
+            return
+        lines = [last["text"]]
+        if last.get("caveat"):
+            lines.append(f"\nמה שאני פחות בטוח בו: {last['caveat']}")
+        for a in arts:
+            if not a.get("ok"):
+                lines.append(f"\n(את הקישור {a['url']} לא הצלחתי לקרוא: {a.get('error', '')})")
+        buttons = None
+        if last.get("ask_panel"):
+            why = last.get("panel_reason") or "יש כאן סיכון לתנודתיות גדולה בשוק או בתיקים."
+            lines.append(f"\n⚠️ זו דעתי, אבל {why}\nבמקרה כזה הייתי מריץ גם את What-if עם שלושת האנליסטים (בערך 40 סנט, דקה-שלוש).")
+            key = self._remember({"text": text})
+            buttons = [[("🔎 הרץ את שלושת האנליסטים", f"wi:{key}")]]
+        if last.get("cost"):
+            lines.append(f"\n(עלות: {last['cost'] * 100:.1f} סנט)")
+        self.send(chat, "\n".join(lines), buttons)
+
+    def run_panel(self, s: Session, chat: str, message_id: int, text: str) -> None:
+        """The three analysts on the same question; a message when they are done."""
+        from . import articles, assistant, panel
+
+        q = assistant.hide_names(text, assistant.labels(s))
+        try:
+            run = panel.start(s, q, "1m", web=bool(articles.links(q)) or panel.needs_web(s, articles.without_links(q)))
+        except Exception as exc:
+            self.client.call("editMessageText", chat_id=chat, message_id=message_id, text=f"לא הצלחתי להפעיל: {exc}")
+            return
+        self.client.call("editMessageText", chat_id=chat, message_id=message_id,
+                         text="שלחתי לשלושת האנליסטים. אכתוב לך כשיסיימו (בדרך כלל דקה עד שלוש).")
+        rid, factory = run.id, self.session_factory
+
+        def watch():
+            from .models import PanelRun
+
+            for _ in range(120):  # up to 20 minutes
+                time.sleep(10)
+                with factory() as s2:
+                    r = s2.get(PanelRun, rid)
+                    if r is None or r.status == "running":
+                        continue
+                    msg = ("✅ שלושת האנליסטים סיימו. התוצאה המלאה, עם הערכה לכל מניה ולכל תיק, ב-What-if באפליקציה."
+                           if r.status == "done" else f"הניתוח לא הושלם: {r.note or 'שגיאה'}")
+                    try:
+                        self.send(chat, msg)
+                    except Exception:
+                        log.exception("telegram panel notice failed")
+                    return
+
+        threading.Thread(target=watch, name=f"tg-panel-{rid}", daemon=True).start()
 
     def ask_portfolio(self, s: Session, chat: str, d: dict) -> None:
         key = self._remember({"text": d["text"], "choose": d.get("_choose") or {}})
@@ -282,6 +370,9 @@ class Bot:
         _, d = item
         if kind == "no":
             self.client.call("editMessageText", chat_id=chat, message_id=message_id, text="בוטל.")
+            return
+        if kind == "wi":
+            self.run_panel(s, chat, message_id, d["text"])
             return
         if kind == "pf":
             choose = d.get("choose") or {}
