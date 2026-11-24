@@ -73,7 +73,14 @@ def test_positioning_and_fragility(fam):
         assert shares == pytest.approx(1.0)
     keren = next(p for p in r["positioning"] if p["name"] == "Keren")
     by = {x["title"]: x["median"] for x in keren["by_scenario"]}
-    assert by["Scenario 1"] > by["Scenario 2"]  # Exxon: oil up helps more than oil down
+    # The two scenarios differ only in oil (+20 vs -15), so their gap must follow Keren's oil exposure. The demo
+    # prices are rebuilt every day, so the estimated sign can change; the direction of the gap must still agree.
+    ex = factors.exposures(fam.session, ["XOM", "NVDA"])
+    from app.market.cache import load_history
+    w = {t: 100 * float(load_history(fam.session, t)["close"].iloc[-1]) for t in ("XOM", "NVDA")}
+    oil = sum(w[t] * ex[t]["local"]["betas"].get("oil", 0.0) for t in w) / sum(w.values())
+    if abs(oil) > 0.03:
+        assert (by["Scenario 1"] - by["Scenario 2"]) * oil > 0
     assert r["most_fragile"]["name"] in {p["name"] for p in r["positioning"] if p["id"] is not None}
 
 
